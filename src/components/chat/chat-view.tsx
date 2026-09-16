@@ -37,6 +37,7 @@ import {
   ChevronUp,
   ChevronDown,
   MapPin,
+  Download,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-store'
 import { apiFetch, apiUpload } from '@/lib/api'
@@ -92,6 +93,7 @@ import { PinnedMessagesDialog } from './pinned-messages-dialog'
 import { ScheduleMessageDialog } from './schedule-message-dialog'
 import { SharedMediaDialog } from './shared-media-dialog'
 import { LocationShareDialog } from './location-share-dialog'
+import { ExportChatDialog } from './export-chat-dialog'
 import {
   ChatMessage,
   ChatConversation,
@@ -229,6 +231,9 @@ export function ChatView({
 
   // V8 — Live location share dialog state (opened from the paperclip menu)
   const [locationShareOpen, setLocationShareOpen] = React.useState(false)
+
+  // V11 — Chat export dialog state (opened from the 3-dot menu)
+  const [exportOpen, setExportOpen] = React.useState(false)
 
   // Schedule-message dialog state (V6). initialContent lets the dialog
   // pre-fill with text the user had typed into the composer when they
@@ -1356,6 +1361,9 @@ export function ChatView({
                 <DropdownMenuItem onClick={() => setSharedMediaOpen(true)}>
                   <ImageIcon className="h-4 w-4" /> Shared Media
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setExportOpen(true)}>
+                  <Download className="h-4 w-4" /> Export chat
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={toggleMute}>
                   {conversation?.muted ? (
                     <>
@@ -1431,6 +1439,9 @@ export function ChatView({
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setSharedMediaOpen(true)}>
                   <ImageIcon className="h-4 w-4" /> Shared Media
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setExportOpen(true)}>
+                  <Download className="h-4 w-4" /> Export chat
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => toast({ title: 'Privacy info coming soon' })}>
                   <ShieldCheck className="h-4 w-4" /> Privacy
@@ -2045,6 +2056,14 @@ export function ChatView({
         open={locationShareOpen}
         onClose={() => setLocationShareOpen(false)}
         conversationId={conversationId}
+      />
+
+      {/* V11 — Export chat dialog (3-dot menu → Export chat) */}
+      <ExportChatDialog
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        conversationId={conversationId}
+        conversationName={name}
       />
 
       {/* Schedule-message dialog (V6) — opened from the 3-dot menu

@@ -1,0 +1,1048 @@
+     1→'use client'
+     2→
+     3→import * as React from 'react'
+     4→import { motion, AnimatePresence } from 'framer-motion'
+     5→import {
+     6→  Bookmark,
+     7→  Check,
+     8→  ChevronLeft,
+     9→  ChevronRight,
+    10→  Eye,
+    11→  Loader2,
+    12→  Pause,
+    13→  Play,
+    14→  Plus,
+    15→  Send,
+    16→  Trash2,
+    17→  X,
+    18→} from 'lucide-react'
+    19→import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+    20→import { Button } from '@/components/ui/button'
+    21→import { Input } from '@/components/ui/input'
+    22→import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+    23→import { ScrollArea } from '@/components/ui/scroll-area'
+    24→import { PremiumAvatar } from '@/components/premium-avatar'
+    25→import { apiFetch, ApiError } from '@/lib/api'
+    26→import { useToast } from '@/hooks/use-toast'
+    27→import { useAuth } from '@/lib/auth-store'
+    28→import type { StoriesGroup, StoryAuthor, StoryItem } from './stories-row'
+    29→
+    30→// ============================================================
+    31→// StoryViewerDialog
+    32→// ============================================================
+    33→// Full-screen immersive story viewer. Plays through a single author's
+    34→// batch of stories with auto-advance + tap navigation. Marks each
+    35→// story as viewed via POST /api/stories/[id]/view. For the author's
+    36→// OWN batch, shows the viewer list (eye icon + count) instead of the
+    37→// reply input.
+    38→//
+    39→// V7 — supports a `mode` prop. 'highlight' mode (for viewing Story
+    40→// Highlights saved on a profile) disables auto-advance and shows the
+    41→// highlight title at the top instead of "Xm ago · Status".
+    42→// Also adds a "Save to Highlights" button on the author's own stories.
+    43→
+    44→const STORY_DURATION_MS = 5000 // 5s per story
+    45→
+    46→interface StoryViewerProps {
+    47→  open: boolean
+    48→  onClose: () => void
+    49→  userId: string // author whose stories we are viewing
+    50→  initialIndex?: number
+    51→  allStories: StoriesGroup[]
+    52→  onStoryDeleted?: () => void
+    53→  /** V7 — viewer mode. */
+    54→  mode?: 'story' | 'highlight'
+    55→  /** V7 — highlight title (shown in header when mode === 'highlight'). */
+    56→  highlightTitle?: string
+    57→  /** V7 — highlight cover color (used for the empty-state / ring). */
+    58→  highlightCoverColor?: string
+    59→  /** V7 — explicit stories list (used in highlight mode). */
+    60→  highlightStories?: StoryItem[]
+    61→  /** V7 — fired when a highlight is created/saved so the parent can refetch. */
+    62→  onHighlightsChanged?: () => void
+    63→}
+    64→
+    65→function timeAgo(iso?: string): string {
+    66→  if (!iso) return ''
+    67→  const d = new Date(iso).getTime()
+    68→  const diff = Date.now() - d
+    69→  const m = Math.floor(diff / 60000)
+    70→  if (m < 1) return 'just now'
+    71→  if (m < 60) return `${m}m ago`
+    72→  const h = Math.floor(m / 60)
+    73→  if (h < 24) return `${h}h ago`
+    74→  return `${Math.floor(h / 24)}d ago`
+    75→}
+    76→
+    77→export function StoryViewerDialog({
+    78→  open,
+    79→  onClose,
+    80→  userId,
+    81→  initialIndex = 0,
+    82→  allStories,
+    83→  onStoryDeleted,
+    84→  mode = 'story',
+    85→  highlightTitle,
+    86→  highlightCoverColor,
+    87→  highlightStories,
+    88→  onHighlightsChanged,
+    89→}: StoryViewerProps) {
+    90→  const me = useAuth((s) => s.user)
+    91→  const { toast } = useToast()
+    92→
+    93→  // Find the active group from allStories (used in story mode)
+    94→  const activeGroup: StoriesGroup | undefined = React.useMemo(
+    95→    () => allStories.find((g) => g.user.id === userId),
+    96→    [allStories, userId]
+    97→  )
+    98→
+    99→  const isOwn = !!me && activeGroup?.user.id === me.id
+   100→  const stories = mode === 'highlight'
+   101→    ? (highlightStories || [])
+   102→    : (activeGroup?.stories || [])
+   103→
+   104→  const [index, setIndex] = React.useState(initialIndex)
+   105→  const [paused, setPaused] = React.useState(false)
+   106→  const [progress, setProgress] = React.useState(0) // 0..1
+   107→  const [reply, setReply] = React.useState('')
+   108→  const [sending, setSending] = React.useState(false)
+   109→  const [showViewers, setShowViewers] = React.useState(false)
+   110→  const [viewerList, setViewerList] = React.useState<any[] | null>(null)
+   111→  const [viewersLoading, setViewersLoading] = React.useState(false)
+   112→  const [totalViewers, setTotalViewers] = React.useState(0)
+   113→  const [deleting, setDeleting] = React.useState(false)
+   114→
+   115→  // V7 — save-to-highlights dialog state
+   116→  const [saveToHighlightsOpen, setSaveToHighlightsOpen] = React.useState(false)
+   117→
+   118→  // Reset when target userId changes or dialog reopens
+   119→  React.useEffect(() => {
+   120→    if (open) {
+   121→      setIndex(Math.max(0, Math.min(initialIndex, Math.max(0, stories.length - 1))))
+   122→      setPaused(false)
+   123→      setProgress(0)
+   124→      setReply('')
+   125→      setShowViewers(false)
+   126→      setViewerList(null)
+   127→    }
+   128→  }, [open, userId, initialIndex, stories.length])
+   129→
+   130→  // Clamp index when stories change (e.g. after delete)
+   131→  React.useEffect(() => {
+   132→    if (index >= stories.length) {
+   133→      if (stories.length === 0) {
+   134→        // No stories left in this batch — close
+   135→        onClose()
+   136→      } else {
+   137→        setIndex(stories.length - 1)
+   138→      }
+   139→    }
+   140→  }, [stories.length, index, onClose])
+   141→
+   142→  const currentStory = stories[index]
+   143→
+   144→  // Progress timer (disabled in highlight mode — manual navigation only)
+   145→  React.useEffect(() => {
+   146→    if (mode === 'highlight') return
+   147→    if (!open || !currentStory || paused) return
+   148→    setProgress(0)
+   149→    const startedAt = Date.now()
+   150→    let raf: number
+   151→    const tick = () => {
+   152→      const elapsed = Date.now() - startedAt
+   153→      const p = Math.min(1, elapsed / STORY_DURATION_MS)
+   154→      setProgress(p)
+   155→      if (p >= 1) {
+   156→        // advance
+   157→        if (index < stories.length - 1) {
+   158→          setIndex((i) => i + 1)
+   159→        } else {
+   160→          // last story in this batch — close after a brief beat
+   161→          onClose()
+   162→        }
+   163→        return
+   164→      }
+   165→      raf = requestAnimationFrame(tick)
+   166→    }
+   167→    raf = requestAnimationFrame(tick)
+   168→    return () => cancelAnimationFrame(raf)
+   169→  }, [open, currentStory, paused, index, stories.length, onClose, mode])
+   170→
+   171→  // Mark story as viewed when it becomes active (skip own stories + highlight mode)
+   172→  React.useEffect(() => {
+   173→    if (!open || !currentStory || isOwn) return
+   174→    if (mode === 'highlight') return
+   175→    apiFetch(`/api/stories/${currentStory.id}/view`, { method: 'POST' }).catch(
+   176→      () => {}
+   177→    )
+   178→  }, [open, currentStory, isOwn, mode])
+   179→
+   180→  // Fetch viewer list when opening own story (story mode only)
+   181→  const loadViewers = React.useCallback(async () => {
+   182→    if (!isOwn || mode === 'highlight') return
+   183→    setViewersLoading(true)
+   184→    try {
+   185→      const res: any = await apiFetch('/api/stories/me')
+   186→      setTotalViewers(Number(res?.totalViewers) || 0)
+   187→      const allViewers = (res?.stories || []).flatMap((s: any) =>
+   188→        (s.viewers || []).map((v: any) => ({ ...v, storyId: s.id }))
+   189→      )
+   190→      // De-duplicate by userId, keep latest viewedAt
+   191→      const byUid = new Map<string, any>()
+   192→      for (const v of allViewers) {
+   193→        const existing = byUid.get(v.userId)
+   194→        if (!existing || new Date(v.viewedAt) > new Date(existing.viewedAt)) {
+   195→          byUid.set(v.userId, v)
+   196→        }
+   197→      }
+   198→      setViewerList(Array.from(byUid.values()))
+   199→    } catch {
+   200→      setViewerList([])
+   201→    } finally {
+   202→      setViewersLoading(false)
+   203→    }
+   204→  }, [isOwn, mode])
+   205→
+   206→  React.useEffect(() => {
+   207→    if (open && isOwn && mode === 'story' && !viewerList) {
+   208→      loadViewers()
+   209→    }
+   210→  }, [open, isOwn, viewerList, loadViewers, mode])
+   211→
+   212→  // Per-story viewers count (current story)
+   213→  const currentStoryViewers = React.useMemo(() => {
+   214→    if (!viewerList || !currentStory) return []
+   215→    return viewerList.filter((v) => v.storyId === currentStory.id)
+   216→  }, [viewerList, currentStory])
+   217→
+   218→  const goNext = React.useCallback(() => {
+   219→    if (index < stories.length - 1) {
+   220→      setIndex((i) => i + 1)
+   221→      setProgress(0)
+   222→    } else {
+   223→      onClose()
+   224→    }
+   225→  }, [index, stories.length, onClose])
+   226→
+   227→  const goPrev = React.useCallback(() => {
+   228→    if (index > 0) {
+   229→      setIndex((i) => i - 1)
+   230→      setProgress(0)
+   231→    }
+   232→  }, [index])
+   233→
+   234→  // Keyboard navigation
+   235→  React.useEffect(() => {
+   236→    if (!open) return
+   237→    const onKey = (e: KeyboardEvent) => {
+   238→      if (e.key === 'Escape') onClose()
+   239→      else if (e.key === 'ArrowRight') goNext()
+   240→      else if (e.key === 'ArrowLeft') goPrev()
+   241→      else if (e.key === ' ' && mode !== 'highlight') {
+   242→        e.preventDefault()
+   243→        setPaused((p) => !p)
+   244→      }
+   245→    }
+   246→    window.addEventListener('keydown', onKey)
+   247→    return () => window.removeEventListener('keydown', onKey)
+   248→  }, [open, goNext, goPrev, onClose, mode])
+   249→
+   250→  // Reply handler — creates a private conversation + message to the story owner
+   251→  const handleSendReply = async () => {
+   252→    if (!reply.trim() || !activeGroup) return
+   253→    setSending(true)
+   254→    try {
+   255→      // Find or create private conversation with story owner
+   256→      const convRes: any = await apiFetch('/api/conversations', {
+   257→        method: 'POST',
+   258→        body: JSON.stringify({
+   259→          type: 'private',
+   260→          participantId: activeGroup.user.id,
+   261→        }),
+   262→      })
+   263→      const conversationId = convRes?.conversation?.id
+   264→      if (!conversationId) throw new Error('Could not open conversation')
+   265→      await apiFetch('/api/messages', {
+   266→        method: 'POST',
+   267→        body: JSON.stringify({
+   268→          conversationId,
+   269→          type: 'text',
+   270→          content: reply.trim(),
+   271→        }),
+   272→      })
+   273→      toast({ title: `Reply sent to ${activeGroup.user.name}` })
+   274→      setReply('')
+   275→      onClose()
+   276→    } catch (e: any) {
+   277→      const err = e as ApiError
+   278→      toast({
+   279→        title: err?.message || 'Failed to send reply',
+   280→        variant: 'destructive',
+   281→      })
+   282→    } finally {
+   283→      setSending(false)
+   284→    }
+   285→  }
+   286→
+   287→  const handleDelete = async () => {
+   288→    if (!currentStory || !isOwn) return
+   289→    setDeleting(true)
+   290→    try {
+   291→      await apiFetch(`/api/stories/${currentStory.id}`, { method: 'DELETE' })
+   292→      toast({ title: 'Story deleted' })
+   293→      onStoryDeleted?.()
+   294→      if (stories.length <= 1) {
+   295→        onClose()
+   296→      } else {
+   297→        setIndex(Math.max(0, index - 1))
+   298→        setViewerList(null) // refresh viewer list
+   299→      }
+   300→    } catch (e: any) {
+   301→      const err = e as ApiError
+   302→      toast({
+   303→        title: err?.message || 'Failed to delete story',
+   304→        variant: 'destructive',
+   305→      })
+   306→    } finally {
+   307→      setDeleting(false)
+   308→    }
+   309→  }
+   310→
+   311→  return (
+   312→    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+   313→      <DialogContent
+   314→        showCloseButton={false}
+   315→        className="fixed inset-0 top-0 left-0 z-50 grid h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 gap-0 overflow-hidden rounded-none border-none bg-black p-0 shadow-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0"
+   316→      >
+   317→        <DialogTitle className="sr-only">
+   318→          {mode === 'highlight' ? 'Highlight Viewer' : 'Story Viewer'}
+   319→        </DialogTitle>
+   320→        <DialogDescription className="sr-only">
+   321→          {mode === 'highlight'
+   322→            ? `Viewing highlight: ${highlightTitle || 'Highlights'}`
+   323→            : 'View stories from your contacts'}
+   324→        </DialogDescription>
+   325→        {!activeGroup && mode === 'story' ? (
+   326→          <div className="flex h-full w-full items-center justify-center text-white/80">
+   327→            <Loader2 className="h-6 w-6 animate-spin" />
+   328→          </div>
+   329→        ) : stories.length === 0 ? (
+   330→          <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-white/80">
+   331→            <Loader2 className="h-6 w-6 animate-spin" />
+   332→            <p className="text-sm">No stories in this highlight.</p>
+   333→            <Button
+   334→              variant="outline"
+   335→              onClick={onClose}
+   336→              className="mt-2 min-h-[44px] border-white/20 bg-white/10 text-white hover:bg-white/20"
+   337→            >
+   338→              Close
+   339→            </Button>
+   340→          </div>
+   341→        ) : (
+   342→          <StoryStage
+   343→            story={currentStory}
+   344→            author={
+   345→              activeGroup?.user || {
+   346→                id: userId,
+   347→                name: highlightTitle || 'Highlights',
+   348→                username: undefined,
+   349→                avatar: null,
+   350→                isPremium: false,
+   351→                premiumTier: null,
+   352→              }
+   353→            }
+   354→            stories={stories}
+   355→            index={index}
+   356→            progress={progress}
+   357→            paused={paused}
+   358→            isOwn={isOwn}
+   359→            mode={mode}
+   360→            highlightTitle={highlightTitle}
+   361→            highlightCoverColor={highlightCoverColor}
+   362→            viewersCount={
+   363→              isOwn ? currentStoryViewers.length : currentStory?.viewsCount || 0
+   364→            }
+   365→            reply={reply}
+   366→            sending={sending}
+   367→            showViewers={showViewers}
+   368→            viewersLoading={viewersLoading}
+   369→            viewerList={showViewers ? currentStoryViewers : []}
+   370→            deleting={deleting}
+   371→            saveToHighlightsOpen={saveToHighlightsOpen}
+   372→            onToggleSaveToHighlights={() =>
+   373→              setSaveToHighlightsOpen((v) => !v)
+   374→            }
+   375→            onTogglePause={() => setPaused((p) => !p)}
+   376→            onPrev={goPrev}
+   377→            onNext={goNext}
+   378→            onClose={onClose}
+   379→            onReplyChange={setReply}
+   380→            onSendReply={handleSendReply}
+   381→            onToggleViewers={() => setShowViewers((v) => !v)}
+   382→            onDelete={handleDelete}
+   383→            onHighlightsChanged={() => {
+   384→              onHighlightsChanged?.()
+   385→              setSaveToHighlightsOpen(false)
+   386→            }}
+   387→            currentStoryId={currentStory?.id}
+   388→          />
+   389→        )}
+   390→      </DialogContent>
+   391→    </Dialog>
+   392→  )
+   393→}
+   394→
+   395→// ============================================================
+   396→// StoryStage — the inner layout
+   397→// ============================================================
+   398→
+   399→interface StoryStageProps {
+   400→  story?: StoryItem
+   401→  author: StoryAuthor
+   402→  stories: StoryItem[]
+   403→  index: number
+   404→  progress: number
+   405→  paused: boolean
+   406→  isOwn: boolean
+   407→  mode: 'story' | 'highlight'
+   408→  highlightTitle?: string
+   409→  highlightCoverColor?: string
+   410→  viewersCount: number
+   411→  reply: string
+   412→  sending: boolean
+   413→  showViewers: boolean
+   414→  viewersLoading: boolean
+   415→  viewerList: any[]
+   416→  deleting: boolean
+   417→  saveToHighlightsOpen: boolean
+   418→  onToggleSaveToHighlights: () => void
+   419→  onTogglePause: () => void
+   420→  onPrev: () => void
+   421→  onNext: () => void
+   422→  onClose: () => void
+   423→  onReplyChange: (s: string) => void
+   424→  onSendReply: () => void
+   425→  onToggleViewers: () => void
+   426→  onDelete: () => void
+   427→  onHighlightsChanged: () => void
+   428→  currentStoryId?: string
+   429→}
+   430→
+   431→function StoryStage({
+   432→  story,
+   433→  author,
+   434→  stories,
+   435→  index,
+   436→  progress,
+   437→  paused,
+   438→  isOwn,
+   439→  mode,
+   440→  highlightTitle,
+   441→  viewersCount,
+   442→  reply,
+   443→  sending,
+   444→  showViewers,
+   445→  viewersLoading,
+   446→  viewerList,
+   447→  deleting,
+   448→  saveToHighlightsOpen,
+   449→  onToggleSaveToHighlights,
+   450→  onTogglePause,
+   451→  onPrev,
+   452→  onNext,
+   453→  onClose,
+   454→  onReplyChange,
+   455→  onSendReply,
+   456→  onToggleViewers,
+   457→  onDelete,
+   458→  onHighlightsChanged,
+   459→  currentStoryId,
+   460→}: StoryStageProps) {
+   461→  return (
+   462→    <div className="relative flex h-full w-full flex-col bg-black">
+   463→      {/* Top overlay: progress bars + author + close */}
+   464→      <div className="pointer-events-none absolute inset-x-0 top-0 z-30 bg-gradient-to-b from-black/70 via-black/30 to-transparent px-3 pb-8 pt-3">
+   465→        {/* Progress bars — hidden in highlight mode (manual navigation) */}
+   466→        {mode !== 'highlight' && (
+   467→          <div className="flex w-full gap-1">
+   468→            {stories.map((s, i) => (
+   469→              <div
+   470→                key={s.id}
+   471→                className="relative h-0.5 flex-1 overflow-hidden rounded-full bg-white/30"
+   472→              >
+   473→                <div
+   474→                  className="absolute inset-y-0 left-0 bg-white"
+   475→                  style={{
+   476→                    width: i < index ? '100%' : i === index ? `${progress * 100}%` : '0%',
+   477→                    transition: i === index ? 'none' : 'width 0.2s ease',
+   478→                  }}
+   479→                />
+   480→              </div>
+   481→            ))}
+   482→          </div>
+   483→        )}
+   484→
+   485→        {/* Author row */}
+   486→        <div className="mt-3 flex items-center gap-3">
+   487→          {mode === 'story' ? (
+   488→            <PremiumAvatar
+   489→              user={{
+   490→                isPremium: author.isPremium,
+   491→                premiumTier: author.premiumTier,
+   492→                avatar: author.avatar || undefined,
+   493→                name: author.name || 'U',
+   494→              }}
+   495→              size={36}
+   496→              showAura
+   497→            />
+   498→          ) : (
+   499→            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white">
+   500→              <Bookmark className="h-4 w-4" />
+   501→            </div>
+   502→          )}
+   503→          <div className="min-w-0 flex-1">
+   504→            <p className="truncate text-sm font-semibold text-white">
+   505→              {mode === 'highlight'
+   506→                ? (highlightTitle || 'Highlights')
+   507→                : author.name}
+   508→            </p>
+   509→            <p className="text-[11px] text-white/60">
+   510→              {mode === 'highlight'
+   511→                ? `Highlight · ${index + 1} of ${stories.length}`
+   512→                : `${timeAgo(story?.createdAt)} · ${story?.type === 'image' ? 'Photo' : 'Status'}`}
+   513→            </p>
+   514→          </div>
+   515→
+   516→          {/* Pause/play — hidden in highlight mode (no auto-advance) */}
+   517→          {mode !== 'highlight' && (
+   518→            <button
+   519→              onClick={onTogglePause}
+   520→              aria-label={paused ? 'Resume' : 'Pause'}
+   521→              className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+   522→            >
+   523→              {paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+   524→            </button>
+   525→          )}
+   526→
+   527→          {/* V7 — Save to Highlights button (own stories, story mode only) */}
+   528→          {isOwn && mode === 'story' && currentStoryId && (
+   529→            <button
+   530→              onClick={onToggleSaveToHighlights}
+   531→              aria-label="Save to Highlights"
+   532→              className="pointer-events-auto flex h-9 items-center gap-1.5 rounded-full bg-white/10 px-3 text-white transition-colors hover:bg-white/20"
+   533→            >
+   534→              <Bookmark className="h-4 w-4" />
+   535→              <span className="text-xs font-semibold hidden sm:inline">
+   536→                Save
+   537→              </span>
+   538→            </button>
+   539→          )}
+   540→
+   541→          {/* Viewers count (own story) — taps to toggle list */}
+   542→          {isOwn && mode === 'story' && (
+   543→            <button
+   544→              onClick={onToggleViewers}
+   545→              aria-label="Viewers"
+   546→              className="pointer-events-auto flex h-9 items-center gap-1.5 rounded-full bg-white/10 px-3 text-white transition-colors hover:bg-white/20"
+   547→            >
+   548→              <Eye className="h-4 w-4" />
+   549→              <span className="text-xs font-semibold">{viewersCount}</span>
+   550→            </button>
+   551→          )}
+   552→
+   553→          {/* Delete own story — only in story mode */}
+   554→          {isOwn && mode === 'story' && (
+   555→            <button
+   556→              onClick={onDelete}
+   557→              disabled={deleting}
+   558→              aria-label="Delete story"
+   559→              className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full bg-red-500/20 text-red-300 transition-colors hover:bg-red-500/40 disabled:opacity-50"
+   560→            >
+   561→              {deleting ? (
+   562→                <Loader2 className="h-4 w-4 animate-spin" />
+   563→              ) : (
+   564→                <Trash2 className="h-4 w-4" />
+   565→              )}
+   566→            </button>
+   567→          )}
+   568→
+   569→          <button
+   570→            onClick={onClose}
+   571→            aria-label="Close"
+   572→            className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+   573→          >
+   574→            <X className="h-5 w-5" />
+   575→          </button>
+   576→        </div>
+   577→      </div>
+   578→
+   579→      {/* Tap zones — left=prev, right=next, center=toggle pause (story mode) / no-op (highlight mode) */}
+   580→      <button
+   581→        onClick={onPrev}
+   582→        aria-label="Previous story"
+   583→        className="absolute left-0 top-0 z-10 h-full w-1/3 cursor-default"
+   584→      />
+   585→      {mode === 'highlight' ? (
+   586→        <button
+   587→          aria-label="Center"
+   588→          className="absolute left-1/3 top-0 z-10 h-full w-1/3 cursor-default"
+   589→        />
+   590→      ) : (
+   591→        <button
+   592→          onClick={onTogglePause}
+   593→          aria-label={paused ? 'Resume' : 'Pause'}
+   594→          className="absolute left-1/3 top-0 z-10 h-full w-1/3 cursor-default"
+   595→        />
+   596→      )}
+   597→      <button
+   598→        onClick={onNext}
+   599→        aria-label="Next story"
+   600→        className="absolute right-0 top-0 z-10 h-full w-1/3 cursor-default"
+   601→      />
+   602→
+   603→      {/* Side chevron buttons (visible on hover / always for touch friendliness) */}
+   604→      {index > 0 && (
+   605→        <button
+   606→          onClick={onPrev}
+   607→          aria-label="Previous"
+   608→          className="absolute left-2 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-sm transition-colors hover:bg-white/30"
+   609→        >
+   610→          <ChevronLeft className="h-5 w-5" />
+   611→        </button>
+   612→      )}
+   613→      {index < stories.length - 1 && (
+   614→        <button
+   615→          onClick={onNext}
+   616→          aria-label="Next"
+   617→          className="absolute right-2 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-sm transition-colors hover:bg-white/30"
+   618→        >
+   619→          <ChevronRight className="h-5 w-5" />
+   620→        </button>
+   621→      )}
+   622→
+   623→      {/* Story content */}
+   624→      <div className="flex flex-1 items-center justify-center overflow-hidden">
+   625→        <AnimatePresence mode="wait">
+   626→          {story?.type === 'image' ? (
+   627→            <motion.img
+   628→              key={story.id}
+   629→              src={story.content}
+   630→              alt={story.caption || 'Story image'}
+   631→              initial={{ opacity: 0, scale: 1.02 }}
+   632→              animate={{ opacity: 1, scale: 1 }}
+   633→              exit={{ opacity: 0, scale: 0.98 }}
+   634→              transition={{ duration: 0.25 }}
+   635→              className="max-h-full max-w-full object-contain"
+   636→              draggable={false}
+   637→            />
+   638→          ) : story ? (
+   639→            <motion.div
+   640→              key={story.id}
+   641→              initial={{ opacity: 0, y: 6 }}
+   642→              animate={{ opacity: 1, y: 0 }}
+   643→              exit={{ opacity: 0, y: -6 }}
+   644→              transition={{ duration: 0.25 }}
+   645→              className="flex h-full w-full items-center justify-center p-8"
+   646→              style={{ background: story.bgColor || '#10b981' }}
+   647→            >
+   648→              <p
+   649→                className="whitespace-pre-wrap text-center text-2xl font-semibold leading-snug sm:text-3xl"
+   650→                style={{ color: story.textColor || '#ffffff' }}
+   651→              >
+   652→                {story.content}
+   653→              </p>
+   654→            </motion.div>
+   655→          ) : null}
+   656→        </AnimatePresence>
+   657→      </div>
+   658→
+   659→      {/* Caption (image story) */}
+   660→      {story?.type === 'image' && story.caption && (
+   661→        <div className="pointer-events-none absolute inset-x-0 bottom-24 z-20 px-6 pb-2">
+   662→          <div className="mx-auto max-w-md rounded-xl bg-black/40 px-4 py-2 backdrop-blur">
+   663→            <p className="text-center text-sm text-white">{story.caption}</p>
+   664→          </div>
+   665→        </div>
+   666→      )}
+   667→
+   668→      {/* Bottom: reply input (others, story mode) OR viewer list (own, story mode) OR empty (highlight mode) */}
+   669→      <div className="pointer-events-auto absolute inset-x-0 bottom-0 z-20 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+   670→        {mode === 'highlight' ? (
+   671→          <div className="mx-auto max-w-md">
+   672→            <p className="text-center text-xs text-white/50">
+   673→              {highlightTitle || 'Highlights'} · {stories.length}{' '}
+   674→              {stories.length === 1 ? 'story' : 'stories'}
+   675→            </p>
+   676→          </div>
+   677→        ) : isOwn ? (
+   678→          <AnimatePresence mode="wait">
+   679→            {showViewers ? (
+   680→              <motion.div
+   681→                key="viewers"
+   682→                initial={{ opacity: 0, y: 10 }}
+   683→                animate={{ opacity: 1, y: 0 }}
+   684→                exit={{ opacity: 0, y: 10 }}
+   685→                className="mx-auto max-w-md rounded-2xl bg-black/80 p-2 backdrop-blur"
+   686→              >
+   687→                <div className="mb-2 flex items-center justify-between px-2 pt-1">
+   688→                  <span className="text-sm font-semibold text-white">
+   689→                    Viewers ({currentStoryViewersListLabel(viewerList, viewersCount)})
+   690→                  </span>
+   691→                  <button
+   692→                    onClick={onToggleViewers}
+   693→                    className="text-xs text-white/60 hover:text-white"
+   694→                  >
+   695→                    Close
+   696→                  </button>
+   697→                </div>
+   698→                <ScrollArea className="max-h-64">
+   699→                  {viewersLoading ? (
+   700→                    <div className="flex items-center justify-center py-6 text-white/60">
+   701→                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading…
+   702→                    </div>
+   703→                  ) : viewerList.length === 0 ? (
+   704→                    <p className="px-3 py-6 text-center text-sm text-white/60">
+   705→                      No viewers yet.
+   706→                    </p>
+   707→                  ) : (
+   708→                    <ul className="space-y-1">
+   709→                      {viewerList.map((v) => (
+   710→                        <li
+   711→                          key={v.userId}
+   712→                          className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-white/5"
+   713→                        >
+   714→                          <Avatar className="h-7 w-7">
+   715→                            {v.avatar && <AvatarImage src={v.avatar} />}
+   716→                            <AvatarFallback className="bg-white/10 text-white">
+   717→                              {(v.name || '?')[0]?.toUpperCase()}
+   718→                            </AvatarFallback>
+   719→                          </Avatar>
+   720→                          <span className="flex-1 truncate text-sm text-white">
+   721→                            {v.name}
+   722→                          </span>
+   723→                          <span className="text-[10px] text-white/40">
+   724→                            {timeAgo(v.viewedAt)}
+   725→                          </span>
+   726→                        </li>
+   727→                      ))}
+   728→                    </ul>
+   729→                  )}
+   730→                </ScrollArea>
+   731→              </motion.div>
+   732→            ) : (
+   733→              <motion.div
+   734→                key="caption"
+   735→                initial={{ opacity: 0 }}
+   736→                animate={{ opacity: 1 }}
+   737→                exit={{ opacity: 0 }}
+   738→                className="mx-auto max-w-md"
+   739→              >
+   740→                <p className="text-center text-xs text-white/50">
+   741→                  Your story · {viewersCount} viewer{viewersCount === 1 ? '' : 's'}
+   742→                </p>
+   743→              </motion.div>
+   744→            )}
+   745→          </AnimatePresence>
+   746→        ) : (
+   747→          <div className="mx-auto flex max-w-md items-center gap-2">
+   748→            <Input
+   749→              value={reply}
+   750→              onChange={(e) => onReplyChange(e.target.value)}
+   751→              placeholder={`Reply to ${author.name?.split(' ')[0] || 'story'}…`}
+   752→              onKeyDown={(e) => {
+   753→                if (e.key === 'Enter' && !e.shiftKey) {
+   754→                  e.preventDefault()
+   755→                  onSendReply()
+   756→                }
+   757→              }}
+   758→              className="h-11 flex-1 rounded-full border-white/20 bg-white/10 text-white placeholder:text-white/40 focus-visible:border-white/40 focus-visible:ring-0"
+   759→            />
+   760→            <Button
+   761→              size="icon"
+   762→              onClick={onSendReply}
+   763→              disabled={!reply.trim() || sending}
+   764→              className="h-11 w-11 rounded-full bg-primary"
+   765→              aria-label="Send reply"
+   766→            >
+   767→              {sending ? (
+   768→                <Loader2 className="h-4 w-4 animate-spin" />
+   769→              ) : (
+   770→                <Send className="h-4 w-4" />
+   771→              )}
+   772→            </Button>
+   773→          </div>
+   774→        )}
+   775→      </div>
+   776→
+   777→      {/* V7 — Save-to-Highlights overlay (own stories) */}
+   778→      {isOwn && saveToHighlightsOpen && currentStoryId && (
+   779→        <SaveToHighlightsDialog
+   780→          storyId={currentStoryId}
+   781→          onClose={onToggleSaveToHighlights}
+   782→          onSaved={() => {
+   783→            onHighlightsChanged()
+   784→          }}
+   785→        />
+   786→      )}
+   787→    </div>
+   788→  )
+   789→}
+   790→
+   791→function currentStoryViewersListLabel(list: any[], fallback: number): string {
+   792→  if (list.length > 0) return String(list.length)
+   793→  return String(fallback)
+   794→}
+   795→
+   796→// ============================================================
+   797→// SaveToHighlightsDialog — inline overlay (own stories only)
+   798→// ============================================================
+   799→
+   800→interface SaveToHighlightsProps {
+   801→  storyId: string
+   802→  onClose: () => void
+   803→  onSaved?: () => void
+   804→}
+   805→
+   806→const COVER_COLOR_PRESETS = [
+   807→  '#10b981', // emerald
+   808→  '#3b82f6', // blue
+   809→  '#8b5cf6', // purple
+   810→  '#ec4899', // pink
+   811→  '#f97316', // orange
+   812→  '#14b8a6', // teal
+   813→  '#f59e0b', // amber
+   814→  '#64748b', // slate
+   815→]
+   816→
+   817→function SaveToHighlightsDialog({
+   818→  storyId,
+   819→  onClose,
+   820→  onSaved,
+   821→}: SaveToHighlightsProps) {
+   822→  const { toast } = useToast()
+   823→  const [loading, setLoading] = React.useState(true)
+   824→  const [existing, setExisting] = React.useState<any[]>([])
+   825→  const [showCreate, setShowCreate] = React.useState(false)
+   826→  const [newTitle, setNewTitle] = React.useState('')
+   827→  const [newColor, setNewColor] = React.useState(COVER_COLOR_PRESETS[0])
+   828→  const [submitting, setSubmitting] = React.useState(false)
+   829→  const [addingId, setAddingId] = React.useState<string | null>(null)
+   830→  const [addedIds, setAddedIds] = React.useState<Set<string>>(new Set())
+   831→
+   832→  // Fetch existing highlights
+   833→  const loadHighlights = React.useCallback(async () => {
+   834→    setLoading(true)
+   835→    try {
+   836→      const res: any = await apiFetch('/api/highlights/me')
+   837→      const list: any[] = Array.isArray(res?.highlights) ? res.highlights : []
+   838→      setExisting(list)
+   839→    } catch {
+   840→      setExisting([])
+   841→    } finally {
+   842→      setLoading(false)
+   843→    }
+   844→  }, [])
+   845→
+   846→  React.useEffect(() => {
+   847→    loadHighlights()
+   848→  }, [loadHighlights])
+   849→
+   850→  const handleAddToExisting = async (highlightId: string) => {
+   851→    setAddingId(highlightId)
+   852→    try {
+   853→      await apiFetch(`/api/highlights/${highlightId}/add`, {
+   854→        method: 'POST',
+   855→        body: JSON.stringify({ storyId }),
+   856→      })
+   857→      setAddedIds((s) => new Set(s).add(highlightId))
+   858→      toast({ title: 'Added to highlight' })
+   859→      onSaved?.()
+   860→    } catch (e: any) {
+   861→      const err = e as ApiError
+   862→      toast({
+   863→        title: err?.message || 'Failed to add to highlight',
+   864→        variant: 'destructive',
+   865→      })
+   866→    } finally {
+   867→      setAddingId(null)
+   868→    }
+   869→  }
+   870→
+   871→  const handleCreateNew = async () => {
+   872→    if (!newTitle.trim()) {
+   873→      toast({ title: 'Please enter a title', variant: 'destructive' })
+   874→      return
+   875→    }
+   876→    setSubmitting(true)
+   877→    try {
+   878→      await apiFetch('/api/highlights', {
+   879→        method: 'POST',
+   880→        body: JSON.stringify({
+   881→          title: newTitle.trim(),
+   882→          coverColor: newColor,
+   883→          storyIds: [storyId],
+   884→        }),
+   885→      })
+   886→      toast({ title: 'Highlight created' })
+   887→      onSaved?.()
+   888→      onClose()
+   889→    } catch (e: any) {
+   890→      const err = e as ApiError
+   891→      toast({
+   892→        title: err?.message || 'Failed to create highlight',
+   893→        variant: 'destructive',
+   894→      })
+   895→    } finally {
+   896→      setSubmitting(false)
+   897→    }
+   898→  }
+   899→
+   900→  return (
+   901→    <div className="absolute inset-0 z-50 flex items-end justify-center bg-black/70 sm:items-center">
+   902→      <div className="w-full max-w-md rounded-t-2xl bg-background p-5 text-foreground shadow-xl sm:rounded-2xl">
+   903→        <div className="mb-4 flex items-center justify-between">
+   904→          <div className="flex items-center gap-2">
+   905→            <Bookmark className="h-5 w-5 text-primary" />
+   906→            <h3 className="text-base font-semibold">Save to Highlights</h3>
+   907→          </div>
+   908→          <button
+   909→            onClick={onClose}
+   910→            aria-label="Close"
+   911→            className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-accent"
+   912→          >
+   913→            <X className="h-4 w-4" />
+   914→          </button>
+   915→        </div>
+   916→
+   917→        {loading ? (
+   918→          <div className="flex items-center justify-center py-8 text-muted-foreground">
+   919→            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading…
+   920→          </div>
+   921→        ) : showCreate ? (
+   922→          // Create-new form
+   923→          <div className="space-y-3">
+   924→            <div>
+   925→              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+   926→                Highlight title
+   927→              </label>
+   928→              <Input
+   929→                value={newTitle}
+   930→                onChange={(e) => setNewTitle(e.target.value)}
+   931→                placeholder="e.g., Travel, Memories…"
+   932→                className="min-h-[44px]"
+   933→                maxLength={50}
+   934→                autoFocus
+   935→                onKeyDown={(e) => {
+   936→                  if (e.key === 'Enter' && !submitting) handleCreateNew()
+   937→                }}
+   938→              />
+   939→            </div>
+   940→            <div>
+   941→              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+   942→                Cover color
+   943→              </label>
+   944→              <div className="flex flex-wrap gap-2">
+   945→                {COVER_COLOR_PRESETS.map((c) => (
+   946→                  <button
+   947→                    key={c}
+   948→                    type="button"
+   949→                    onClick={() => setNewColor(c)}
+   950→                    aria-label={`Cover color ${c}`}
+   951→                    aria-pressed={newColor === c}
+   952→                    className="flex h-9 w-9 min-h-[36px] min-w-[36px] items-center justify-center rounded-full"
+   953→                    style={{ backgroundColor: c }}
+   954→                  >
+   955→                    {newColor === c && (
+   956→                      <Check className="h-4 w-4 text-white drop-shadow" />
+   957→                    )}
+   958→                  </button>
+   959→                ))}
+   960→              </div>
+   961→            </div>
+   962→            <div className="flex gap-2 pt-2">
+   963→              <Button
+   964→                variant="outline"
+   965→                onClick={() => setShowCreate(false)}
+   966→                disabled={submitting}
+   967→                className="min-h-[44px] flex-1"
+   968→              >
+   969→                Back
+   970→              </Button>
+   971→              <Button
+   972→                onClick={handleCreateNew}
+   973→                disabled={submitting || !newTitle.trim()}
+   974→                className="btn-brand min-h-[44px] flex-1"
+   975→              >
+   976→                {submitting ? (
+   977→                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+   978→                ) : (
+   979→                  <Bookmark className="mr-1 h-4 w-4" />
+   980→                )}
+   981→                Create
+   982→              </Button>
+   983→            </div>
+   984→          </div>
+   985→        ) : (
+   986→          // Pick existing or create new
+   987→          <div className="space-y-2">
+   988→            {existing.length === 0 ? (
+   989→              <p className="rounded-lg bg-accent/30 px-3 py-3 text-sm text-muted-foreground">
+   990→                You don&apos;t have any highlights yet. Create a new one to save
+   991→                this story.
+   992→              </p>
+   993→            ) : (
+   994→              <ScrollArea className="max-h-64">
+   995→                <ul className="space-y-1">
+   996→                  {existing.map((h) => {
+   997→                    const added = addedIds.has(h.id)
+   998→                    return (
+   999→                      <li key={h.id}>
+  1000→                        <button
+  1001→                          type="button"
+  1002→                          onClick={() => handleAddToExisting(h.id)}
+  1003→                          disabled={addingId === h.id || added}
+  1004→                          className="flex min-h-[52px] w-full items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-accent disabled:opacity-60"
+  1005→                        >
+  1006→                          <span
+  1007→                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+  1008→                            style={{ backgroundColor: h.coverColor }}
+  1009→                          >
+  1010→                            <Bookmark className="h-4 w-4 text-white" />
+  1011→                          </span>
+  1012→                          <span className="flex-1 truncate text-sm font-medium">
+  1013→                            {h.title}
+  1014→                          </span>
+  1015→                          {added ? (
+  1016→                            <Check className="h-4 w-4 text-emerald-500" />
+  1017→                          ) : addingId === h.id ? (
+  1018→                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+  1019→                          ) : (
+  1020→                            <Plus className="h-4 w-4 text-muted-foreground" />
+  1021→                          )}
+  1022→                        </button>
+  1023→                      </li>
+  1024→                    )
+  1025→                  })}
+  1026→                </ul>
+  1027→              </ScrollArea>
+  1028→            )}
+  1029→            <button
+  1030→              type="button"
+  1031→              onClick={() => setShowCreate(true)}
+  1032→              className="mt-2 flex min-h-[52px] w-full items-center gap-3 rounded-lg border-2 border-dashed border-border px-2 py-2 text-left hover:border-primary hover:bg-accent/30"
+  1033→            >
+  1034→              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground">
+  1035→                <Plus className="h-4 w-4" />
+  1036→              </span>
+  1037→              <span className="flex-1 text-sm font-medium">
+  1038→                Create new highlight
+  1039→              </span>
+  1040→            </button>
+  1041→          </div>
+  1042→        )}
+  1043→      </div>
+  1044→    </div>
+  1045→  )
+  1046→}
+  1047→
+  1048→

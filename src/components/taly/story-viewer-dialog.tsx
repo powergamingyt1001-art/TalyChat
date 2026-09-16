@@ -60,6 +60,14 @@ interface StoryViewerProps {
   highlightStories?: StoryItem[]
   /** V7 — fired when a highlight is created/saved so the parent can refetch. */
   onHighlightsChanged?: () => void
+  /** V11 — fired after a story reply is sent so the parent can navigate
+   *  to the conversation (and optionally close the viewer). */
+  onOpenChat?: (conversation: {
+    id: string
+    type: 'private' | 'group'
+    name: string
+    avatar?: string | null
+  }) => void
 }
 
 function timeAgo(iso?: string): string {
@@ -86,6 +94,7 @@ export function StoryViewerDialog({
   highlightCoverColor,
   highlightStories,
   onHighlightsChanged,
+  onOpenChat,
 }: StoryViewerProps) {
   const me = useAuth((s) => s.user)
   const { toast } = useToast()
@@ -247,32 +256,36 @@ export function StoryViewerDialog({
     return () => window.removeEventListener('keydown', onKey)
   }, [open, goNext, goPrev, onClose, mode])
 
-  // Reply handler — creates a private conversation + message to the story owner
+  // Reply handler — V11 — uses the dedicated /api/stories/[id]/reply
+  // endpoint which creates/finds a private conversation with the story
+  // author, sends a prefixed message ("📷 Reply to your story …"), and
+  // returns { conversationId, messageId } so we can navigate to the chat.
   const handleSendReply = async () => {
-    if (!reply.trim() || !activeGroup) return
+    if (!reply.trim() || !activeGroup || !currentStory) return
     setSending(true)
     try {
-      // Find or create private conversation with story owner
-      const convRes: any = await apiFetch('/api/conversations', {
-        method: 'POST',
-        body: JSON.stringify({
-          type: 'private',
-          participantId: activeGroup.user.id,
-        }),
-      })
-      const conversationId = convRes?.conversation?.id
-      if (!conversationId) throw new Error('Could not open conversation')
-      await apiFetch('/api/messages', {
-        method: 'POST',
-        body: JSON.stringify({
-          conversationId,
-          type: 'text',
-          content: reply.trim(),
-        }),
-      })
-      toast({ title: `Reply sent to ${activeGroup.user.name}` })
+      const res: any = await apiFetch(
+        `/api/stories/${currentStory.id}/reply`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ message: reply.trim() }),
+        }
+      )
+      const conversationId = res?.conversationId
+      toast({ title: 'Reply sent!' })
       setReply('')
+      // Close the viewer first so the chat navigation is visible.
       onClose()
+      // If the parent passed an onOpenChat callback, navigate to the chat
+      // where the reply was sent so the user can continue the conversation.
+      if (onOpenChat && conversationId) {
+        onOpenChat({
+          id: conversationId,
+          type: 'private',
+          name: activeGroup.user.name || 'Chat',
+          avatar: activeGroup.user.avatar || null,
+        })
+      }
     } catch (e: any) {
       const err = e as ApiError
       toast({

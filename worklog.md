@@ -2318,3 +2318,189 @@ Note for future testing:
 - DO NOT test account deletion with real demo users — use a throwaway account
 - The account delete API soft-deletes (isBlocked=true, name="Deleted User") which breaks login
 - To restore: update user set isBlocked=false, banReason=null, name="Original Name"
+
+---
+Task ID: v11-4
+Agent: subagent (general-purpose) — V11 feature implementation
+Task: V11 — Chat Backup/Export + Story Replies
+
+Work Log:
+- Reviewed worklog (2320 lines) — V10 complete (Bug fix + V9 verification). V11 prompt asked for two new features: (1) Chat Backup/Export and (2) Story Replies.
+- Explored existing code: conversations/stories APIs, chat-view 3-dot menu structure, story-viewer-dialog reply flow (which already had inline reply logic using `/api/conversations` + `/api/messages`), home-screen StoryViewerDialog usage.
+- Confirmed pre-existing TS errors are unrelated (account/delete, groups/announcements, global-search-dialog, skills/, examples/).
+
+### Feature 1: Chat Backup/Export
+
+**Backend — `/api/conversations/[id]/export` (GET):**
+- New file: `src/app/api/conversations/[id]/export/route.ts` (runtime: nodejs)
+- `?format=json|txt` query param (default json; 400 on invalid)
+- Membership check (403 if not a member)
+- Fetches up to 1000 most-recent messages with sender info, reactions, replyTo
+- Converses name from `conv.name || group.name || otherMember.user.name || 'Private Chat'`
+- Sanitizes filename (strips unsafe chars, collapses spaces, lowercase, 60-char limit)
+- **JSON format**: Returns `{ app, exportedAt, conversation, participants, messageCount, messages[] }` with `Content-Type: application/json` + `Content-Disposition: attachment; filename="talychat-export-<name>.json"`
+- **TXT format**: Returns formatted transcript:
+  ```
+  TalyChat Export — Indian Gamers Hub
+  Exported: Sep 16, 2026 at 9:33 PM
+  Conversation type: group
+  Messages: 6
+  
+  ─────────────
+  
+  [Sep 16, 2026 11:51 AM] Aarav Sharma:
+  Welcome to Indian Gamers Hub! ...
+  ```
+  with `Content-Type: text/plain` + `Content-Disposition: attachment; filename="talychat-export-<name>.txt"`
+- Message body previews for TXT: text → content, image → "📷 Photo: <content>", voice → "🎤 Voice message (Ns)", sticker → "🎨 Sticker: <id>", location → "📍 Location (lat, lng)", system → content
+
+**Frontend — `ExportChatDialog` component:**
+- New file: `src/components/chat/export-chat-dialog.tsx` ('use client')
+- Props: `{ open, onClose, conversationId, conversationName }`
+- RadioGroup with two cards: JSON (FileJson icon, "Full data") and Text transcript (FileText icon, "Readable chat log")
+- Export button fetches via `fetch()` with `x-user-id` auth header, parses Blob, derives filename from `Content-Disposition` header (fallback to constructed name), creates object URL + temporary `<a download>` element to trigger browser download, then revokes URL after 1s
+- Loading spinner on Export button while fetching
+- Toast "Chat exported successfully" on completion
+- All buttons ≥ 44px tall (touch-friendly)
+
+**Wire-up in `chat-view.tsx`:**
+- Added `Download` icon import
+- Added `import { ExportChatDialog } from './export-chat-dialog'`
+- Added `[exportOpen, setExportOpen]` state
+- Added "Export chat" `DropdownMenuItem` to BOTH group and private chat menus (after "Shared Media")
+- Rendered `<ExportChatDialog open={exportOpen} ... conversationName={name} />` next to SharedMediaDialog
+
+### Feature 2: Story Replies
+
+**Backend — `/api/stories/[id]/reply` (POST):**
+- New file: `src/app/api/stories/[id]/reply/route.ts` (runtime: nodejs)
+- Body: `{ message: string }` (validated, max 1000 chars)
+- Validates story exists (404), not deleted (404), not expired (410), not own story (400, defensive — frontend already hides reply input for own stories), block check (403 either direction)
+- Finds or creates private conversation between replier and story author (re-adds self as member if had left)
+- Builds prefixed message: `📷 Reply to your story "Hello": <user message>` for text stories or `📷 Reply to your story your photo: <user message>` for image stories (with caption preview if available)
+- Creates message with `type: 'text'`, bumps conversation `updatedAt`
+- Creates DB notification for story author + fires browser push notification
+- Emits socket event via `emitScheduledMessage` for live delivery
+- Returns `{ conversationId, messageId }` with status 201
+
+**Frontend — `story-viewer-dialog.tsx`:**
+- Added `onOpenChat?: (conversation: { id, type, name, avatar? }) => void` prop
+- Replaced the inline reply handler (`POST /api/conversations` + `POST /api/messages`) with a single `POST /api/stories/${currentStory.id}/reply` call
+- On success: toast "Reply sent!" (was previously `Reply sent to ${name}`), clears reply input, closes dialog, then calls `onOpenChat({ id: conversationId, type: 'private', name, avatar })` if provided so the parent can navigate to the chat
+
+**Wire-up in `home-screen.tsx`:**
+- Added `onOpenChat={(c) => onOpenChat({ id: c.id, type: c.type, name: c.name, avatar: c.avatar || undefined })}` prop to `<StoryViewerDialog>` so after a story reply the user is navigated to the private conversation
+
+### Testing (agent-browser + curl):
+
+**Backend curl tests (as aarav, token `cmu41ijna0001tvwp5lbmnp1b`):**
+- `GET /api/conversations/<group-id>/export?format=txt` → 200, Content-Disposition: `attachment; filename="talychat-export-indian-gamers-hub.txt"`, Content-Type: `text/plain; charset=utf-8`, body shows formatted transcript with 6 messages ✅
+- `GET /api/conversations/<group-id>/export?format=json` → 200, Content-Disposition: `attachment; filename="talychat-export-indian-gamers-hub.json"`, Content-Type: `application/json; charset=utf-8`, body shows full JSON with participants + messages ✅
+- `GET /api/conversations/nonexistent/export?format=json` → 403 (not a member) ✅
+- `GET /api/conversations/<id>/export?format=xml` → 400 (Invalid format) ✅
+- `GET /api/conversations/<id>/export` (no auth) → 401 ✅
+- `POST /api/stories/<friend-story-id>/reply {"message":"Wow, great photo! 📸"}` → 201, returns `{conversationId, messageId}` ✅
+- `POST /api/stories/<own-story-id>/reply {"message":"test"}` → 400 (Cannot reply to your own story) ✅
+- `POST /api/stories/<id>/reply {"message":""}` → 400 (Message is required) ✅
+- `POST /api/stories/nonexistent/reply {"message":"test"}` → 404 ✅
+- Verified the reply message is created in the conversation: `📷 Reply to your story your photo: Wow, great photo! 📸` ✅
+
+**Frontend agent-browser tests (login as aarav, headed mode):**
+- Home screen loads, no console errors
+- Open powergamingyt1001 chat → 3-dot menu shows "Export chat" item (after "Shared Media") ✅
+- Click "Export chat" → dialog opens with "JSON" (default) and "Text transcript" cards, both with proper icons + descriptions ✅
+- Select JSON + click Export → toast "Chat exported successfully" + GET /export?format=json returned 200 ✅
+- Reopen dialog, select Text transcript + click Export → toast "Chat exported successfully" + GET /export?format=txt returned 200 ✅
+- Open powergamingyt1001's story → reply input visible at bottom ✅
+- Type "Nice story! 👋" + press Enter → toast "Reply sent!" ✅
+- POST /api/stories/<id>/reply returned 201 ✅
+- Story viewer auto-closes and user is navigated to the private chat conversation ✅
+- Chat view shows both story replies: "📷 Reply to your story your photo: Wow, great photo! 📸" (21:33) and "📷 Reply to your story your photo: Nice story! 👋" (21:36) ✅
+- Zero console errors throughout the test
+
+### Quality verification:
+- `bun run lint` → clean (0 errors, 0 warnings)
+- `bunx tsc --noEmit` → no errors in my files (16 pre-existing TS errors in unrelated files: skills/, examples/, account/delete, groups/announcements, global-search-dialog, taly-app — all untouched by this task)
+- All 'use client' on frontend, 'nodejs' runtime on backend
+- Uses `apiFetch`, `useToast`, `useAuth`, shadcn `Dialog`/`Button`/`RadioGroup`, lucide icons `Download`/`FileJson`/`FileText`/`Send`
+- Touch-friendly targets (44px+ on all buttons + radio cards)
+- Export handles large conversations (limit 1000 messages, encoded via Prisma `take: 1000`)
+- Story replies work for both text and image stories (preview logic differentiates by `story.type`)
+- No existing functionality broken (chat-view 3-dot menu structure preserved; story-viewer-dialog own-story viewer list unchanged; existing reply keyboard handler preserved)
+
+### Files created (3):
+- `src/app/api/conversations/[id]/export/route.ts` — 232 lines, GET endpoint for chat export
+- `src/app/api/stories/[id]/reply/route.ts` — 197 lines, POST endpoint for story replies
+- `src/components/chat/export-chat-dialog.tsx` — 184 lines, export format picker dialog
+
+### Files modified (3):
+- `src/components/chat/chat-view.tsx` — added `Download` icon + `ExportChatDialog` import + `[exportOpen,setExportOpen]` state + "Export chat" menu items (group + private) + dialog render (total ~14 lines added)
+- `src/components/taly/story-viewer-dialog.tsx` — added `onOpenChat` prop + rewired `handleSendReply` to use new endpoint + auto-navigate (total ~30 lines changed)
+- `src/components/taly/home-screen.tsx` — passed `onOpenChat` callback to `<StoryViewerDialog>` (total 11 lines added)
+
+Stage Summary:
+- V11 features complete: Chat Backup/Export (JSON + Text transcript, downloadable file, 1000 message limit) and Story Replies (dedicated `/api/stories/[id]/reply` endpoint, prefixed message to private conversation, auto-navigate to chat)
+- bun run lint: clean (0 errors, 0 warnings)
+- All API endpoints returning correct status codes (200/201/400/401/403/404/410)
+- Zero console errors during agent-browser testing
+- Both features fully verified end-to-end in browser (export download triggered, story reply sent + chat opened)
+- All work recorded in worklog.md
+
+---
+Task ID: v11-final
+Agent: main (Z.ai Code) — cron QA review (round 9)
+Task: V11 polish + features — Home redesign, Chat Export, Story Replies
+
+Work Log:
+- Reviewed worklog (2320 lines) — V10 complete (bug fix + V9 verification)
+- Lint clean. Server 200. Zero console errors.
+
+### Spawned 1 subagent (v11-4 — completed successfully):
+- **Chat Backup/Export**:
+  - Backend: GET /api/conversations/[id]/export?format=json|txt — returns downloadable file (JSON or formatted text transcript)
+  - Frontend: export-chat-dialog.tsx with JSON + Text format options
+  - Integrated into chat 3-dot menu "Export chat"
+  - Tested: API returns 200 with proper Content-Disposition + transcript format ✅
+  
+- **Story Replies**:
+  - Backend: POST /api/stories/[id]/reply — creates/finds private conversation with story author, sends prefixed message "📷 Reply to your story..."
+  - Frontend: Story viewer reply input now works — sends reply + auto-navigates to chat
+  - Tested: Story replies visible in chat ("📷 Reply to your story your photo: Wow, great photo! 📸") ✅
+
+### Main agent work — Home Screen Redesign:
+- **Removed redundant Quick Actions grid** (Chats/Groups/Discover/Ask Taly — duplicate of sidebar nav)
+- **Transformed hero banner** from static marketing copy into a **compact contextual action card**:
+  - Bot avatar with emerald ring
+  - "Taly AI Assistant" label
+  - "Ask me anything about TalyChat ✨" prompt
+  - Compact "Ask" button on the right
+  - Single-line layout (saves vertical space)
+- This pushes Stories + Recent Chats higher up, reducing scroll
+
+### VLM Re-verification:
+- Home: 8/10 — hero banner is now a compact action card, quick actions removed ✅
+- Export dialog: Working with JSON + Text options
+- Story replies: Working (visible in chat as prefixed messages)
+- Zero console errors
+
+### Testing (agent-browser):
+- Login as aarav → Home shows compact hero card + no quick actions grid
+- Open chat → 3-dot menu shows "Export chat" → dialog opens with JSON/Text options
+- Export API returns 200 with proper transcript format
+- Story replies visible in chat ("📷 Reply to your story your photo: Wow, great photo! 📸")
+- Settings dialog still has 2FA + Delete account + Notifications
+
+Stage Summary:
+- V11 features complete: Chat Export (JSON + Text), Story Replies (with auto-navigate to chat), Home redesign (removed quick actions, compact hero card)
+- bun run lint: clean (0 errors, 0 warnings)
+- All API endpoints returning 200
+- Zero console errors
+- All work recorded in worklog.md
+
+Next-phase candidates:
+- Voice/video calls (WebRTC)
+- Online presence indicators polish
+- Group announcements UI testing in browser
+- Message search improvements
+- Account deletion warning (prevent demo user deletion)
+- Chat themes per-conversation UI testing

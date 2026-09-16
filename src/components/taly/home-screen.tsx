@@ -309,7 +309,7 @@ export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly, onOpenCre
         <span>Search messages, people, or groups…</span>
       </motion.button>
 
-      {/* Hero banner — glassmorphism */}
+      {/* Hero banner — contextual action card */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -330,54 +330,26 @@ export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly, onOpenCre
           aria-hidden
           className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-emerald-400/30 blur-2xl"
         />
-        <div className="relative">
-          <div className="flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-600">
-              <Sparkles className="h-4 w-4" />
-            </span>
-            <span className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-              TalyChat
-            </span>
+        <div className="relative flex items-center gap-4">
+          {/* Bot avatar */}
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 ring-2 ring-emerald-500/30">
+            <Bot className="h-6 w-6 text-emerald-600" />
           </div>
-          <p className="mt-2 text-xl font-bold leading-tight text-foreground">
-            Chat. Connect. Mingle.
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Your AI companion is one tap away.
-          </p>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+              Taly AI Assistant
+            </p>
+            <p className="mt-0.5 text-sm font-medium text-foreground">
+              Ask me anything about TalyChat ✨
+            </p>
+          </div>
           <button
             onClick={onOpenTaly}
-            className="mt-4 inline-flex min-h-[44px] items-center gap-2 rounded-full bg-white px-5 py-2 text-sm font-semibold text-emerald-700 shadow-md ring-1 ring-emerald-500/10 transition-all hover:shadow-lg active:scale-[0.98]"
+            className="inline-flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-full bg-white px-4 py-2 text-sm font-semibold text-emerald-700 shadow-md ring-1 ring-emerald-500/10 transition-all hover:shadow-lg active:scale-[0.98]"
           >
-            <Bot className="h-4 w-4" /> Ask Taly
+            <Sparkles className="h-4 w-4" /> Ask
           </button>
         </div>
-      </motion.div>
-
-      {/* Quick actions grid */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35, delay: 0.1 }}
-        className="mt-4 grid grid-cols-4 gap-3"
-      >
-        {quickActions.map((a) => {
-          const Icon = a.icon
-          return (
-            <button
-              key={a.id}
-              onClick={a.onClick}
-              className={`taly-card taly-card-hover group flex min-h-[80px] flex-col items-center justify-center gap-2 bg-gradient-to-br ${a.tint} p-2 text-center`}
-            >
-              <span
-                className={`flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br ${a.iconColor} text-white shadow transition-transform group-hover:scale-110`}
-              >
-                <Icon className="h-5 w-5" />
-              </span>
-              <span className="text-xs font-semibold">{a.label}</span>
-            </button>
-          )
-        })}
       </motion.div>
 
       {/* Stories row */}
@@ -591,6 +563,16 @@ export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly, onOpenCre
         initialIndex={viewerInitialIndex}
         allStories={allStoriesForViewer}
         onStoryDeleted={refreshStories}
+        onOpenChat={(c) => {
+          // After a story reply is sent, navigate to the private
+          // conversation so the user can continue the chat.
+          onOpenChat({
+            id: c.id,
+            type: c.type,
+            name: c.name,
+            avatar: c.avatar || undefined,
+          } as any)
+        }}
       />
 
       {/* Create story dialog (local fallback when no parent handler) */}
