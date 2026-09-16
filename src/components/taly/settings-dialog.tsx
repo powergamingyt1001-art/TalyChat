@@ -38,6 +38,20 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from '@/components/ui/input-otp'
+import { Badge } from '@/components/ui/badge'
+import {
   Loader2,
   User,
   Globe,
@@ -55,6 +69,9 @@ import {
   Users,
   Save,
   Github,
+  AlertTriangle,
+  QrCode,
+  Lock,
 } from 'lucide-react'
 
 const APP_VERSION = '1.0.0'
@@ -159,6 +176,7 @@ export function SettingsDialog({ open, onClose }: Props) {
                     </Button>
                   </div>
                   <PasswordChanger />
+                  <TwoFactorSection />
                   <DeleteAccount />
                 </div>
               </SettingsSection>
@@ -461,48 +479,126 @@ function PasswordChanger() {
 function DeleteAccount() {
   const { toast } = useToast()
   const { logout } = useAuth()
+  const [open, setOpen] = useState(false)
+  const [password, setPassword] = useState('')
+  const [confirmText, setConfirmText] = useState('')
   const [saving, setSaving] = useState(false)
 
+  const canSubmit =
+    password.length > 0 && confirmText === 'DELETE' && !saving
+
   const handleDelete = async () => {
+    if (!password) {
+      toast({ title: 'Password is required', variant: 'destructive' })
+      return
+    }
+    if (confirmText !== 'DELETE') {
+      toast({ title: 'Please type DELETE to confirm', variant: 'destructive' })
+      return
+    }
     setSaving(true)
     try {
-      await apiFetch('/api/users/me', { method: 'DELETE' })
-      toast({ title: 'Account deleted' })
+      await apiFetch('/api/account/delete', {
+        method: 'POST',
+        body: JSON.stringify({ password, confirmText }),
+      })
+      toast({ title: 'Account deleted', description: 'You will be logged out.' })
+      setOpen(false)
+      // Wipe auth state + redirect to auth screen
       logout()
+      // Hard reload to clear any cached UI state.
+      setTimeout(() => {
+        window.location.href = window.location.origin
+      }, 300)
     } catch (e: any) {
-      toast({ title: e.message, variant: 'destructive' })
+      toast({ title: e.message || 'Failed to delete account', variant: 'destructive' })
     } finally {
       setSaving(false)
     }
   }
 
+  const reset = () => {
+    setPassword('')
+    setConfirmText('')
+    setSaving(false)
+  }
+
   return (
-    <AlertDialog>
+    <AlertDialog
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o)
+        if (!o) reset()
+      }}
+    >
       <AlertDialogTrigger asChild>
         <Button
           variant="ghost"
           size="sm"
-          className="min-h-[40px] w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive"
+          className="min-h-[44px] w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive"
         >
           <Trash2 className="mr-2 h-4 w-4" /> Delete account
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete your account?</AlertDialogTitle>
+          <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+            <AlertTriangle className="h-5 w-5" /> Delete your account?
+          </AlertDialogTitle>
           <AlertDialogDescription>
-            This action is permanent. All your messages, groups, and data will be erased.
-            You will be logged out immediately.
+            This will <span className="font-semibold text-destructive">permanently delete your account</span>.
+            Your messages will be soft-deleted, your name anonymized to &quot;Deleted User&quot;, and
+            you will be removed from all groups. This action <span className="font-semibold">cannot be undone</span>.
           </AlertDialogDescription>
         </AlertDialogHeader>
+
+        <div className="space-y-3 py-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="del-password">Enter your password</Label>
+            <Input
+              id="del-password"
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="min-h-[44px]"
+              autoComplete="current-password"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="del-confirm">
+              Type <span className="font-mono font-semibold text-destructive">DELETE</span> to confirm
+            </Label>
+            <Input
+              id="del-confirm"
+              placeholder="DELETE"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              className="min-h-[44px]"
+              autoComplete="off"
+            />
+            {confirmText && confirmText !== 'DELETE' && (
+              <p className="text-xs text-destructive">
+                You must type exactly &quot;DELETE&quot;
+              </p>
+            )}
+          </div>
+        </div>
+
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={saving}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={saving} className="min-h-[44px]">
+            Cancel
+          </AlertDialogCancel>
           <AlertDialogAction
-            onClick={handleDelete}
-            disabled={saving}
-            className="bg-destructive text-white hover:bg-destructive/90"
+            onClick={(e) => {
+              e.preventDefault() // keep dialog open until handler closes it
+              handleDelete()
+            }}
+            disabled={!canSubmit}
+            className="min-h-[44px] bg-destructive text-white hover:bg-destructive/90 disabled:opacity-40"
           >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Yes, delete'}
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            Delete account permanently
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -598,4 +694,337 @@ function PushNotificationsRow() {
     </div>
   )
 }
+
+// ============================================================
+// V9 — Two-Factor Authentication (TOTP)
+// ============================================================
+
+interface TwoFactorState {
+  enabled: boolean
+  hasSecret: boolean
+}
+
+function TwoFactorSection() {
+  const { toast } = useToast()
+  const [state, setState] = useState<TwoFactorState>({
+    enabled: false,
+    hasSecret: false,
+  })
+  const [loading, setLoading] = useState(true)
+
+  // Setup dialog state (open + QR data + verification code input)
+  const [setupOpen, setSetupOpen] = useState(false)
+  const [setupData, setSetupData] = useState<{
+    qrDataUrl: string
+    secret: string
+    label: string
+  } | null>(null)
+  const [setupToken, setSetupToken] = useState('')
+  const [settingUp, setSettingUp] = useState(false)
+
+  // Disable dialog state (password input)
+  const [disableOpen, setDisableOpen] = useState(false)
+  const [disablePassword, setDisablePassword] = useState('')
+  const [disabling, setDisabling] = useState(false)
+
+  const loadStatus = async () => {
+    setLoading(true)
+    try {
+      const res: any = await apiFetch('/api/auth/2fa/status')
+      setState({
+        enabled: !!res?.enabled,
+        hasSecret: !!res?.hasSecret,
+      })
+    } catch {
+      // Silent — section just shows "Disabled"
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadStatus()
+  }, [])
+
+  const startEnable = async () => {
+    setSettingUp(true)
+    setSetupToken('')
+    try {
+      const res: any = await apiFetch('/api/auth/2fa/setup', { method: 'POST' })
+      setSetupData({
+        qrDataUrl: res.qrDataUrl,
+        secret: res.secret,
+        label: res.label,
+      })
+      setSetupOpen(true)
+    } catch (e: any) {
+      toast({ title: e?.message || 'Failed to set up 2FA', variant: 'destructive' })
+    } finally {
+      setSettingUp(false)
+    }
+  }
+
+  const confirmEnable = async () => {
+    const token = setupToken.replace(/\s+/g, '').trim()
+    if (!/^\d{6}$/.test(token)) {
+      toast({ title: 'Enter the 6-digit code', variant: 'destructive' })
+      return
+    }
+    setSettingUp(true)
+    try {
+      await apiFetch('/api/auth/2fa/verify', {
+        method: 'POST',
+        body: JSON.stringify({ token }),
+      })
+      toast({ title: '2FA enabled', description: 'Your account is now protected by 2FA.' })
+      setSetupOpen(false)
+      setSetupToken('')
+      setSetupData(null)
+      setState({ enabled: true, hasSecret: true })
+    } catch (e: any) {
+      toast({ title: e?.message || 'Invalid code', variant: 'destructive' })
+    } finally {
+      setSettingUp(false)
+    }
+  }
+
+  const cancelSetup = async () => {
+    setSetupOpen(false)
+    setSetupToken('')
+    setSetupData(null)
+    // Optionally clear the stored secret so a future setup generates a fresh one.
+    // We skip the explicit clear here because the next setup call will overwrite it.
+  }
+
+  const confirmDisable = async () => {
+    if (!disablePassword) {
+      toast({ title: 'Password is required', variant: 'destructive' })
+      return
+    }
+    setDisabling(true)
+    try {
+      await apiFetch('/api/auth/2fa/disable', {
+        method: 'POST',
+        body: JSON.stringify({ password: disablePassword }),
+      })
+      toast({ title: '2FA disabled', description: 'Two-factor authentication has been turned off.' })
+      setDisableOpen(false)
+      setDisablePassword('')
+      setState({ enabled: false, hasSecret: false })
+    } catch (e: any) {
+      toast({ title: e?.message || 'Failed to disable 2FA', variant: 'destructive' })
+    } finally {
+      setDisabling(false)
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex min-h-[44px] items-center gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+          {state.enabled ? <Shield className="h-4 w-4 text-emerald-600" /> : <Lock className="h-4 w-4" />}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium">Two-factor authentication</p>
+            {loading ? (
+              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+            ) : state.enabled ? (
+              <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+                Enabled
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-muted-foreground">
+                Disabled
+              </Badge>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {state.enabled
+              ? 'Protect your account with a 6-digit code from your authenticator app.'
+              : 'Add an extra layer of security to your account.'}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {!state.enabled && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-h-[40px] flex-1"
+            onClick={startEnable}
+            disabled={settingUp}
+          >
+            {settingUp ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <QrCode className="mr-2 h-4 w-4" />
+            )}
+            Enable 2FA
+          </Button>
+        )}
+        {state.enabled && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-h-[40px] flex-1 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={() => setDisableOpen(true)}
+          >
+            <Lock className="mr-2 h-4 w-4" /> Disable 2FA
+          </Button>
+        )}
+      </div>
+
+      {/* ---------------- Setup dialog: QR + verification ---------------- */}
+      <Dialog open={setupOpen} onOpenChange={(o) => !o && cancelSetup()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <QrCode className="h-4 w-4 text-primary" /> Set up two-factor authentication
+            </DialogTitle>
+            <DialogDescription>
+              Scan the QR code with an authenticator app (Google Authenticator, Authy, 1Password…).
+              Then enter the 6-digit code your app generates.
+            </DialogDescription>
+          </DialogHeader>
+
+          {setupData && (
+            <div className="space-y-3">
+              <div className="flex justify-center rounded-md border bg-white p-3">
+                <img
+                  src={setupData.qrDataUrl}
+                  alt="2FA QR code"
+                  width={220}
+                  height={220}
+                  className="h-[220px] w-[220px]"
+                />
+              </div>
+
+              <div className="rounded-md border bg-muted/30 p-2.5 text-center">
+                <p className="text-xs text-muted-foreground">
+                  Or enter this code manually:
+                </p>
+                <code className="mt-1 block select-all break-all font-mono text-sm font-semibold tracking-wider text-foreground">
+                  {setupData.secret}
+                </code>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  Account: {setupData.label}
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="two-fa-token">Enter the 6-digit code</Label>
+                <div className="flex justify-center">
+                  <InputOTP
+                    id="two-fa-token"
+                    maxLength={6}
+                    value={setupToken}
+                    onChange={(v) => setSetupToken(v)}
+                    autoFocus
+                    onComplete={confirmEnable}
+                  >
+                    <InputOTPGroup>
+                      <InputOTPSlot index={0} />
+                      <InputOTPSlot index={1} />
+                      <InputOTPSlot index={2} />
+                      <InputOTPSlot index={3} />
+                      <InputOTPSlot index={4} />
+                      <InputOTPSlot index={5} />
+                    </InputOTPGroup>
+                  </InputOTP>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="ghost"
+              className="min-h-[40px]"
+              onClick={cancelSetup}
+              disabled={settingUp}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="btn-brand min-h-[40px]"
+              onClick={confirmEnable}
+              disabled={settingUp || !/^\d{6}$/.test(setupToken.replace(/\s+/g, ''))}
+            >
+              {settingUp ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Shield className="h-4 w-4" />
+              )}
+              Verify & enable
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ---------------- Disable dialog: password ---------------- */}
+      <Dialog open={disableOpen} onOpenChange={setDisableOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-4 w-4" /> Disable two-factor authentication?
+            </DialogTitle>
+            <DialogDescription>
+              Your account will be less secure. To confirm, enter your password.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="two-fa-pw">Enter your password</Label>
+            <Input
+              id="two-fa-pw"
+              type="password"
+              placeholder="••••••••"
+              value={disablePassword}
+              onChange={(e) => setDisablePassword(e.target.value)}
+              className="min-h-[44px]"
+              autoComplete="current-password"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  confirmDisable()
+                }
+              }}
+            />
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="ghost"
+              className="min-h-[40px]"
+              onClick={() => {
+                setDisableOpen(false)
+                setDisablePassword('')
+              }}
+              disabled={disabling}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              className="min-h-[40px]"
+              onClick={confirmDisable}
+              disabled={disabling || !disablePassword}
+            >
+              {disabling ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Lock className="h-4 w-4" />
+              )}
+              Disable 2FA
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
 

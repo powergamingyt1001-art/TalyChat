@@ -21,9 +21,10 @@ import {
   Eye,
   CornerUpLeft,
   Clock,
+  SmilePlus,
 } from 'lucide-react'
 import { ChatMessage } from './chat-types'
-import { QUICK_REACTIONS } from './chat-types'
+import { QUICK_REACTIONS, EXTENDED_REACTIONS } from './chat-types'
 import { VoiceMessage } from './voice-message'
 import { formatTime, messagePreview } from './chat-helpers'
 import { cn } from '@/lib/utils'
@@ -572,6 +573,7 @@ export function MessageActionMenu({
   onSchedule,
 }: MessageActionMenuProps) {
   // Backdrop + a popover positioned above the anchor.
+  const [showExpandedReactions, setShowExpandedReactions] = React.useState(false)
   if (!open || !message) return null
 
   // Compute position (default: above anchor, centered). Fall back to top center.
@@ -617,7 +619,40 @@ export function MessageActionMenu({
               {emoji}
             </button>
           ))}
+          {/* Expand button for more reactions */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              setShowExpandedReactions((v) => !v)
+            }}
+            aria-label="More reactions"
+            aria-expanded={showExpandedReactions}
+            className="flex h-9 w-9 min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent"
+          >
+            <SmilePlus className="h-5 w-5" />
+          </button>
         </div>
+
+        {/* Expanded reactions grid */}
+        {showExpandedReactions && (
+          <div className="mb-1 grid w-[280px] max-w-[calc(100vw-16px)] grid-cols-8 gap-1 rounded-md border bg-popover p-2 shadow-md">
+            {EXTENDED_REACTIONS.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => {
+                  onReact(emoji)
+                  onClose()
+                }}
+                aria-label={`React with ${emoji}`}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-lg transition-transform hover:scale-125 hover:bg-accent"
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Action items */}
         <div className="flex w-[300px] max-w-[calc(100vw-16px)] flex-col gap-0.5 rounded-md border bg-popover p-1 shadow-md">

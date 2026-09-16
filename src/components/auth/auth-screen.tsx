@@ -5,11 +5,28 @@ import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from '@/components/ui/input-otp'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/lib/auth-store'
 import { apiFetch } from '@/lib/api'
-import { Loader2, Mail, Lock, User, Phone, Gift, ArrowRight, Sparkles, Users, MessageCircle, Shield } from 'lucide-react'
+import {
+  Loader2,
+  Mail,
+  Lock,
+  User,
+  Phone,
+  Gift,
+  ArrowRight,
+  Sparkles,
+  Users,
+  MessageCircle,
+  Shield,
+} from 'lucide-react'
 
 export function AuthScreen() {
   const { setAuth } = useAuth()
@@ -31,6 +48,15 @@ export function AuthScreen() {
   const [otp, setOtp] = useState('')
   const [otpSent, setOtpSent] = useState(false)
 
+  // V9 — 2FA flow state. When the login API returns requiresTwoFactor=true,
+  // we swap to the 2FA OTP step with the tempToken that the verify endpoint expects.
+  const [twoFactor, setTwoFactor] = useState<{
+    tempToken: string
+    username?: string
+  } | null>(null)
+  const [twoFactorCode, setTwoFactorCode] = useState('')
+  const [twoFactorLoading, setTwoFactorLoading] = useState(false)
+
   const scrollToForm = () => {
     document.getElementById('taly-auth-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
@@ -46,6 +72,19 @@ export function AuthScreen() {
         method: 'POST',
         body: JSON.stringify({ email: loginEmail, password: loginPassword }),
       })
+      // V9 — branch: if the user has 2FA enabled, switch to the OTP step.
+      if (res?.requiresTwoFactor) {
+        setTwoFactor({
+          tempToken: res.tempToken,
+          username: res.username,
+        })
+        setTwoFactorCode('')
+        toast({
+          title: 'Two-factor required',
+          description: 'Enter the 6-digit code from your authenticator app.',
+        })
+        return
+      }
       setAuth(res.user, res.token)
       toast({ title: 'Welcome back!' })
     } catch (e: any) {
@@ -53,6 +92,36 @@ export function AuthScreen() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleTwoFactorSubmit = async () => {
+    const code = twoFactorCode.replace(/\s+/g, '').trim()
+    if (!twoFactor) return
+    if (!/^\d{6}$/.test(code)) {
+      toast({ title: 'Enter the 6-digit code', variant: 'destructive' })
+      return
+    }
+    setTwoFactorLoading(true)
+    try {
+      const res: any = await apiFetch('/api/auth/2fa/login', {
+        method: 'POST',
+        body: JSON.stringify({ tempToken: twoFactor.tempToken, token: code }),
+      })
+      setAuth(res.user, res.token)
+      toast({ title: 'Welcome back!' })
+      setTwoFactor(null)
+      setTwoFactorCode('')
+    } catch (e: any) {
+      toast({ title: e.message || 'Invalid 2FA code', variant: 'destructive' })
+    } finally {
+      setTwoFactorLoading(false)
+    }
+  }
+
+  const cancelTwoFactor = () => {
+    setTwoFactor(null)
+    setTwoFactorCode('')
+    setLoginPassword('')
   }
 
   const handleSignup = async () => {
@@ -128,6 +197,79 @@ export function AuthScreen() {
     }
   }
 
+  // -------- V9 — 2FA OTP step (rendered in place of the login form) --------
+  if (twoFactor) {
+    return (
+      <div className="taly-shell flex min-h-[100dvh] flex-col items-center justify-center bg-background px-6 py-12">
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="w-full max-w-sm rounded-2xl border bg-card p-6 shadow-sm"
+        >
+          <div className="mb-4 flex flex-col items-center gap-2 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Shield className="h-6 w-6" />
+            </div>
+            <h2 className="text-xl font-bold">Two-factor authentication</h2>
+            <p className="text-xs text-muted-foreground">
+              Enter the 6-digit code from your authenticator app for
+              <span className="font-medium text-foreground"> {twoFactor.username || 'your account'}</span>.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <Label className="text-center">Authentication code</Label>
+            <div className="flex justify-center">
+              <InputOTP
+                maxLength={6}
+                value={twoFactorCode}
+                onChange={(v) => setTwoFactorCode(v)}
+                autoFocus
+                onComplete={handleTwoFactorSubmit}
+              >
+                <InputOTPGroup>
+                  <InputOTPSlot index={0} />
+                  <InputOTPSlot index={1} />
+                  <InputOTPSlot index={2} />
+                  <InputOTPSlot index={3} />
+                  <InputOTPSlot index={4} />
+                  <InputOTPSlot index={5} />
+                </InputOTPGroup>
+              </InputOTP>
+            </div>
+
+            <Button
+              onClick={handleTwoFactorSubmit}
+              disabled={
+                twoFactorLoading ||
+                !/^\d{6}$/.test(twoFactorCode.replace(/\s+/g, ''))
+              }
+              className="btn-brand min-h-[44px] w-full"
+            >
+              {twoFactorLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  <Shield className="h-4 w-4" /> Verify & sign in
+                </>
+              )}
+            </Button>
+
+            <Button
+              variant="ghost"
+              className="min-h-[40px] w-full text-xs"
+              onClick={cancelTwoFactor}
+              disabled={twoFactorLoading}
+            >
+              ← Back to login
+            </Button>
+          </div>
+        </motion.div>
+      </div>
+    )
+  }
+
   return (
     <div className="taly-shell min-h-[100dvh] bg-background">
       <section className="relative flex flex-col items-center justify-start overflow-hidden px-6 pt-12 pb-10 text-center">
@@ -198,10 +340,16 @@ export function AuthScreen() {
                 <div className="relative">
                   <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input id="lp" type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)}
-                    placeholder="••••••••" className="pl-9" />
+                    placeholder="••••••••" className="pl-9"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        handleLogin()
+                      }
+                    }} />
                 </div>
               </div>
-              <Button onClick={handleLogin} disabled={loading} className="btn-brand w-full">
+              <Button onClick={handleLogin} disabled={loading} className="btn-brand w-full min-h-[44px]">
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Login'}
               </Button>
             </TabsContent>
@@ -239,7 +387,7 @@ export function AuthScreen() {
                   <Input id="sr" value={suReferral} onChange={(e) => setSuReferral(e.target.value)} className="pl-9" placeholder="username" />
                 </div>
               </div>
-              <Button onClick={handleSignup} disabled={loading} className="btn-brand w-full">
+              <Button onClick={handleSignup} disabled={loading} className="btn-brand w-full min-h-[44px]">
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create account'}
               </Button>
             </TabsContent>
@@ -251,10 +399,10 @@ export function AuthScreen() {
                 <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
                 <div className="relative flex justify-center text-xs uppercase"><span className="bg-card px-2 text-muted-foreground">or</span></div>
               </div>
-              <Button variant="outline" className="w-full" onClick={handleGoogle} disabled={loading}>
+              <Button variant="outline" className="w-full min-h-[44px]" onClick={handleGoogle} disabled={loading}>
                 <GoogleIcon /> Continue with Google
               </Button>
-              <Button variant="outline" className="w-full" onClick={() => setPhoneMode(true)}>
+              <Button variant="outline" className="w-full min-h-[44px]" onClick={() => setPhoneMode(true)}>
                 <Phone className="h-4 w-4" /> Continue with Phone
               </Button>
             </div>
@@ -263,12 +411,12 @@ export function AuthScreen() {
               <Label>Phone Number</Label>
               <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 9876543210" />
               {!otpSent ? (
-                <Button variant="outline" className="w-full" onClick={handleSendOtp}>Send OTP</Button>
+                <Button variant="outline" className="w-full min-h-[44px]" onClick={handleSendOtp}>Send OTP</Button>
               ) : (
                 <>
                   <Label>6-digit OTP</Label>
                   <Input value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="123456" maxLength={6} />
-                  <Button onClick={handleVerifyOtp} disabled={loading} className="btn-brand w-full">Verify</Button>
+                  <Button onClick={handleVerifyOtp} disabled={loading} className="btn-brand w-full min-h-[44px]">Verify</Button>
                 </>
               )}
               <Button variant="ghost" className="w-full text-xs" onClick={() => setPhoneMode(false)}>

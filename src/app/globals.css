@@ -618,6 +618,13 @@
   border-bottom: 1px solid oklch(0.78 0.18 152 / 0.2);
 }
 
+/* Group announcements bar (V9) */
+.announcement-bar {
+  background: linear-gradient(135deg, oklch(0.96 0.06 240 / 0.95), oklch(0.98 0.03 220 / 0.95));
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid oklch(0.78 0.16 240 / 0.2);
+}
+
 /* Forward badge */
 .forward-badge {
   display: inline-flex;

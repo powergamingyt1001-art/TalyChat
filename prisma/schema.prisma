@@ -44,6 +44,9 @@ model User {
   behaviorLogs    String   @default("")        // JSON: [{date, adsWatched}]
   adsWatchedToday Int      @default(0)          // max 10/day
   lastAdWatchedAt DateTime?
+  // V9 — Two-factor authentication (TOTP)
+  twoFactorSecret   String?
+  twoFactorEnabled  Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -87,6 +90,8 @@ model User {
   pushSubscriptions    PushSubscription[]
   // V8 — Live location shares
   locationShares       LocationShare[]
+  // V9 — Group announcements authored by this user
+  groupAnnouncements   GroupAnnouncement[]
 
   @@index([email])
   @@index([username])
@@ -214,6 +219,8 @@ model Group {
   conversation Conversation? @relation("GroupConversations")
   joinRequests GroupRequest[]
   reports     Report[]
+  // V9 — Group announcements (pinned messages from admins)
+  announcements GroupAnnouncement[]
 
   @@index([category])
   @@index([isPublic])
@@ -668,4 +675,24 @@ model LocationShare {
   @@index([conversationId, isLive])
   @@index([userId])
   @@index([expiresAt])
+}
+
+// ============================================================
+// V9 — GROUP ANNOUNCEMENTS (pinned admin/owner messages)
+// ============================================================
+
+model GroupAnnouncement {
+  id         String   @id @default(cuid())
+  groupId    String
+  authorId   String
+  content    String
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  group      Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  author     User  @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([groupId, isActive, createdAt])
+  @@index([authorId])
 }

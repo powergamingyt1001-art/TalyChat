@@ -34,6 +34,25 @@ export async function POST(req: NextRequest) {
     const valid = await bcrypt.compare(password, user.passwordHash)
     if (!valid) return jsonError(401, 'Incorrect password')
   }
+
+  // V9 — Self-deleted accounts are blocked from logging in.
+  if (user.isBlocked) {
+    return jsonError(403, user.banReason || 'Account is blocked')
+  }
+
+  // V9 — Two-factor authentication: if the user has 2FA enabled, do NOT
+  // complete the login here. Return a temp token (= user.id) so the client
+  // can prompt for the 6-digit code and call /api/auth/2fa/login.
+  if (user.twoFactorEnabled && user.twoFactorSecret) {
+    return ok({
+      requiresTwoFactor: true,
+      tempToken: user.id,
+      // Hint for the UI — tells the user which account they're logging into
+      // so they know where the authenticator code is coming from.
+      username: user.username || user.email,
+    })
+  }
+
   await db.user.update({
     where: { id: user.id },
     data: { isOnline: true, lastSeen: new Date() },

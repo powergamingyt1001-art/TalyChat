@@ -51,6 +51,7 @@ import {
 } from '@/components/taly/customizer-context'
 import { CustomizeDialog } from '@/components/taly/customize-dialog'
 import { ChatThemePicker } from '@/components/chat/chat-theme-picker'
+import { GroupAnnouncementsBar } from '@/components/chat/group-announcements-bar'
 import { PremiumAvatar } from '@/components/premium-avatar'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -1572,6 +1573,22 @@ export function ChatView({
           </button>
         </div>
       )}
+
+      {/* =========================== GROUP ANNOUNCEMENTS BAR =========================== */}
+      {isGroup && conversation?.groupId && (() => {
+        const myMembership = conversation?.members?.find(
+          (m) => m.userId === user?.id,
+        )
+        const role = (myMembership?.role as string) || null
+        const isOwnerOrAdmin = role === 'owner' || role === 'admin'
+        return (
+          <GroupAnnouncementsBar
+            conversationId={conversationId}
+            groupId={conversation.groupId}
+            isOwnerOrAdmin={isOwnerOrAdmin}
+          />
+        )
+      })()}
 
       {/* =========================== PINNED BAR =========================== */}
       {pinnedMessages.length > 0 && showPinnedBar && (() => {

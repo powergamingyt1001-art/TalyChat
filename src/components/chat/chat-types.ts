@@ -119,5 +119,11 @@ export const EMOJI_GRID: string[] = [
 // Reaction emojis (the 6 quick reactions shown in the long-press menu)
 export const QUICK_REACTIONS: string[] = ['❤️', '😂', '👍', '🔥', '😮', '😢']
 
+// Extended quick reactions for the expanded picker (V9)
+export const EXTENDED_REACTIONS: string[] = [
+  '❤️', '😂', '👍', '👎', '🔥', '😮', '😢', '🎉',
+  '🙏', '👏', '💯', '🤔', '😍', '😎', '🤯', '😱',
+]
+
 // Stickers (PRD: a small set of large emoji stickers)
 export const STICKER_SET: string[] = ['🥳', '😎', '🤗', '🎉', '💝', '🌟']
