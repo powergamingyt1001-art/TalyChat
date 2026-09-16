@@ -79,6 +79,8 @@ model User {
   referralTasks        ReferralTask[]
   // Stories
   stories              Story[]
+  // Scheduled messages (V6)
+  scheduledMessages    ScheduledMessage[]
 
   @@index([email])
   @@index([username])
@@ -572,4 +574,28 @@ model StoryView {
 
   @@unique([storyId, userId])
   @@index([storyId])
+}
+
+// ============================================================
+// SCHEDULED MESSAGES (V6) — sent at a future time
+// ============================================================
+
+model ScheduledMessage {
+  id              String   @id @default(cuid())
+  senderId        String
+  conversationId  String
+  content         String
+  type            String   @default("text") // text | image
+  mediaUrl        String?
+  replyToId       String?
+  scheduledFor    DateTime                  // when to send
+  isSent          Boolean  @default(false)
+  isCancelled     Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  sentAt          DateTime?
+
+  sender          User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([isSent, scheduledFor])
+  @@index([senderId])
 }

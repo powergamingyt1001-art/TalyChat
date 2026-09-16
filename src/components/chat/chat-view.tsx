@@ -86,6 +86,8 @@ import { ReportDialog } from './report-dialog'
 import { AddMemberDialog } from './add-member-dialog'
 import { ForwardDialog } from './forward-dialog'
 import { PinnedMessagesDialog } from './pinned-messages-dialog'
+import { ScheduleMessageDialog } from './schedule-message-dialog'
+import { SharedMediaDialog } from './shared-media-dialog'
 import {
   ChatMessage,
   ChatConversation,
@@ -212,12 +214,39 @@ export function ChatView({
   const [confirmClear, setConfirmClear] = React.useState(false)
   const [confirmLeave, setConfirmLeave] = React.useState(false)
   const [confirmBlock, setConfirmBlock] = React.useState(false)
+  const [sharedMediaOpen, setSharedMediaOpen] = React.useState(false)
 
   // Forward dialog state
   const [forwardState, setForwardState] = React.useState<{
     open: boolean
     message: ChatMessage | null
   }>({ open: false, message: null })
+
+  // Schedule-message dialog state (V6). initialContent lets the dialog
+  // pre-fill with text the user had typed into the composer when they
+  // tapped "Schedule send" from the 3-dot menu. replyTo is set when the
+  // user opens the schedule dialog from a message's action menu.
+  const [scheduleState, setScheduleState] = React.useState<{
+    open: boolean
+    replyTo: ChatMessage | null
+    initialContent?: string
+    initialMediaUrl?: string
+    initialType?: 'text' | 'image'
+  }>({ open: false, replyTo: null, initialContent: '', initialType: 'text' })
+
+  const openScheduleDialogFromComposer = React.useCallback(() => {
+    // Capture whatever the user has typed so far so they don't lose it.
+    setScheduleState({
+      open: true,
+      replyTo: null,
+      initialContent: text,
+      initialType: 'text',
+    })
+    // Clear the composer so the message lives only inside the schedule
+    // dialog until it's submitted (avoids accidental double-send if the
+    // user hits Enter after closing).
+    setText('')
+  }, [text])
 
   // Pinned messages state
   const [pinnedMessages, setPinnedMessages] = React.useState<any[]>([])
@@ -809,6 +838,17 @@ export function ChatView({
     setForwardState({ open: true, message: m })
   }
 
+  // Open the schedule dialog with a specific message as the reply target.
+  // (Used by the long-press "Schedule" action on a message bubble.)
+  const handleScheduleReply = (m: ChatMessage) => {
+    setScheduleState({
+      open: true,
+      replyTo: m,
+      initialContent: '',
+      initialType: 'text',
+    })
+  }
+
   // ----- Jump to message (from pinned dialog) -----
   // Scrolls the chat to the target message and briefly highlights it.
   const handleMessageJump = React.useCallback((messageId: string) => {
@@ -1296,7 +1336,7 @@ export function ChatView({
                 <DropdownMenuItem onClick={() => toast({ title: 'Members list coming soon' })}>
                   <Users className="h-4 w-4" /> Members
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => toast({ title: 'Shared media coming soon' })}>
+                <DropdownMenuItem onClick={() => setSharedMediaOpen(true)}>
                   <ImageIcon className="h-4 w-4" /> Shared Media
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={toggleMute}>
@@ -1326,6 +1366,9 @@ export function ChatView({
                       <PinIcon className="h-4 w-4" /> Pin Group
                     </>
                   )}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={openScheduleDialogFromComposer}>
+                  <Clock className="h-4 w-4" /> Schedule send
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setConfirmClear(true)}>
                   <Trash2 className="h-4 w-4" /> Clear Chat
@@ -1366,7 +1409,7 @@ export function ChatView({
                     </>
                   )}
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => toast({ title: 'Shared media coming soon' })}>
+                <DropdownMenuItem onClick={() => setSharedMediaOpen(true)}>
                   <ImageIcon className="h-4 w-4" /> Shared Media
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => toast({ title: 'Privacy info coming soon' })}>
@@ -1385,6 +1428,9 @@ export function ChatView({
                       <PinIcon className="h-4 w-4" /> Pin Chat
                     </>
                   )}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={openScheduleDialogFromComposer}>
+                  <Clock className="h-4 w-4" /> Schedule send
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setConfirmClear(true)}>
                   <Trash2 className="h-4 w-4" /> Clear chat now
@@ -1845,6 +1891,7 @@ export function ChatView({
         onDelete={() => actionMenu?.message && handleDelete(actionMenu.message)}
         onPin={() => actionMenu?.message && handlePin(actionMenu.message)}
         onReact={(emoji) => actionMenu?.message && handleReact(actionMenu.message, emoji)}
+        onSchedule={() => actionMenu?.message && handleScheduleReply(actionMenu.message)}
       />
 
       {/* Report dialog */}
@@ -1921,6 +1968,32 @@ export function ChatView({
           )
           // Refresh the pinned-messages bar.
           await loadPinned()
+        }}
+      />
+
+      {/* Shared media gallery dialog (3-dot menu → Shared Media) */}
+      <SharedMediaDialog
+        open={sharedMediaOpen}
+        onClose={() => setSharedMediaOpen(false)}
+        conversationId={conversationId}
+      />
+
+      {/* Schedule-message dialog (V6) — opened from the 3-dot menu
+          ("Schedule send") or from the long-press action menu on a
+          message ("Schedule"). */}
+      <ScheduleMessageDialog
+        open={scheduleState.open}
+        onClose={() =>
+          setScheduleState((s) => ({ ...s, open: false, replyTo: null }))
+        }
+        conversationId={conversationId}
+        replyTo={scheduleState.replyTo || undefined}
+        initialContent={scheduleState.initialContent}
+        initialMediaUrl={scheduleState.initialMediaUrl}
+        initialType={scheduleState.initialType}
+        onScheduled={() => {
+          // Optimistic: bump conversation list so a count badge can appear
+          // in Profile → Scheduled Messages if the user navigates there.
         }}
       />
 

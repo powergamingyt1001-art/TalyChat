@@ -95,7 +95,7 @@ export function StoriesRow({
         {/* My Story tile */}
         <button
           onClick={handleMyStoryClick}
-          className="flex w-[68px] shrink-0 flex-col items-center gap-1 text-center"
+          className="flex w-[76px] shrink-0 flex-col items-center gap-1 text-center"
           aria-label={hasMyStories ? 'View my story' : 'Add a story'}
         >
           <div className={cn('relative', myRingClass)}>
@@ -107,7 +107,7 @@ export function StoriesRow({
                   avatar: myStoryAuthor.avatar || undefined,
                   name: myStoryAuthor.name || 'Me',
                 }}
-                size={52}
+                size={60}
                 showAura={false}
               />
             </div>
@@ -116,7 +116,7 @@ export function StoriesRow({
               <Plus className="h-3 w-3" strokeWidth={3} />
             </span>
           </div>
-          <span className="line-clamp-1 w-full text-[11px] font-medium text-muted-foreground">
+          <span className="mt-0.5 block max-w-[64px] truncate text-[11px] font-medium text-muted-foreground">
             {hasMyStories ? 'My Status' : 'Add Status'}
           </span>
         </button>
@@ -126,17 +126,19 @@ export function StoriesRow({
           ? [0, 1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="flex w-[68px] shrink-0 flex-col items-center gap-1"
+                className="flex w-[76px] shrink-0 flex-col items-center gap-1"
               >
                 <div className="story-ring viewed opacity-60">
                   <div className="story-ring-inner">
-                    <div className="h-[52px] w-[52px] animate-pulse rounded-full bg-muted" />
+                    <div className="h-[60px] w-[60px] animate-pulse rounded-full bg-muted" />
                   </div>
                 </div>
-                <span className="h-3 w-12 animate-pulse rounded bg-muted" />
+                <span className="mt-0.5 h-3 w-12 animate-pulse rounded bg-muted" />
               </div>
             ))
           : friends.map((g) => {
+              // hasUnviewed === true  → full gradient ring
+              // hasUnviewed === false → muted (viewed) ring
               const ringClass = g.hasUnviewed
                 ? 'story-ring'
                 : 'story-ring viewed'
@@ -145,7 +147,7 @@ export function StoriesRow({
                   key={g.user.id}
                   onClick={() => onOpenStory(g.user.id, 0)}
                   whileTap={{ scale: 0.94 }}
-                  className="flex w-[68px] shrink-0 flex-col items-center gap-1 text-center"
+                  className="flex w-[76px] shrink-0 flex-col items-center gap-1 text-center"
                   aria-label={`View ${g.user.name}'s story`}
                 >
                   <div className={ringClass}>
@@ -157,12 +159,12 @@ export function StoriesRow({
                           avatar: g.user.avatar || undefined,
                           name: g.user.name || 'U',
                         }}
-                        size={52}
+                        size={60}
                         showAura={false}
                       />
                     </div>
                   </div>
-                  <span className="line-clamp-1 w-full text-[11px] font-medium text-foreground">
+                  <span className="mt-0.5 block max-w-[64px] truncate text-[11px] font-medium text-foreground">
                     {shortName(g.user.name)}
                   </span>
                 </motion.button>

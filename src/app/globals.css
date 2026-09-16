@@ -593,15 +593,17 @@
   30% { transform: translateY(-4px); opacity: 1; }
 }
 
-/* Story ring — gradient border */
+/* Story ring — gradient border (thicker, multi-color, drop-shadow) */
 .story-ring {
-  background: linear-gradient(135deg, oklch(0.78 0.18 152), oklch(0.65 0.20 160), oklch(0.70 0.20 200));
-  padding: 2.5px;
+  background: linear-gradient(135deg, #10b981, #14b8a6, #06b6d4);
+  padding: 3.5px;
   border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 .story-ring.viewed {
   background: var(--muted);
-  padding: 2.5px;
+  padding: 3.5px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 .story-ring-inner {
   background: var(--background);

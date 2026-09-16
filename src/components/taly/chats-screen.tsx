@@ -404,11 +404,16 @@ export function ChatsScreen({ conversations, onOpenChat, onRefresh }: ChatsProps
               {filtered.map((c) => {
                 const last = c.lastMessage
                 const isOnline = !!(c.otherUser as any)?.isOnline
+                const hasUnread = !!(c.unread && c.unread > 0)
                 return (
                   <li key={c.id} className="animate-fade-in-up">
                     <button
                       onClick={() => onOpenChat(c)}
-                      className="chat-list-item taly-card taly-card-hover w-full border-none !p-2.5 text-left"
+                      className={`chat-list-item taly-card taly-card-hover w-full border-none !p-2.5 text-left ${
+                        hasUnread
+                          ? '!bg-emerald-50 dark:!bg-emerald-950/20'
+                          : ''
+                      }`}
                     >
                       <PremiumAvatar
                         user={{
@@ -424,21 +429,32 @@ export function ChatsScreen({ conversations, onOpenChat, onRefresh }: ChatsProps
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline justify-between gap-2">
                           <span
-                            className={`truncate text-sm ${c.unread ? 'font-bold' : 'font-semibold'}`}
+                            className={`truncate text-sm ${
+                              hasUnread ? 'font-semibold' : 'font-normal'
+                            }`}
                           >
-                            {c.name || c.otherUser?.name || c.otherUser?.username || 'Unnamed'}
+                            {c.name ||
+                              c.otherUser?.name ||
+                              c.otherUser?.username ||
+                              'Unnamed'}
                           </span>
                           <span className="shrink-0 text-[10px] font-light text-muted-foreground">
                             {relativeTime(last?.createdAt || c.updatedAt)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-2">
-                          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                          <p
+                            className={`mt-0.5 truncate text-xs ${
+                              hasUnread
+                                ? 'font-medium text-foreground'
+                                : 'font-normal text-muted-foreground'
+                            }`}
+                          >
                             {messagePreview(last)}
                           </p>
-                          {c.unread ? (
+                          {hasUnread ? (
                             <span className="unread-badge shrink-0">
-                              {c.unread > 99 ? '99+' : c.unread}
+                              {(c.unread as number) > 99 ? '99+' : c.unread}
                             </span>
                           ) : null}
                         </div>

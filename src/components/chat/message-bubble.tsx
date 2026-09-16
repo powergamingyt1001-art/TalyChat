@@ -19,6 +19,7 @@ import {
   Check,
   Eye,
   CornerUpLeft,
+  Clock,
 } from 'lucide-react'
 import { ChatMessage } from './chat-types'
 import { QUICK_REACTIONS } from './chat-types'
@@ -543,6 +544,8 @@ interface MessageActionMenuProps {
   onDelete: () => void
   onPin: () => void
   onReact: (emoji: string) => void
+  /** V6 — open the schedule-message dialog with this message as the reply target. */
+  onSchedule?: () => void
 }
 
 export function MessageActionMenu({
@@ -558,6 +561,7 @@ export function MessageActionMenu({
   onDelete,
   onPin,
   onReact,
+  onSchedule,
 }: MessageActionMenuProps) {
   // Backdrop + a popover positioned above the anchor.
   if (!open || !message) return null
@@ -612,6 +616,13 @@ export function MessageActionMenu({
           <ActionMenuItem icon={<Reply className="h-4 w-4" />} label="Reply" onClick={() => { onReply(); onClose() }} />
           <ActionMenuItem icon={<Copy className="h-4 w-4" />} label="Copy" onClick={() => { onCopy(); onClose() }} />
           <ActionMenuItem icon={<Forward className="h-4 w-4" />} label="Forward" onClick={() => { onForward(); onClose() }} />
+          {onSchedule && (
+            <ActionMenuItem
+              icon={<Clock className="h-4 w-4" />}
+              label="Schedule"
+              onClick={() => { onSchedule(); onClose() }}
+            />
+          )}
           {isMine && message.type === 'text' && !message.deletedAt && (
             <ActionMenuItem icon={<Pencil className="h-4 w-4" />} label="Edit" onClick={() => { onEdit(); onClose() }} />
           )}

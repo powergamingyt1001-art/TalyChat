@@ -1870,3 +1870,64 @@ Next-phase candidates:
 - Global search UI on home screen (backend ready)
 - Story highlights
 - Live location sharing
+
+---
+Task ID: v6-final
+Agent: main (Z.ai Code) — cron QA review (round 4)
+Task: V6 features — Message Scheduling, Shared Media Gallery, story ring polish, unread highlighting
+
+Work Log:
+- Reviewed worklog (1872 lines) — V5 polish complete, all screens 8/10
+- Lint clean. Server 200. Zero console errors.
+- VLM analysis identified: missing global search, unread highlighting needed, story rings too thin, shared media not implemented
+
+### Spawned 2 parallel subagents (both timed out but completed all files):
+- **v6-3 (Message Scheduling)**: 
+  - Added ScheduledMessage Prisma model (id, senderId, conversationId, content, type, mediaUrl, replyToId, scheduledFor, isSent, isCancelled, createdAt, sentAt)
+  - Created 3 API routes: POST/GET /api/messages/schedule, DELETE/PATCH /api/messages/schedule/[id], POST /api/messages/schedule/process
+  - Created schedule-message-dialog.tsx (datetime picker, quick presets, validate future time)
+  - Integrated into chat-view.tsx (3-dot menu "Schedule send" + message action menu "Schedule")
+  - Added Scheduled Messages section to Profile screen with count badge + manage dialog
+  - Added client-side polling in taly-app.tsx (every 60s calls /api/messages/schedule/process)
+  - Created realtime-emit.ts helper for server-side socket emission (fixed dynamic import issue)
+
+- **v6-4 (Shared Media + Story Polish + Unread Highlighting)**:
+  - Created /api/conversations/[id]/media route (GET — lists images/voice/files)
+  - Created shared-media-dialog.tsx (tabs: Images grid / Voice list / Files, lightbox)
+  - Integrated into chat-view.tsx 3-dot menu "Shared Media"
+  - Updated story rings in globals.css (thicker gradient, multi-color)
+  - Added unread message highlighting (bold name + bg tint + unread badge)
+
+### Bug Fixed:
+- **Turbopack compilation hang**: The `realtime-emit.ts` file had a top-level `import { io } from 'socket.io-client'` which caused Turbopack to hang during compilation of the schedule routes. Fixed by changing to dynamic `await import('socket.io-client')` inside the function.
+- **Corrupted .next cache**: After the hang, the .next cache was corrupted. Fixed by `rm -rf .next` + clean server restart. All schedule routes now compile and respond correctly.
+
+### VLM Re-verification:
+- Home: 8/10 — clean, modern, well-organized, clear visual hierarchy
+- Chat: Scheduled messages work end-to-end (tested: scheduled message → processed → appears in chat)
+- Profile: Scheduled Messages section visible with "View & manage scheduled" button
+- Shared Media API: returns {images:[], voice:[], documents:[]} for empty conversations
+- Process API: returns {processed:0, sent:[]} when no due messages
+
+### Testing (agent-browser + curl):
+- GET /api/messages/schedule → {scheduledMessages:[]} ✅
+- POST /api/messages/schedule/process → {processed:0, sent:[]} ✅
+- GET /api/conversations/[id]/media → {images:[], voice:[], documents:[]} ✅
+- Profile screen shows "Scheduled Messages" section ✅
+- Chat shows "Scheduled test message from CLI" (previously scheduled + processed) ✅
+- Zero console errors ✅
+
+Stage Summary:
+- V6 features complete: Message Scheduling (with 60s polling, process endpoint, realtime emit), Shared Media Gallery (images/voice/files tabs), story ring polish, unread message highlighting
+- bun run lint: clean (0 errors, 0 warnings)
+- All API endpoints returning 200
+- Zero console errors
+- Fixed Turbopack compilation hang (dynamic import + cache clear)
+
+Next-phase candidates:
+- Global search UI on home screen (backend ready at /api/messages/search)
+- Push notifications (browser Push API)
+- Voice/video calls
+- Chat themes per-conversation
+- Story highlights (save stories to profile)
+- Live location sharing

@@ -64,6 +64,8 @@ import {
   Target,
   Hourglass,
   UserCheck,
+  Edit,
+  Trash2,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { SettingsDialog } from '@/components/taly/settings-dialog'
@@ -175,6 +177,10 @@ export function ProfileScreen() {
   // Block list state
   const [blockedOpen, setBlockedOpen] = useState(false)
   const [blockedCount, setBlockedCount] = useState<number>(0)
+
+  // V6 — Scheduled messages state
+  const [scheduledOpen, setScheduledOpen] = useState(false)
+  const [scheduledCount, setScheduledCount] = useState<number>(0)
 
   // Behavior + watch-ad state
   const [behavior, setBehavior] = useState<BehaviorData | null>(null)
@@ -321,6 +327,24 @@ export function ProfileScreen() {
     }
   }, [])
 
+  // V6 — Fetch pending scheduled messages count (for the badge on the
+  // Scheduled Messages card).
+  const loadScheduledCount = useCallback(async () => {
+    try {
+      const res: any = await apiFetch('/api/messages/schedule')
+      const list: any[] = Array.isArray(res)
+        ? res
+        : Array.isArray(res?.scheduledMessages)
+          ? res.scheduledMessages
+          : Array.isArray(res?.items)
+            ? res.items
+            : []
+      setScheduledCount(list.length)
+    } catch {
+      setScheduledCount(0)
+    }
+  }, [])
+
   useEffect(() => {
      
     loadProfile()
@@ -328,7 +352,8 @@ export function ProfileScreen() {
     loadReferral()
     loadBlockedCount()
     loadBehavior()
-  }, [loadProfile, loadReferral, loadBlockedCount, loadBehavior])
+    loadScheduledCount()
+  }, [loadProfile, loadReferral, loadBlockedCount, loadBehavior, loadScheduledCount])
 
   if (loading && !profile) {
     return (
@@ -660,6 +685,17 @@ export function ProfileScreen() {
         >
           <Shield className="mr-2 h-4 w-4" /> Open privacy settings
         </button>
+      </div>
+
+      {/* V6 — Scheduled Messages card. Lists pending scheduled messages and
+          lets the user cancel or reschedule them. */}
+      <div className="taly-card animate-fade-in-up p-5" style={{ animationDelay: '390ms' }}>
+        <ScheduledMessagesCard
+          open={scheduledOpen}
+          onOpenChange={setScheduledOpen}
+          count={scheduledCount}
+          onCountChange={setScheduledCount}
+        />
       </div>
 
       {/* V5 — Account container: red-tinted bg, holds Block List + Logout */}
@@ -2186,4 +2222,310 @@ function ViewTeamSheet({
       </SheetContent>
     </Sheet>
   )
+}
+
+// ============================================================
+// V6 — Scheduled Messages card + dialog
+// Lists pending scheduled messages; allows cancel / edit time.
+// ============================================================
+
+interface ScheduledItem {
+  id: string
+  senderId: string
+  conversationId: string
+  content: string
+  type: string
+  mediaUrl?: string | null
+  replyToId?: string | null
+  scheduledFor: string
+  isSent: boolean
+  isCancelled: boolean
+  createdAt: string
+  sentAt?: string | null
+  conversation?: {
+    id: string
+    type: 'private' | 'group'
+    name?: string | null
+    avatar?: string | null
+    group?: { id: string; name: string; logo?: string | null } | null
+    otherUser?: {
+      id: string
+      username?: string
+      name?: string
+      avatar?: string | null
+    } | null
+  } | null
+}
+
+function ScheduledMessagesCard({
+  open,
+  onOpenChange,
+  count,
+  onCountChange,
+}: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  count: number
+  onCountChange: (n: number) => void
+}) {
+  const { toast } = useToast()
+  const [loading, setLoading] = useState(false)
+  const [items, setItems] = useState<ScheduledItem[]>([])
+  const [cancellingId, setCancellingId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState<string>('')
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [nowTick, setNowTick] = useState(Date.now())
+
+  // Tick every 30s so the countdowns refresh.
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 30_000)
+    return () => clearInterval(t)
+  }, [])
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res: any = await apiFetch('/api/messages/schedule')
+      const list: ScheduledItem[] = Array.isArray(res)
+        ? res
+        : Array.isArray(res?.scheduledMessages)
+          ? res.scheduledMessages
+          : Array.isArray(res?.items)
+            ? res.items
+            : []
+      setItems(list)
+      onCountChange(list.length)
+    } catch (e: any) {
+      toast({ title: e?.message || 'Failed to load scheduled messages', variant: 'destructive' })
+    } finally {
+      setLoading(false)
+    }
+  }, [onCountChange, toast])
+
+  // Load whenever the dialog opens (and refresh count when it closes).
+  useEffect(() => {
+    if (open) {
+      void load()
+    }
+  }, [open, load])
+
+  const handleCancel = useCallback(
+    async (id: string) => {
+      setCancellingId(id)
+      try {
+        await apiFetch(`/api/messages/schedule/${id}`, { method: 'DELETE' })
+        toast({ title: 'Scheduled message cancelled' })
+        setItems((prev) => prev.filter((it) => it.id !== id))
+        onCountChange(Math.max(0, count - 1))
+      } catch (e: any) {
+        toast({ title: e?.message || 'Failed to cancel', variant: 'destructive' })
+      } finally {
+        setCancellingId(null)
+      }
+    },
+    [count, onCountChange, toast],
+  )
+
+  const startEdit = (item: ScheduledItem) => {
+    const d = new Date(item.scheduledFor)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    setEditValue(
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`,
+    )
+    setEditingId(item.id)
+  }
+
+  const saveEdit = async (id: string) => {
+    if (!editValue) return
+    const when = new Date(editValue)
+    if (isNaN(when.getTime())) {
+      toast({ title: 'Invalid date/time', variant: 'destructive' })
+      return
+    }
+    if (when.getTime() <= Date.now()) {
+      toast({ title: 'Pick a time in the future', variant: 'destructive' })
+      return
+    }
+    setSavingEdit(true)
+    try {
+      await apiFetch(`/api/messages/schedule/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ scheduledFor: when.toISOString() }),
+      })
+      toast({ title: 'Scheduled time updated' })
+      setItems((prev) =>
+        prev.map((it) => (it.id === id ? { ...it, scheduledFor: when.toISOString() } : it)),
+      )
+      setEditingId(null)
+    } catch (e: any) {
+      toast({ title: e?.message || 'Failed to update', variant: 'destructive' })
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  return (
+    <>
+      <div className="section-header mb-3">
+        <Clock className="h-4 w-4 text-primary" /> Scheduled Messages
+        {count > 0 && (
+          <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
+            {count}
+          </span>
+        )}
+      </div>
+      <button
+        onClick={() => onOpenChange(true)}
+        className="ghost-btn min-h-[44px] w-full justify-start"
+      >
+        <Clock className="mr-2 h-4 w-4" /> View &amp; manage scheduled
+      </button>
+
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-primary" /> Scheduled Messages
+            </DialogTitle>
+            <DialogDescription>
+              Messages you&apos;ve scheduled to send later. Cancel or edit the
+              time before they send.
+            </DialogDescription>
+          </DialogHeader>
+
+          <ScrollArea className="max-h-[60dvh]">
+            <div className="flex flex-col gap-2 p-1">
+              {loading && items.length === 0 ? (
+                <div className="flex min-h-[120px] items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : items.length === 0 ? (
+                <div className="flex min-h-[120px] flex-col items-center justify-center gap-2 py-6 text-center">
+                  <Clock className="h-8 w-8 text-muted-foreground/40" />
+                  <p className="text-sm text-muted-foreground">No scheduled messages.</p>
+                  <p className="text-xs text-muted-foreground/70">
+                    Open any chat → tap the 3-dot menu → &quot;Schedule send&quot;.
+                  </p>
+                </div>
+              ) : (
+                items.map((it) => {
+                  const conv = it.conversation
+                  let label = 'Conversation'
+                  if (conv) {
+                    if (conv.type === 'group') {
+                      label = conv.group?.name || conv.name || 'Group chat'
+                    } else {
+                      label =
+                        conv.otherUser?.name ||
+                        conv.otherUser?.username ||
+                        conv.name ||
+                        'Private chat'
+                    }
+                  }
+                  const when = new Date(it.scheduledFor)
+                  const diffMs = when.getTime() - nowTick
+                  const countdownLabel =
+                    diffMs <= 0
+                      ? 'Sending soon…'
+                      : formatCountdownShort(diffMs)
+                  return (
+                    <div
+                      key={it.id}
+                      className="rounded-lg border bg-card p-3 text-sm shadow-sm"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs font-medium text-primary">
+                            {label}
+                          </div>
+                          <div className="mt-0.5 line-clamp-2 break-words text-foreground/90">
+                            {it.type === 'image' ? '📷 Photo' : it.content || '(empty)'}
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+                            <span className="inline-flex items-center gap-1">
+                              <CalendarDays className="h-3 w-3" />
+                              {format(when, "dd MMM 'at' h:mm a")}
+                            </span>
+                            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-1.5 py-0.5 font-medium text-primary">
+                              <Clock className="h-3 w-3" />
+                              {countdownLabel}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {editingId === it.id ? (
+                        <div className="mt-2 flex flex-col gap-2">
+                          <input
+                            type="datetime-local"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            className="flex min-h-[40px] w-full rounded-md border border-input bg-background px-2 py-1 text-xs"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => saveEdit(it.id)}
+                              disabled={savingEdit}
+                              className="action-btn min-h-[36px] flex-1 text-xs"
+                            >
+                              {savingEdit ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingId(null)}
+                              disabled={savingEdit}
+                              className="ghost-btn min-h-[36px] flex-1 text-xs"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-2 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => startEdit(it)}
+                            className="ghost-btn min-h-[36px] flex-1 text-xs"
+                          >
+                            <Edit className="mr-1 h-3 w-3" /> Edit time
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCancel(it.id)}
+                            disabled={cancellingId === it.id}
+                            className="ghost-btn min-h-[36px] flex-1 border-destructive/30 text-destructive hover:bg-destructive/10 text-xs"
+                          >
+                            {cancellingId === it.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Trash2 className="mr-1 h-3 w-3" />
+                            )}
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+function formatCountdownShort(ms: number): string {
+  if (ms <= 0) return 'now'
+  const sec = Math.floor(ms / 1000)
+  const min = Math.floor(sec / 60)
+  const hr = Math.floor(min / 60)
+  const day = Math.floor(hr / 24)
+  if (day > 0) return `in ${day}d ${hr % 24}h`
+  if (hr > 0) return `in ${hr}h ${min % 60}m`
+  if (min > 0) return `in ${min}m ${sec % 60}s`
+  return `in ${sec}s`
 }

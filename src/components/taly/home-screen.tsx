@@ -409,11 +409,15 @@ export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly, onOpenCre
           ) : (
             chats.map((c) => {
               const isOnline = !!(c.otherUser as any)?.isOnline
+              const hasUnread = !!(c.unread && c.unread > 0)
+              const last = c.lastMessage
               return (
                 <button
                   key={c.id}
                   onClick={() => onOpenChat(c)}
-                  className="chat-list-item taly-card taly-card-hover w-full border-none !p-2.5 text-left"
+                  className={`chat-list-item taly-card taly-card-hover w-full border-none !p-2.5 text-left ${
+                    hasUnread ? '!bg-emerald-50 dark:!bg-emerald-950/20' : ''
+                  }`}
                 >
                   <PremiumAvatar
                     user={{
@@ -429,20 +433,33 @@ export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly, onOpenCre
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
                       <span
-                        className={`truncate text-sm ${c.unread ? 'font-bold' : 'font-semibold'}`}
+                        className={`truncate text-sm ${
+                          hasUnread ? 'font-semibold' : 'font-normal'
+                        }`}
                       >
-                        {c.name || c.otherUser?.name || c.otherUser?.username || 'Unnamed'}
+                        {c.name ||
+                          c.otherUser?.name ||
+                          c.otherUser?.username ||
+                          'Unnamed'}
                       </span>
                       <span className="shrink-0 text-[10px] font-light text-muted-foreground">
-                        {relativeTime(c.lastMessage?.createdAt || c.updatedAt)}
+                        {relativeTime(last?.createdAt || c.updatedAt)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-2">
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {c.lastMessage?.content || 'Say hi 👋'}
+                      <p
+                        className={`mt-0.5 truncate text-xs ${
+                          hasUnread
+                            ? 'font-medium text-foreground'
+                            : 'font-normal text-muted-foreground'
+                        }`}
+                      >
+                        {last?.content || 'Say hi 👋'}
                       </p>
-                      {c.unread ? (
-                        <span className="unread-badge shrink-0">{c.unread}</span>
+                      {hasUnread ? (
+                        <span className="unread-badge shrink-0">
+                          {(c.unread as number) > 99 ? '99+' : c.unread}
+                        </span>
                       ) : null}
                     </div>
                   </div>

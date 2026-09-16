@@ -104,6 +104,22 @@ export function TalyApp() {
     refreshConversations()
   }, [])
 
+  // V6 — Poll the scheduled-message processor every 60 seconds so any
+  // due scheduled messages are actually sent (creates the real Message
+  // row, emits socket events, marks the ScheduledMessage as sent). The
+  // endpoint is internal-no-auth when CRON_TOKEN is unset, so we don't
+  // need a special header. Only run when the user is logged in.
+  useEffect(() => {
+    if (!user) return
+    // Fire once immediately on login so the user doesn't wait 60s for the
+    // first tick.
+    void apiFetch('/api/messages/schedule/process', { method: 'POST' }).catch(() => {})
+    const t = setInterval(() => {
+      void apiFetch('/api/messages/schedule/process', { method: 'POST' }).catch(() => {})
+    }, 60_000)
+    return () => clearInterval(t)
+  }, [user])
+
   // Socket for live updates
   useSocket({
     'message:new': (payload: any) => {
