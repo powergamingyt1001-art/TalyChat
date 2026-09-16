@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import {
@@ -17,6 +17,7 @@ import {
   Palette,
   Clock,
   MapPin,
+  Trash2,
 } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
@@ -30,12 +31,25 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import type { ConversationSummary } from '@/components/taly-app'
 
 interface ChatsProps {
   conversations: ConversationSummary[]
   onOpenChat: (c: ConversationSummary) => void
   onRefresh: () => void
+  /** Optional callback invoked after a conversation is deleted via long-press.
+   *  The parent should remove the conversation from its state. */
+  onDelete?: (conversationId: string) => void
 }
 
 type FilterTab = 'all' | 'unread' | 'requests'
@@ -123,12 +137,16 @@ const FILTERS: { id: FilterTab; label: string }[] = [
   { id: 'requests', label: 'Requests' },
 ]
 
-export function ChatsScreen({ conversations, onOpenChat, onRefresh }: ChatsProps) {
+export function ChatsScreen({ conversations, onOpenChat, onRefresh, onDelete }: ChatsProps) {
   const { toast } = useToast()
   const [filter, setFilter] = useState<FilterTab>('all')
   const [query, setQuery] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const [newChatOpen, setNewChatOpen] = useState(false)
+
+  // Long-press delete state
+  const [deleteTarget, setDeleteTarget] = useState<ConversationSummary | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   // Chat requests state (for the Requests tab)
   const [requests, setRequests] = useState<ChatRequestItem[]>([])
@@ -468,66 +486,16 @@ export function ChatsScreen({ conversations, onOpenChat, onRefresh }: ChatsProps
                 const preview = formatMessagePreview(last)
                 return (
                   <li key={c.id} className="animate-fade-in-up">
-                    <button
-                      onClick={() => onOpenChat(c)}
-                      className={`chat-list-item taly-card taly-card-hover w-full border-none !p-2.5 text-left ${
-                        hasUnread
-                          ? '!bg-emerald-50/50 dark:!bg-emerald-950/10'
-                          : ''
-                      }`}
-                    >
-                      <PremiumAvatar
-                        user={{
-                          isPremium: (c.otherUser as any)?.isPremium,
-                          premiumTier: (c.otherUser as any)?.premiumTier,
-                          avatar: convAvatar(c),
-                          name: c.name || c.otherUser?.name || '?',
-                        }}
-                        size={44}
-                        showAura
-                        isOnline={isOnline}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-baseline justify-between gap-2">
-                          <span
-                            className={`truncate text-sm ${
-                              hasUnread ? 'font-semibold' : 'font-normal'
-                            }`}
-                          >
-                            {c.name ||
-                              c.otherUser?.name ||
-                              c.otherUser?.username ||
-                              'Unnamed'}
-                          </span>
-                          <span
-                            className={`shrink-0 text-right text-[10px] ${
-                              isRecent
-                                ? 'font-medium text-foreground/70'
-                                : 'font-light text-muted-foreground'
-                            }`}
-                          >
-                            {relativeTime(tsIso)}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <p
-                            className={`mt-0.5 flex min-w-0 items-center gap-1 truncate text-xs ${
-                              hasUnread
-                                ? 'font-medium text-foreground'
-                                : 'font-normal text-muted-foreground'
-                            }`}
-                          >
-                            {preview.icon}
-                            <span className="truncate">{preview.text}</span>
-                          </p>
-                          {hasUnread ? (
-                            <span className="unread-badge shrink-0">
-                              {(c.unread as number) > 99 ? '99+' : c.unread}
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-                    </button>
+                    <ChatListRow
+                      conversation={c}
+                      isOnline={isOnline}
+                      hasUnread={hasUnread}
+                      isRecent={isRecent}
+                      tsIso={tsIso}
+                      preview={preview}
+                      onOpenChat={onOpenChat}
+                      onLongPress={(conv) => setDeleteTarget(conv)}
+                    />
                   </li>
                 )
               })}
@@ -550,7 +518,231 @@ export function ChatsScreen({ conversations, onOpenChat, onRefresh }: ChatsProps
         onClose={() => setNewChatOpen(false)}
         onPicked={handlePicked}
       />
+
+      {/* Long-press delete confirmation */}
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => {
+          if (!o) setDeleteTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Trash2 className="h-4 w-4 text-destructive" />
+              Delete this conversation?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the conversation from your chats list. The
+              other user will keep their copy. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={deleting}
+              className="min-h-[44px]"
+              onClick={() => setDeleteTarget(null)}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              className="min-h-[44px] bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async (e) => {
+                e.preventDefault()
+                if (!deleteTarget) return
+                setDeleting(true)
+                try {
+                  await apiFetch(`/api/conversations/${deleteTarget.id}`, {
+                    method: 'DELETE',
+                  })
+                  onDelete?.(deleteTarget.id)
+                  toast({ title: 'Conversation deleted' })
+                  setDeleteTarget(null)
+                } catch (err: any) {
+                  toast({
+                    title: err?.message || 'Failed to delete conversation',
+                    variant: 'destructive',
+                  })
+                } finally {
+                  setDeleting(false)
+                }
+              }}
+            >
+              {deleting ? (
+                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-1 h-4 w-4" />
+              )}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
+  )
+}
+
+// ============================================================
+// V13: ChatListRow — wraps each chat list item with long-press
+// support (~600ms hold) to trigger the delete confirmation dialog.
+// ============================================================
+function ChatListRow({
+  conversation,
+  isOnline,
+  hasUnread,
+  isRecent,
+  tsIso,
+  preview,
+  onOpenChat,
+  onLongPress,
+}: {
+  conversation: ConversationSummary
+  isOnline: boolean
+  hasUnread: boolean
+  isRecent: boolean
+  tsIso?: string
+  preview: { icon: ReactNode | null; text: string }
+  onOpenChat: (c: ConversationSummary) => void
+  onLongPress: (c: ConversationSummary) => void
+}) {
+  // Long-press timers + movement detection
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const longPressedRef = useRef(false)
+  const startPosRef = useRef<{ x: number; y: number } | null>(null)
+
+  const clearPressTimer = useCallback(() => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current)
+      pressTimerRef.current = null
+    }
+  }, [])
+
+  const startPress = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement> | React.MouseEvent<HTMLButtonElement>) => {
+      longPressedRef.current = false
+      startPosRef.current = { x: e.clientX, y: e.clientY }
+      clearPressTimer()
+      pressTimerRef.current = setTimeout(() => {
+        longPressedRef.current = true
+        // Haptic feedback (best-effort — older browsers / desktop silently ignore)
+        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+          try {
+            ;(navigator as any).vibrate?.(15)
+          } catch {}
+        }
+        onLongPress(conversation)
+      }, 600)
+    },
+    [clearPressTimer, onLongPress, conversation],
+  )
+
+  const movePress = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement> | React.MouseEvent<HTMLButtonElement>) => {
+      // If finger moved >10px, treat as scroll — cancel long-press.
+      const start = startPosRef.current
+      if (!start) return
+      const dx = Math.abs(e.clientX - start.x)
+      const dy = Math.abs(e.clientY - start.y)
+      if (dx > 10 || dy > 10) {
+        clearPressTimer()
+      }
+    },
+    [clearPressTimer],
+  )
+
+  const endPress = useCallback(() => {
+    clearPressTimer()
+  }, [clearPressTimer])
+
+  // Cleanup timer on unmount
+  useEffect(() => () => clearPressTimer(), [clearPressTimer])
+
+  const handleClick = () => {
+    // Suppress the click that follows a long-press so we don't open the chat.
+    if (longPressedRef.current) {
+      longPressedRef.current = false
+      return
+    }
+    onOpenChat(conversation)
+  }
+
+  const c = conversation
+  return (
+    <button
+      onClick={handleClick}
+      onPointerDown={startPress}
+      onPointerMove={movePress}
+      onPointerUp={endPress}
+      onPointerLeave={endPress}
+      onPointerCancel={endPress}
+      // Mouse fallbacks: some environments (e.g., CDP-based automation)
+      // dispatch raw mouse events without corresponding pointer events.
+      onMouseDown={startPress}
+      onMouseMove={movePress}
+      onMouseUp={endPress}
+      onMouseLeave={endPress}
+      onContextMenu={(e) => {
+        // Right-click also triggers long-press for desktop convenience.
+        e.preventDefault()
+        onLongPress(conversation)
+      }}
+      className={`chat-list-item taly-card taly-card-hover w-full select-none border-none !p-2.5 text-left ${
+        hasUnread ? '!bg-emerald-50/50 dark:!bg-emerald-950/10' : ''
+      }`}
+    >
+      <PremiumAvatar
+        user={{
+          isPremium: (c.otherUser as any)?.isPremium,
+          premiumTier: (c.otherUser as any)?.premiumTier,
+          avatar: convAvatar(c),
+          name: c.name || c.otherUser?.name || '?',
+        }}
+        size={44}
+        showAura
+        isOnline={isOnline}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <span
+            className={`truncate text-sm ${
+              hasUnread ? 'font-semibold' : 'font-normal'
+            }`}
+          >
+            {c.name ||
+              c.otherUser?.name ||
+              c.otherUser?.username ||
+              'Unnamed'}
+          </span>
+          <span
+            className={`shrink-0 text-right text-[10px] ${
+              isRecent
+                ? 'font-medium text-foreground/70'
+                : 'font-light text-muted-foreground'
+            }`}
+          >
+            {relativeTime(tsIso)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <p
+            className={`mt-0.5 flex min-w-0 items-center gap-1 truncate text-xs ${
+              hasUnread
+                ? 'font-medium text-foreground'
+                : 'font-normal text-muted-foreground'
+            }`}
+          >
+            {preview.icon}
+            <span className="truncate">{preview.text}</span>
+          </p>
+          {hasUnread ? (
+            <span className="unread-badge shrink-0">
+              {(c.unread as number) > 99 ? '99+' : c.unread}
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </button>
   )
 }
 

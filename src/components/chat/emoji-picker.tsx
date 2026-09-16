@@ -14,9 +14,9 @@ interface EmojiPickerProps {
 }
 
 /**
- * A simple emoji picker shown in a Popover. Grid of common Unicode emojis
- * (smileys, hearts, hands, etc). No external emoji library — uses raw
- * Unicode characters.
+ * Emoji picker shown in a Popover. Single flat scrollable grid of all 150
+ * emojis from EMOJI_GRID. No category tabs or sliders. Every emoji renders
+ * in a uniform 44px+ touch target so it's easy to tap on mobile.
  */
 export function EmojiPicker({
   children,
@@ -40,21 +40,20 @@ export function EmojiPicker({
         align={align}
         side={side}
         sideOffset={6}
-        className={cn('w-[280px] max-w-[calc(100vw-1rem)] p-3', className)}
+        className={cn('w-[340px] max-w-[calc(100vw-1rem)] p-3', className)}
       >
-        <div className="mb-2 text-xs font-medium text-muted-foreground">
-          Emoji
-        </div>
-        <div className="grid max-h-[260px] grid-cols-8 gap-1 overflow-y-auto scroll-pan-y">
-          {EMOJI_GRID.map((emoji) => (
+        <div className="grid max-h-[320px] grid-cols-6 gap-1 overflow-y-auto scroll-pan-y pr-1">
+          {EMOJI_GRID.map((emoji, idx) => (
             <button
-              key={emoji}
+              key={`${emoji}-${idx}`}
               type="button"
               onClick={() => handlePick(emoji)}
-              className="flex h-9 w-9 min-h-[44px] min-w-[44px] items-center justify-center rounded text-xl leading-none transition-colors hover:bg-accent"
+              className="flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-md text-xl leading-none transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               aria-label={`Insert ${emoji}`}
             >
-              <span aria-hidden>{emoji}</span>
+              <span aria-hidden className="select-none">
+                {emoji}
+              </span>
             </button>
           ))}
         </div>

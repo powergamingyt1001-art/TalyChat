@@ -1,21 +1,18 @@
 'use client'
 
-import { Bell, Gift, Bot, Camera } from 'lucide-react'
+import { Bell, Gift } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { apiFetch } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { SoundTogglePopover } from '@/components/taly/sound-toggle'
 
 interface Props {
   title?: string
   user?: any
   onDailyReward: () => void
-  onOpenTaly: () => void
-  onOpenCreateStory?: () => void
 }
 
-export function MobileTopBar({ title, user, onDailyReward, onOpenTaly, onOpenCreateStory }: Props) {
+export function MobileTopBar({ title, user, onDailyReward }: Props) {
   const [notifications, setNotifications] = useState<any[]>([])
   const [openNotif, setOpenNotif] = useState(false)
 
@@ -46,17 +43,20 @@ export function MobileTopBar({ title, user, onDailyReward, onOpenTaly, onOpenCre
   return (
     <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
       <div className="flex items-center gap-2">
+        {/* R8-11 — Premium users see the TalyChat logo with a golden glow
+            tint (drop-shadow 6px rgba(255,215,0,0.6)) + a subtle amber
+            ring. Non-premium users see the plain logo. */}
         <img
           src="/logo.png"
           alt="TalyChat"
           className={
             isPremium
-              ? 'h-7 w-7 rounded-lg ring-2 ring-amber-400/60'
+              ? 'h-7 w-7 rounded-lg ring-2 ring-amber-400/70'
               : 'h-7 w-7 rounded-lg'
           }
           style={
             isPremium
-              ? { filter: 'drop-shadow(0 0 4px rgba(255, 215, 0, 0.5))' }
+              ? { filter: 'drop-shadow(0 0 6px rgba(255, 215, 0, 0.6))' }
               : undefined
           }
         />
@@ -67,7 +67,7 @@ export function MobileTopBar({ title, user, onDailyReward, onOpenTaly, onOpenCre
               : 'text-base font-bold text-primary'
           }
         >
-          TalyChat
+          {title || 'TalyChat'}
         </span>
       </div>
 
@@ -75,18 +75,6 @@ export function MobileTopBar({ title, user, onDailyReward, onOpenTaly, onOpenCre
         <Button size="icon" variant="ghost" onClick={onDailyReward} aria-label="Daily reward" className="h-9 w-9">
           <Gift className="h-5 w-5" />
         </Button>
-
-        {onOpenCreateStory && (
-          <Button size="icon" variant="ghost" onClick={onOpenCreateStory} aria-label="Add story" className="h-9 w-9">
-            <Camera className="h-5 w-5" />
-          </Button>
-        )}
-
-        <Button size="icon" variant="ghost" onClick={onOpenTaly} aria-label="Ask Taly" className="h-9 w-9">
-          <Bot className="h-5 w-5" />
-        </Button>
-
-        <SoundTogglePopover />
 
         <Popover open={openNotif} onOpenChange={setOpenNotif}>
           <PopoverTrigger asChild>

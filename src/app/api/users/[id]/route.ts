@@ -31,6 +31,7 @@ export async function GET(
         lastSeen: true,
         createdAt: true,
         preferences: true,
+        behaviorScore: true,
       },
     })
 
@@ -50,6 +51,7 @@ export async function GET(
       isOnline: user.isOnline,
       lastSeen: lastSeenPublic ? user.lastSeen : null,
       createdAt: user.createdAt,
+      behaviorScore: user.behaviorScore,
     })
   } catch (e: any) {
     return jsonError(500, e.message)

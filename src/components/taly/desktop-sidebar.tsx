@@ -3,11 +3,9 @@
 import { Button } from '@/components/ui/button'
 import { PremiumAvatar } from '@/components/premium-avatar'
 import { NAV_ITEMS } from '@/components/taly/bottom-nav'
-import { SoundTogglePopover } from '@/components/taly/sound-toggle'
-import { Gift, Bot, LogOut, Settings, Camera } from 'lucide-react'
+import { Gift, LogOut, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth-store'
-import { apiFetch } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
 import type { ConversationSummary } from '@/components/taly-app'
 
@@ -17,7 +15,6 @@ interface Props {
   user: any
   onDailyReward: () => void
   onTalySupport: () => void
-  onOpenCreateStory?: () => void
   conversations: ConversationSummary[]
   onOpenChat: (c: ConversationSummary) => void
 }
@@ -28,27 +25,40 @@ export function DesktopSidebar({
   user,
   onDailyReward,
   onTalySupport,
-  onOpenCreateStory,
+  conversations,
   onOpenChat,
 }: Props) {
   const { logout } = useAuth()
   const { toast } = useToast()
   const isPremium = !!user?.isPremium
+  // Keep the prop reference so callers that still pass it don't break the
+  // contract (we no longer render an "Ask Taly AI" nav item per R1-3, but
+  // the Taly support screen remains reachable via the FloatingAIAgent +
+  // home screen hero banner).
+  void onTalySupport
+  // (conversations / onOpenChat are passed through by the parent for
+  // future nav use; we don't render a conversation list inside the
+  // sidebar so they're intentionally unused.)
+  void onOpenChat
+  void conversations
 
   return (
     <aside className="flex w-72 shrink-0 flex-col border-r bg-sidebar/50">
       <div className="flex items-center gap-2 border-b px-4 py-4">
+        {/* R8-11 — Premium users see the TalyChat logo with a golden glow
+            tint (drop-shadow 6px rgba(255,215,0,0.6)) + a subtle amber
+            ring. Non-premium users see the plain logo. */}
         <img
           src="/logo.png"
           alt="TalyChat"
           className={
             isPremium
-              ? 'h-9 w-9 rounded-lg ring-2 ring-amber-400/60'
+              ? 'h-9 w-9 rounded-lg ring-2 ring-amber-400/70'
               : 'h-9 w-9 rounded-lg'
           }
           style={
             isPremium
-              ? { filter: 'drop-shadow(0 0 4px rgba(255, 215, 0, 0.5))' }
+              ? { filter: 'drop-shadow(0 0 6px rgba(255, 215, 0, 0.6))' }
               : undefined
           }
         />
@@ -90,45 +100,12 @@ export function DesktopSidebar({
         <div className="my-2 border-t" />
 
         <button
-          onClick={onTalySupport}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
-        >
-          <Bot className="h-5 w-5" />
-          <span className="font-medium">Ask Taly</span>
-          <span className="ml-auto rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold text-primary">
-            AI
-          </span>
-        </button>
-
-        <button
           onClick={onDailyReward}
           className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
         >
           <Gift className="h-5 w-5" />
           <span className="font-medium">Daily Reward</span>
         </button>
-
-        {onOpenCreateStory && (
-          <button
-            onClick={onOpenCreateStory}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
-          >
-            <Camera className="h-5 w-5" />
-            <span className="font-medium">Add Story</span>
-            <span className="ml-auto rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-600 dark:text-emerald-400">
-              24h
-            </span>
-          </button>
-        )}
-
-        <div className="mt-1 flex items-center gap-2 px-3 py-1">
-          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            Sound
-          </span>
-          <div className="ml-auto">
-            <SoundTogglePopover />
-          </div>
-        </div>
       </nav>
 
       <div className="border-t p-3">

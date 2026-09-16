@@ -53,9 +53,24 @@ export async function POST(req: NextRequest) {
     })
   }
 
+  // R1-3 — Daily Login Reward: detect if the user is logging in after
+  // being offline for 15+ days. We capture the previous lastSeen BEFORE
+  // updating it below. If the gap is >= 15 days, we stamp lastDeactivatedAt
+  // so the daily-reward endpoint can trigger the 15-day deactivation mini
+  // loop on the next claim.
+  const prevLastSeen = user.lastSeen ? new Date(user.lastSeen) : null
+  const OFFLINE_THRESHOLD_MS = 15 * 24 * 60 * 60 * 1000 // 15 days
+  const wasOffline15d =
+    !!prevLastSeen &&
+    Date.now() - prevLastSeen.getTime() >= OFFLINE_THRESHOLD_MS
+
   await db.user.update({
     where: { id: user.id },
-    data: { isOnline: true, lastSeen: new Date() },
+    data: {
+      isOnline: true,
+      lastSeen: new Date(),
+      ...(wasOffline15d ? { lastDeactivatedAt: new Date() } : {}),
+    },
   })
   return ok({ user: serializeUser(user), token: user.id })
 }

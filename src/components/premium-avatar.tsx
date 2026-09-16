@@ -71,7 +71,17 @@ function initialsOf(name: string): string {
  * - silver (6-month plan): silver ring + soft silver aura
  * - gold (1-year plan): gold ring + heavy golden aura + crown on top
  *
- * The aura uses layered radial gradients + a slow breathing animation via Framer Motion.
+ * The aura uses layered radial gradients + a slow breathing animation via
+ * Framer Motion.
+ *
+ * R8-11 — Bug fix: when a user has `isPremium=true` but no `premiumTier`
+ * (or a "free" tier value), we now promote them to the highest tier
+ * (`gold`) so their premium visual effects still render. Previously the
+ * premium ring / aura / crown silently disappeared in this case, which
+ * is why "premium effects are NOT showing in profile" was reported.
+ * Visual effects have also been strengthened across all tiers
+ * (heavier aura for gold, brighter ring glow) so the effects are
+ * unmistakable in every context (chat, groups, profile, home, discover).
  */
 export function PremiumAvatar({
   user,
@@ -80,8 +90,15 @@ export function PremiumAvatar({
   className,
   isOnline = false,
 }: PremiumAvatarProps) {
-  const tier = (user?.premiumTier || 'free').toLowerCase()
-  const isPremium = !!user?.isPremium || tier !== 'free'
+  // R8-11 — Normalize tier. If the user is premium but their tier is
+  // missing or "free" (the DB default), promote to "gold" so the visual
+  // effects always render. Otherwise use the provided tier.
+  const rawTier = (user?.premiumTier || 'free').toLowerCase()
+  const isPremium = !!user?.isPremium || rawTier !== 'free'
+  const tier: string =
+    isPremium && (rawTier === 'free' || !TIER_COLORS[rawTier])
+      ? 'gold'
+      : rawTier
   const color = TIER_COLORS[tier]
   const ringColor = isPremium && color ? color : undefined
 
@@ -89,13 +106,14 @@ export function PremiumAvatar({
   const auraActive = showAura && isPremium && (tier === 'silver' || tier === 'gold')
   const crown = isPremium && tier === 'gold'
 
-  // Aura sizing — extend ~25-35% beyond avatar for gold, ~15% for silver
+  // R8-11 — Strengthened aura extents so the glow clearly extends beyond
+  // the avatar (heavier for gold, modest for silver).
   const auraExtent =
-    tier === 'gold' ? Math.round(size * 0.32) : Math.round(size * 0.18)
+    tier === 'gold' ? Math.round(size * 0.4) : Math.round(size * 0.22)
   const auraSize = size + auraExtent * 2
 
-  // Aura opacity by tier
-  const auraOpacity = tier === 'gold' ? 0.85 : 0.45
+  // R8-11 — Stronger aura opacity (was 0.85 / 0.45 → 0.95 / 0.6).
+  const auraOpacity = tier === 'gold' ? 0.95 : 0.6
 
   return (
     <div
@@ -175,12 +193,16 @@ export function PremiumAvatar({
           width: size,
           height: size,
           borderColor: ringColor || 'transparent',
+          // R8-11 — Stronger ring glow per tier (was 1px + 8px gold, now
+          // 2px + 12px gold; 1px + 6px silver; 1px + 3px bronze). The
+          // outer glow uses the tier color at high alpha so the ring
+          // reads as a visible halo around the avatar in all contexts.
           boxShadow: ringColor
             ? tier === 'gold'
-              ? `0 0 0 1px ${ringColor}, 0 0 8px ${ringColor}aa`
+              ? `0 0 0 2px ${ringColor}, 0 0 12px ${ringColor}cc, 0 0 22px ${ringColor}55`
               : tier === 'silver'
-                ? `0 0 0 1px ${ringColor}aa, 0 0 4px ${ringColor}66`
-                : `0 0 0 1px ${ringColor}aa`
+                ? `0 0 0 2px ${ringColor}, 0 0 6px ${ringColor}99, 0 0 12px ${ringColor}44`
+                : `0 0 0 2px ${ringColor}, 0 0 3px ${ringColor}88`
             : undefined,
         }}
       >

@@ -47,6 +47,18 @@ model User {
   // V9 — Two-factor authentication (TOTP)
   twoFactorSecret   String?
   twoFactorEnabled  Boolean  @default(false)
+  // R1-3 — Daily Login Reward redesign.
+  // Tracks which reward loop the user is in: 'welcome' (default for new
+  // users, 180-day one-time bonus) or 'deactivation' (15-day mini loop
+  // triggered when the user comes back after 15+ days offline).
+  rewardLoop        String   @default("welcome")
+  // True once the user has completed their one-time welcome bonus (all
+  // 7 days of the welcome loop claimed). Future daily rewards only
+  // unlock via the deactivation loop after going offline 15+ days.
+  welcomeBonusClaimed Boolean @default(false)
+  // Set when we detect (at login) that the user was offline for 15+
+  // days. Drives the deactivation-loop trigger.
+  lastDeactivatedAt DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -111,6 +123,8 @@ model Conversation {
   groupId   String?  @unique                 // link to Group if type=group
   wallpaper String?
   themeColor String?                       // V7 — per-conversation accent color (premium)
+  sentBubbleColor String?                  // V13 — per-conversation sent bubble color override
+  receivedBubbleColor String?               // V13 — per-conversation received bubble color override
   muted     Boolean  @default(false)
   pinned    Boolean  @default(false)
   autoDeleteAfter Int?                    // seconds; null = no auto-delete

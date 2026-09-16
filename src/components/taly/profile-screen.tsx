@@ -68,9 +68,15 @@ import {
   Trash2,
   TrendingUp,
   Zap,
+  Info,
+  Github,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { SettingsDialog } from '@/components/taly/settings-dialog'
+// R1-3 — HighlightsRow, CreateHighlightDialog, StoryViewerDialog imports
+// kept for backward-compat / future re-enablement, but no longer rendered
+// in the Profile screen. Stories + Highlights feature parked under
+// "Coming Soon".
 import { HighlightsRow, type Highlight } from '@/components/taly/highlights-row'
 import { CreateHighlightDialog } from '@/components/taly/create-highlight-dialog'
 import { StoryViewerDialog } from '@/components/taly/story-viewer-dialog'
@@ -183,11 +189,14 @@ export function ProfileScreen() {
   const [blockedOpen, setBlockedOpen] = useState(false)
   const [blockedCount, setBlockedCount] = useState<number>(0)
 
-  // V6 — Scheduled messages state
+  // V6 — Scheduled messages state (kept for backward-compat; UI
+  // section removed per R1-3 — Scheduled Messages feature parked under
+  // "Coming Soon").
   const [scheduledOpen, setScheduledOpen] = useState(false)
   const [scheduledCount, setScheduledCount] = useState<number>(0)
 
-  // V7 — Story highlights state
+  // V7 — Story highlights state (kept for backward-compat; UI row removed
+  // per R1-3 — Story Highlights feature parked under "Coming Soon").
   const [highlights, setHighlights] = useState<Highlight[]>([])
   const [highlightsLoading, setHighlightsLoading] = useState(false)
   const [createHighlightOpen, setCreateHighlightOpen] = useState(false)
@@ -511,10 +520,15 @@ export function ProfileScreen() {
       <div className="taly-card taly-card-hover animate-fade-in-up p-5" style={{ animationDelay: '0ms' }}>
         <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
           <div className="relative shrink-0">
-            {/* V5 — behavior ring (pulses subtly) around the avatar */}
+            {/* V5 — behavior ring (static emerald/amber/red) around the
+                avatar. R8-11: removed the `animate-pulse` utility because
+                it dimmed the entire PremiumAvatar subtree (including the
+                gold ring / aura / crown), making the premium effects
+                hard to see. The ring stays visible at full opacity.
+                V13 — `dark-avatar-glow` adds an emerald + cream glow
+                around the avatar in dark theme so it stays visible. */}
             <div
-              className={`relative inline-flex rounded-full ring-4 ${behaviorRingClass} animate-pulse`}
-              style={{ animationDuration: '2.4s' }}
+              className={`relative inline-flex rounded-full ring-4 ${behaviorRingClass} dark-avatar-glow`}
             >
               <PremiumAvatar
                 user={{
@@ -573,8 +587,10 @@ export function ProfileScreen() {
         </div>
       </div>
 
-      {/* V7 — Story Highlights row (own profile) */}
-      <div className="animate-fade-in-up" style={{ animationDelay: '30ms' }}>
+      {/* V7 — Story Highlights row (own profile) — REMOVED per R1-3.
+          Story Highlights feature parked under "Coming Soon" in the
+          About section at the bottom of this screen. */}
+      {/* <div className="animate-fade-in-up" style={{ animationDelay: '30ms' }}>
         <HighlightsRow
           highlights={highlights}
           loading={highlightsLoading}
@@ -589,7 +605,7 @@ export function ProfileScreen() {
             })
           }
         />
-      </div>
+      </div> */}
 
       {/* Behavior Bar — V3: section-header + behavior-bar pill with inner glow */}
       <div className="animate-fade-in-up" style={{ animationDelay: '60ms' }}>
@@ -783,16 +799,18 @@ export function ProfileScreen() {
         </button>
       </div>
 
-      {/* V6 — Scheduled Messages card. Lists pending scheduled messages and
-          lets the user cancel or reschedule them. */}
-      <div className="taly-card animate-fade-in-up p-5" style={{ animationDelay: '390ms' }}>
+      {/* V6 — Scheduled Messages card. REMOVED per R1-3 — Scheduled
+          Messages feature parked under "Coming Soon" in the About
+          section at the bottom of this screen. The ScheduledMessagesCard
+          function is kept for future re-enablement. */}
+      {/* <div className="taly-card animate-fade-in-up p-5" style={{ animationDelay: '390ms' }}>
         <ScheduledMessagesCard
           open={scheduledOpen}
           onOpenChange={setScheduledOpen}
           count={scheduledCount}
           onCountChange={setScheduledCount}
         />
-      </div>
+      </div> */}
 
       {/* V5 — Account container: red-tinted bg, holds Block List + Logout */}
       <div
@@ -826,6 +844,12 @@ export function ProfileScreen() {
         </button>
       </div>
       </section>
+
+      {/* R1-3 — About / Coming Soon section.
+          New bottom-of-profile card with a 2-tab toggle (About | Coming
+          Soon). About shows app info; Coming Soon lists the V2 features
+          that have been parked for a later release. */}
+      <AboutComingSoonSection />
 
       {/* Edit profile dialog */}
       <EditProfileDialog
@@ -2787,3 +2811,155 @@ function formatCountdownShort(ms: number): string {
   if (min > 0) return `in ${min}m ${sec % 60}s`
   return `in ${sec}s`
 }
+
+// ============================================================
+// R1-3 — About / Coming Soon section (bottom of Profile screen)
+// ============================================================
+
+const APP_VERSION_R1_3 = '1.0.0'
+const FOUNDER_R1_3 = process.env.NEXT_PUBLIC_FOUNDER || 'Omkar Panday'
+const TAGLINE_R1_3 = process.env.NEXT_PUBLIC_APP_TAGLINE || 'Chat. Connect. Mingle.'
+const GITHUB_URL_R1_3 = 'https://github.com/omkarpanday/talychat'
+
+interface ComingSoonFeature {
+  icon: string // emoji
+  name: string
+  desc: string
+}
+
+const COMING_SOON_FEATURES: ComingSoonFeature[] = [
+  { icon: '📸', name: 'Stories', desc: 'Share disappearing moments' },
+  { icon: '🔔', name: 'Push Notifications', desc: 'Never miss a message' },
+  { icon: '🎵', name: 'Sound Effects', desc: 'Audio feedback for actions' },
+  { icon: '↗️', name: 'Message Forwarding', desc: 'Share messages across chats' },
+  { icon: '⭐', name: 'Story Highlights', desc: 'Save your favorite stories' },
+  { icon: '🔒', name: 'Two-Factor Auth', desc: 'Extra account security' },
+  { icon: '🕒', name: 'Scheduled Messages', desc: 'Send messages later' },
+  { icon: '📍', name: 'Live Location Sharing', desc: 'Real-time GPS tracking' },
+  { icon: '📤', name: 'Chat Export', desc: 'Download your chat history' },
+]
+
+function AboutComingSoonSection() {
+  const [tab, setTab] = useState<'about' | 'coming'>('about')
+
+  return (
+    <section className="space-y-3 rounded-2xl bg-amber-50/30 p-3 dark:bg-amber-950/10">
+      <p className="flex items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-wider text-amber-700/80 dark:text-amber-300/70">
+        <Info className="h-3.5 w-3.5" /> About TalyChat
+      </p>
+
+      <div className="taly-card taly-card-hover animate-fade-in-up p-5">
+        {/* 2-tab toggle (About | Coming Soon) */}
+        <div className="mb-4 inline-flex rounded-full border bg-muted/40 p-1">
+          <button
+            type="button"
+            onClick={() => setTab('about')}
+            className={`min-h-[36px] rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+              tab === 'about'
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            aria-pressed={tab === 'about'}
+          >
+            About
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('coming')}
+            className={`min-h-[36px] rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+              tab === 'coming'
+                ? 'bg-amber-500 text-white shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            aria-pressed={tab === 'coming'}
+          >
+            Coming Soon
+          </button>
+        </div>
+
+        {tab === 'about' ? (
+          <div className="space-y-3">
+            {/* Logo + name + tagline */}
+            <div className="flex items-center gap-3">
+              <img
+                src="/logo.png"
+                alt="TalyChat"
+                className="h-12 w-12 rounded-lg ring-1 ring-border"
+              />
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base font-bold tracking-tight text-primary">
+                  TalyChat
+                </h3>
+                <p className="text-xs italic text-muted-foreground">
+                  {TAGLINE_R1_3}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-sm text-muted-foreground/90">
+              TalyChat is a privacy-first chat & social platform built for
+              genuine human connection. Message one-to-one, join vibrant
+              communities, and discover new people — all in one place.
+            </p>
+
+            {/* Meta rows */}
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-md border bg-muted/30 px-3 py-2">
+                <p className="text-muted-foreground/80">Founder</p>
+                <p className="mt-0.5 font-medium">{FOUNDER_R1_3}</p>
+              </div>
+              <div className="rounded-md border bg-muted/30 px-3 py-2">
+                <p className="text-muted-foreground/80">Version</p>
+                <p className="mt-0.5 font-mono font-medium">{APP_VERSION_R1_3}</p>
+              </div>
+            </div>
+
+            {/* GitHub CTA */}
+            <a
+              href={GITHUB_URL_R1_3}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-[40px] w-full items-center justify-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-accent"
+            >
+              <Github className="h-4 w-4" /> View on GitHub
+            </a>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <p className="px-1 text-xs text-muted-foreground">
+              Features we&apos;re building next. Tap any item to learn more
+              when they launch.
+            </p>
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {COMING_SOON_FEATURES.map((f) => (
+                <li
+                  key={f.name}
+                  className="flex items-start gap-3 rounded-lg border bg-card p-3"
+                >
+                  <span
+                    aria-hidden
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500/10 text-lg"
+                  >
+                    {f.icon}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <p className="text-sm font-semibold">{f.name}</p>
+                      <span className="inline-flex items-center rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                        Coming Soon
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-xs text-muted-foreground/90">
+                      {f.desc}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+

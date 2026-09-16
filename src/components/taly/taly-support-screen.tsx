@@ -5,11 +5,11 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/lib/auth-store'
 import { apiFetch, ApiError } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Bot, ArrowLeft, Send, Sparkles, Loader2 } from 'lucide-react'
+import { ArrowLeft, Send, Sparkles, Loader2 } from 'lucide-react'
 
 interface Props {
   onBack: () => void
@@ -23,10 +23,13 @@ interface ChatMessage {
   content: string
 }
 
-const FOUNDER = process.env.NEXT_PUBLIC_FOUNDER || 'Omkar Panday'
+// R8-11 — New support tagline replaces the old "Official AI Assistant —
+// by Omkar Panday" subtitle. The title "Taly Support" stays, but the bot
+// icon is replaced with the AI agent image (/ai-agent.png).
+const SUPPORT_TAGLINE = 'Your 24/7 support companion — here to help!'
 
 const INITIAL_MESSAGE =
-  "Hi! I'm Taly Support, your AI assistant. Ask me anything about TalyChat! \u{1F44B}"
+  "Hi! I'm Taly Support, your 24/7 support companion. Ask me anything about TalyChat! \u{1F44B}"
 
 const QUICK_PROMPTS = [
   'How to create a group?',
@@ -118,7 +121,8 @@ export function TalySupportScreen({ onBack }: Props) {
   return (
     <div className="flex min-h-[100dvh] items-stretch justify-center bg-background">
       <div className="flex w-full max-w-2xl flex-col border-x bg-background">
-        {/* Header */}
+        {/* Header — R8-11: Taly Support title with AI agent image (instead
+            of the old Bot icon) + new 24/7 support companion tagline. */}
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
           <Button
             variant="ghost"
@@ -129,16 +133,15 @@ export function TalySupportScreen({ onBack }: Props) {
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <Avatar className="h-9 w-9 shrink-0 bg-primary/10">
-            <AvatarFallback className="bg-primary/10 text-primary">
-              <Bot className="h-5 w-5" />
+          <Avatar className="h-9 w-9 shrink-0 overflow-hidden ring-2 ring-emerald-500/30">
+            <AvatarImage src="/ai-agent.png" alt="Taly AI" />
+            <AvatarFallback className="bg-emerald-500/10 text-emerald-600">
+              <Sparkles className="h-4 w-4" />
             </AvatarFallback>
           </Avatar>
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-base font-semibold leading-tight">Taly Support</h1>
-            <p className="truncate text-xs text-muted-foreground">
-              Official AI Assistant — by {FOUNDER}
-            </p>
+            <p className="truncate text-xs text-muted-foreground">{SUPPORT_TAGLINE}</p>
           </div>
           <Sparkles className="h-5 w-5 shrink-0 text-primary" aria-hidden />
         </header>
@@ -238,9 +241,10 @@ function MessageBubble({
       }`}
     >
       {!isUser && (
-        <Avatar className="h-7 w-7 shrink-0 bg-primary/10">
-          <AvatarFallback className="bg-primary/10 text-primary">
-            <Bot className="h-4 w-4" />
+        <Avatar className="h-7 w-7 shrink-0 overflow-hidden ring-2 ring-emerald-500/30">
+          <AvatarImage src="/ai-agent.png" alt="Taly AI" />
+          <AvatarFallback className="bg-emerald-500/10 text-emerald-600">
+            <Sparkles className="h-3.5 w-3.5" />
           </AvatarFallback>
         </Avatar>
       )}
@@ -276,9 +280,10 @@ function TypingIndicator() {
       exit={{ opacity: 0 }}
       className="flex items-end gap-2"
     >
-      <Avatar className="h-7 w-7 shrink-0 bg-primary/10">
-        <AvatarFallback className="bg-primary/10 text-primary">
-          <Bot className="h-4 w-4" />
+      <Avatar className="h-7 w-7 shrink-0 overflow-hidden ring-2 ring-emerald-500/30">
+        <AvatarImage src="/ai-agent.png" alt="Taly AI" />
+        <AvatarFallback className="bg-emerald-500/10 text-emerald-600">
+          <Sparkles className="h-3.5 w-3.5" />
         </AvatarFallback>
       </Avatar>
       <div className="flex gap-1 rounded-2xl rounded-bl-sm border bg-card px-4 py-3 shadow-sm">

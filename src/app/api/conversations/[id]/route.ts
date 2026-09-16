@@ -86,6 +86,8 @@ export async function GET(
         groupId: conv.groupId,
         wallpaper: conv.wallpaper,
         themeColor: conv.themeColor,
+        sentBubbleColor: conv.sentBubbleColor,
+        receivedBubbleColor: conv.receivedBubbleColor,
         muted: conv.muted,
         pinned: conv.pinned,
         autoDeleteAfter: conv.autoDeleteAfter,
@@ -153,6 +155,30 @@ export async function PATCH(
           return jsonError(400, 'themeColor must be a 6-digit hex string like #10b981')
         }
         data.themeColor = hex.toLowerCase()
+      }
+    }
+    if ('sentBubbleColor' in body) {
+      const raw = body.sentBubbleColor
+      if (raw === null || raw === undefined || raw === '') {
+        data.sentBubbleColor = null
+      } else {
+        const hex = String(raw).trim()
+        if (!/^#[0-9a-fA-F]{6}$/.test(hex)) {
+          return jsonError(400, 'sentBubbleColor must be a 6-digit hex string like #10b981')
+        }
+        data.sentBubbleColor = hex.toLowerCase()
+      }
+    }
+    if ('receivedBubbleColor' in body) {
+      const raw = body.receivedBubbleColor
+      if (raw === null || raw === undefined || raw === '') {
+        data.receivedBubbleColor = null
+      } else {
+        const hex = String(raw).trim()
+        if (!/^#[0-9a-fA-F]{6}$/.test(hex)) {
+          return jsonError(400, 'receivedBubbleColor must be a 6-digit hex string like #10b981')
+        }
+        data.receivedBubbleColor = hex.toLowerCase()
       }
     }
     if ('autoDeleteAfter' in body) {

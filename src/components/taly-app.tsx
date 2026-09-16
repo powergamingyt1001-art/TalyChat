@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/lib/auth-store'
 import { apiFetch } from '@/lib/api'
 import { useSocket } from '@/lib/socket'
@@ -15,11 +15,8 @@ import { BottomNav, NAV_ITEMS } from '@/components/taly/bottom-nav'
 import { MobileTopBar } from '@/components/taly/mobile-top-bar'
 import { DesktopSidebar } from '@/components/taly/desktop-sidebar'
 import { DailyRewardDialog } from '@/components/taly/daily-reward-dialog'
-import { CreateStoryDialog } from '@/components/taly/create-story-dialog'
 import { useMediaQuery } from '@/hooks/use-mobile'
 import { useSound } from '@/hooks/use-sound'
-import { usePushNotifications } from '@/hooks/use-push-notifications'
-import { showLocalNotification } from '@/lib/push-notifications'
 import { cn } from '@/lib/utils'
 import { CustomizerProvider } from '@/components/taly/customizer-context'
 import { FloatingAIAgent } from '@/components/floating-ai-agent'
@@ -48,11 +45,10 @@ export function TalyApp() {
   const { user } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 1024px)')
   const { play: soundManager } = useSound()
-  // V8 — Push notifications hook (auto-subscribes after login if granted).
-  // We don't read state from it here; we just want the auto-subscribe side
-  // effect. `showLocalNotification` is called directly from the socket
-  // handler below.
-  usePushNotifications()
+  // V8 — Push notifications hook (kept available but NOT auto-subscribed
+  // by the client per R1-3 (V2 cleanup). The hook is preserved for future
+  // re-enablement; we intentionally don't invoke it here.
+  // usePushNotifications()
   const [tab, setTab] = useState<TalyTab>('home')
   const [openChat, setOpenChat] = useState<null | {
     conversationId: string
@@ -62,20 +58,8 @@ export function TalyApp() {
   }>(null)
   const [talyOpen, setTalyOpen] = useState(false)
   const [dailyOpen, setDailyOpen] = useState(false)
-  const [createStoryOpen, setCreateStoryOpen] = useState(false)
-  const [storiesSignal, setStoriesSignal] = useState(0)
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [preferences, setPreferences] = useState<any>(null)
-
-  // V8 — Keep a ref of the currently open chat so the socket `message:new`
-  // handler (which is captured once per login) always sees the latest
-  // active conversation. This lets us decide whether to fire a desktop
-  // notification or skip it (because the user is already viewing that
-  // chat in the foreground).
-  const openChatRef = useRef(openChat)
-  useEffect(() => {
-    openChatRef.current = openChat
-  }, [openChat])
 
   // Load preferences
   useEffect(() => {
@@ -151,29 +135,9 @@ export function TalyApp() {
       const senderId = payload?.message?.senderId
       if (senderId && senderId !== currentUserId) {
         soundManager.playMessage()
-        // V8 — Show a local desktop notification only if the document is
-        // hidden (tab in background) OR the user is on a different
-        // conversation. We never autoplay notifications on page load.
-        const sender =
-          payload?.message?.sender?.name ||
-          payload?.message?.sender?.username ||
-          'New message'
-        const preview = buildIncomingPreview(payload?.message)
-        const activeConvId = openChatRef.current?.conversationId
-        const isOnThisChat = activeConvId === conv && !document.hidden
-        if (!isOnThisChat) {
-          showLocalNotification(sender, preview, () => {
-            setOpenChat({
-              conversationId: conv,
-              name:
-                payload?.message?.conversation?.name ||
-                payload?.conversationName ||
-                sender,
-              avatar: undefined,
-              isGroup: payload?.message?.conversationType === 'group',
-            })
-          })
-        }
+        // R1-3 — desktop push notifications removed from the UI; we no
+        // longer fire showLocalNotification() here. The backend push
+        // subscription code is kept intact for future re-enablement.
       }
       setConversations((prev) => {
         const existing = prev.find((c) => c.id === conv)
@@ -186,11 +150,6 @@ export function TalyApp() {
           ...prev.filter((c) => c.id !== conv),
         ]
       })
-    },
-    'story:new': () => {
-      // A new story was posted (by us or someone visible). Bump the signal
-      // so HomeScreen re-fetches its stories list.
-      setStoriesSignal((n) => n + 1)
     },
   })
 
@@ -244,9 +203,15 @@ export function TalyApp() {
               user={user}
               onDailyReward={() => setDailyOpen(true)}
               onTalySupport={() => setTalyOpen(true)}
-              onOpenCreateStory={() => setCreateStoryOpen(true)}
               conversations={conversations}
-              onOpenChat={(c) => setOpenChat(c)}
+              onOpenChat={(c) =>
+                setOpenChat({
+                  conversationId: c.id,
+                  name: c.name,
+                  avatar: c.avatar || undefined,
+                  isGroup: c.type === 'group',
+                })
+              }
             />
           )}
 
@@ -256,8 +221,6 @@ export function TalyApp() {
                 title={tab === 'home' ? undefined : NAV_ITEMS.find((n) => n.id === tab)?.label}
                 user={user}
                 onDailyReward={() => setDailyOpen(true)}
-                onOpenTaly={() => setTalyOpen(true)}
-                onOpenCreateStory={() => setCreateStoryOpen(true)}
               />
             )}
 
@@ -275,8 +238,6 @@ export function TalyApp() {
                   }
                   onNavigate={setTab}
                   onOpenTaly={() => setTalyOpen(true)}
-                  onOpenCreateStory={() => setCreateStoryOpen(true)}
-                  storiesSignal={storiesSignal}
                 />
               )}
               {tab === 'chats' && (
@@ -291,6 +252,11 @@ export function TalyApp() {
                     })
                   }
                   onRefresh={refreshConversations}
+                  onDelete={(deletedId) => {
+                    setConversations((prev) =>
+                      prev.filter((c) => c.id !== deletedId),
+                    )
+                  }}
                 />
               )}
               {tab === 'groups' && (
@@ -305,6 +271,7 @@ export function TalyApp() {
                     })
                   }
                   onRefresh={refreshConversations}
+                  onOpenDiscover={() => setTab('discover')}
                 />
               )}
               {tab === 'discover' && (
@@ -317,7 +284,6 @@ export function TalyApp() {
                       isGroup: true,
                     })
                   }
-                  onCreateGroup={() => setTab('groups')}
                 />
               )}
               {tab === 'profile' && <ProfileScreen />}
@@ -334,33 +300,6 @@ export function TalyApp() {
       <FloatingAIAgent onClick={() => setTalyOpen(true)} hidden={!!openChat} />
 
       <DailyRewardDialog open={dailyOpen} onClose={() => setDailyOpen(false)} />
-
-      <CreateStoryDialog
-        open={createStoryOpen}
-        onClose={() => setCreateStoryOpen(false)}
-        onCreated={() => setStoriesSignal((n) => n + 1)}
-      />
     </CustomizerProvider>
   )
-}
-
-// V8 — Build a short preview string for an incoming message to use in
-// the desktop notification body. Mirrors the backend buildPreview but
-// for client-side socket events.
-function buildIncomingPreview(message: any): string {
-  if (!message) return 'New message'
-  switch (message.type) {
-    case 'image':
-      return '📷 Photo'
-    case 'voice':
-      return '🎤 Voice message'
-    case 'sticker':
-      return '🎨 Sticker'
-    case 'location':
-      return '📍 Location'
-    case 'system':
-      return message.content || 'System message'
-    default:
-      return message.content || 'New message'
-  }
 }

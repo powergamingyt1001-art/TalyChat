@@ -1,0 +1,1031 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState } from 'react'
+     4→import { apiFetch } from '@/lib/api'
+     5→import { useToast } from '@/hooks/use-toast'
+     6→import { useAuth } from '@/lib/auth-store'
+     7→import { usePushNotifications } from '@/hooks/use-push-notifications'
+     8→import {
+     9→  Sheet,
+    10→  SheetContent,
+    11→  SheetDescription,
+    12→  SheetHeader,
+    13→  SheetTitle,
+    14→} from '@/components/ui/sheet'
+    15→import { Button } from '@/components/ui/button'
+    16→import { Input } from '@/components/ui/input'
+    17→import { Label } from '@/components/ui/label'
+    18→import { Switch } from '@/components/ui/switch'
+    19→import { ScrollArea } from '@/components/ui/scroll-area'
+    20→import { Separator } from '@/components/ui/separator'
+    21→import {
+    22→  Select,
+    23→  SelectContent,
+    24→  SelectItem,
+    25→  SelectTrigger,
+    26→  SelectValue,
+    27→} from '@/components/ui/select'
+    28→import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+    29→import {
+    30→  AlertDialog,
+    31→  AlertDialogAction,
+    32→  AlertDialogCancel,
+    33→  AlertDialogContent,
+    34→  AlertDialogDescription,
+    35→  AlertDialogFooter,
+    36→  AlertDialogHeader,
+    37→  AlertDialogTitle,
+    38→  AlertDialogTrigger,
+    39→} from '@/components/ui/alert-dialog'
+    40→import {
+    41→  Dialog,
+    42→  DialogContent,
+    43→  DialogDescription,
+    44→  DialogFooter,
+    45→  DialogHeader,
+    46→  DialogTitle,
+    47→} from '@/components/ui/dialog'
+    48→import {
+    49→  InputOTP,
+    50→  InputOTPGroup,
+    51→  InputOTPSlot,
+    52→} from '@/components/ui/input-otp'
+    53→import { Badge } from '@/components/ui/badge'
+    54→import {
+    55→  Loader2,
+    56→  User,
+    57→  Globe,
+    58→  Layout,
+    59→  Shield,
+    60→  Bell,
+    61→  Info,
+    62→  Pencil,
+    63→  KeyRound,
+    64→  Trash2,
+    65→  Eye,
+    66→  Wifi,
+    67→  CheckCheck,
+    68→  MessageSquare,
+    69→  Users,
+    70→  Save,
+    71→  Github,
+    72→  AlertTriangle,
+    73→  QrCode,
+    74→  Lock,
+    75→} from 'lucide-react'
+    76→
+    77→const APP_VERSION = '1.0.0'
+    78→const FOUNDER = process.env.NEXT_PUBLIC_FOUNDER || 'Omkar Panday'
+    79→const TAGLINE = process.env.NEXT_PUBLIC_APP_TAGLINE || 'Chat. Connect. Mingle.'
+    80→const GITHUB_URL = 'https://github.com/omkarpanday/talychat'
+    81→
+    82→const LANGUAGES = [
+    83→  { value: 'en', label: 'English' },
+    84→  { value: 'hi', label: 'Hindi' },
+    85→  { value: 'zh', label: 'Chinese' },
+    86→  { value: 'es', label: 'Español' },
+    87→  { value: 'ar', label: 'العربية' },
+    88→  { value: 'other', label: 'Other' },
+    89→]
+    90→
+    91→interface Props {
+    92→  open: boolean
+    93→  onClose: () => void
+    94→}
+    95→
+    96→export function SettingsDialog({ open, onClose }: Props) {
+    97→  const { user } = useAuth()
+    98→  const { toast } = useToast()
+    99→  const [prefs, setPrefs] = useState<any>(null)
+   100→  const [loading, setLoading] = useState(true)
+   101→  const [savingKey, setSavingKey] = useState<string | null>(null)
+   102→
+   103→  const loadPrefs = async () => {
+   104→    setLoading(true)
+   105→    try {
+   106→      const res: any = await apiFetch('/api/preferences')
+   107→      setPrefs(res || {})
+   108→    } catch (e: any) {
+   109→      toast({ title: e.message, variant: 'destructive' })
+   110→    } finally {
+   111→      setLoading(false)
+   112→    }
+   113→  }
+   114→
+   115→  useEffect(() => {
+   116→    if (open) loadPrefs()
+   117→     
+   118→  }, [open])
+   119→
+   120→  const save = async (patch: Record<string, any>) => {
+   121→    setSavingKey(Object.keys(patch)[0] || null)
+   122→    // Optimistic local update
+   123→    setPrefs((p: any) => ({ ...p, ...patch }))
+   124→    try {
+   125→      await apiFetch('/api/preferences', {
+   126→        method: 'PUT',
+   127→        body: JSON.stringify(patch),
+   128→      })
+   129→    } catch (e: any) {
+   130→      toast({ title: e.message, variant: 'destructive' })
+   131→      // revert
+   132→      setPrefs((p: any) => ({ ...p }))
+   133→      void loadPrefs()
+   134→    } finally {
+   135→      setSavingKey(null)
+   136→    }
+   137→  }
+   138→
+   139→  return (
+   140→    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
+   141→      <SheetContent
+   142→        side="right"
+   143→        className="w-full flex-col gap-0 p-0 sm:max-w-md md:max-w-lg"
+   144→      >
+   145→        <SheetHeader className="border-b p-4">
+   146→          <SheetTitle className="flex items-center gap-2 text-lg">
+   147→            <Shield className="h-5 w-5 text-primary" /> Settings
+   148→          </SheetTitle>
+   149→          <SheetDescription>Manage your TalyChat account and preferences</SheetDescription>
+   150→        </SheetHeader>
+   151→
+   152→        {loading || !prefs ? (
+   153→          <div className="flex flex-1 items-center justify-center p-6">
+   154→            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+   155→          </div>
+   156→        ) : (
+   157→          <ScrollArea className="scroll-pan-y flex-1">
+   158→            <div className="space-y-6 p-4">
+   159→              {/* Account */}
+   160→              <SettingsSection icon={<User className="h-4 w-4 text-primary" />} title="Account">
+   161→                <div className="space-y-3">
+   162→                  <AccountRow label="Display name" value={user?.name || '—'} />
+   163→                  <AccountRow label="Username" value={`@${user?.username || '—'}`} />
+   164→                  <AccountRow label="Email" value={user?.email || '—'} />
+   165→                  <Separator />
+   166→                  <div className="flex flex-wrap gap-2">
+   167→                    <Button
+   168→                      variant="outline"
+   169→                      size="sm"
+   170→                      onClick={() => {
+   171→                        onClose()
+   172→                      }}
+   173→                      className="min-h-[40px] flex-1"
+   174→                    >
+   175→                      <Pencil className="mr-1 h-4 w-4" /> Edit profile
+   176→                    </Button>
+   177→                  </div>
+   178→                  <PasswordChanger />
+   179→                  <TwoFactorSection />
+   180→                  <DeleteAccount />
+   181→                </div>
+   182→              </SettingsSection>
+   183→
+   184→              {/* Language */}
+   185→              <SettingsSection icon={<Globe className="h-4 w-4 text-primary" />} title="Language">
+   186→                <div className="flex items-center justify-between gap-3">
+   187→                  <Label htmlFor="lang-select" className="text-sm">
+   188→                    App language
+   189→                  </Label>
+   190→                  <Select
+   191→                    value={prefs.language || 'en'}
+   192→                    onValueChange={(v) => save({ language: v })}
+   193→                  >
+   194→                    <SelectTrigger id="lang-select" className="min-h-[40px] w-44">
+   195→                      <SelectValue />
+   196→                    </SelectTrigger>
+   197→                    <SelectContent>
+   198→                      {LANGUAGES.map((l) => (
+   199→                        <SelectItem key={l.value} value={l.value}>
+   200→                          {l.label}
+   201→                        </SelectItem>
+   202→                      ))}
+   203→                    </SelectContent>
+   204→                  </Select>
+   205→                </div>
+   206→                {savingKey === 'language' && (
+   207→                  <p className="mt-1 text-right text-xs text-muted-foreground">Saving…</p>
+   208→                )}
+   209→              </SettingsSection>
+   210→
+   211→              {/* Layout Mode */}
+   212→              <SettingsSection icon={<Layout className="h-4 w-4 text-primary" />} title="Layout Mode">
+   213→                <RadioGroup
+   214→                  value={prefs.layoutMode || 'auto'}
+   215→                  onValueChange={(v) => save({ layoutMode: v })}
+   216→                  className="grid grid-cols-3 gap-2"
+   217→                >
+   218→                  {[
+   219→                    { value: 'auto', label: 'Auto' },
+   220→                    { value: 'mobile', label: 'Mobile' },
+   221→                    { value: 'desktop', label: 'Desktop' },
+   222→                  ].map((m) => (
+   223→                    <Label
+   224→                      key={m.value}
+   225→                      htmlFor={`lm-${m.value}`}
+   226→                      className="flex min-h-[44px] cursor-pointer flex-col items-center justify-center gap-1 rounded-md border p-2 text-center text-sm hover:bg-accent has-[:checked]:border-primary has-[:checked]:bg-primary/5"
+   227→                    >
+   228→                      <RadioGroupItem id={`lm-${m.value}`} value={m.value} className="sr-only" />
+   229→                      <span className="font-medium">{m.label}</span>
+   230→                    </Label>
+   231→                  ))}
+   232→                </RadioGroup>
+   233→                {savingKey === 'layoutMode' && (
+   234→                  <p className="mt-1 text-right text-xs text-muted-foreground">Saving…</p>
+   235→                )}
+   236→              </SettingsSection>
+   237→
+   238→              {/* Privacy */}
+   239→              <SettingsSection icon={<Shield className="h-4 w-4 text-primary" />} title="Privacy">
+   240→                <div className="space-y-1">
+   241→                  <SwitchRow
+   242→                    icon={<Eye className="h-4 w-4" />}
+   243→                    label="Show last seen publicly"
+   244→                    desc="Others can see when you were last active"
+   245→                    checked={!!prefs.lastSeenPublic}
+   246→                    saving={savingKey === 'lastSeenPublic'}
+   247→                    onToggle={(v) => save({ lastSeenPublic: v })}
+   248→                  />
+   249→                  <SwitchRow
+   250→                    icon={<Wifi className="h-4 w-4" />}
+   251→                    label="Show online status"
+   252→                    desc="Others can see when you're online"
+   253→                    checked={!!prefs.onlinePublic}
+   254→                    saving={savingKey === 'onlinePublic'}
+   255→                    onToggle={(v) => save({ onlinePublic: v })}
+   256→                  />
+   257→                  <SwitchRow
+   258→                    icon={<CheckCheck className="h-4 w-4" />}
+   259→                    label="Read receipts"
+   260→                    desc="Send read receipts to others (you also won't see theirs if off)"
+   261→                    checked={!!prefs.readReceipts}
+   262→                    saving={savingKey === 'readReceipts'}
+   263→                    onToggle={(v) => save({ readReceipts: v })}
+   264→                  />
+   265→                </div>
+   266→              </SettingsSection>
+   267→
+   268→              {/* Notifications */}
+   269→              <SettingsSection icon={<Bell className="h-4 w-4 text-primary" />} title="Notifications">
+   270→                <div className="space-y-1">
+   271→                  {/* V8 — Push notifications toggle (browser Notification API + Push API) */}
+   272→                  <PushNotificationsRow />
+   273→                  <SwitchRow
+   274→                    icon={<MessageSquare className="h-4 w-4" />}
+   275→                    label="Direct messages"
+   276→                    desc="In-app notifications for new 1:1 messages"
+   277→                    checked={prefs.notifMessages !== false}
+   278→                    saving={savingKey === 'notifMessages'}
+   279→                    onToggle={(v) => save({ notifMessages: v })}
+   280→                  />
+   281→                  <SwitchRow
+   282→                    icon={<Users className="h-4 w-4" />}
+   283→                    label="Group messages"
+   284→                    desc="In-app notifications for new group messages"
+   285→                    checked={prefs.notifGroups !== false}
+   286→                    saving={savingKey === 'notifGroups'}
+   287→                    onToggle={(v) => save({ notifGroups: v })}
+   288→                  />
+   289→                </div>
+   290→              </SettingsSection>
+   291→
+   292→              {/* About */}
+   293→              <SettingsSection icon={<Info className="h-4 w-4 text-primary" />} title="About TalyChat">
+   294→                <div className="space-y-1 text-sm">
+   295→                  <div className="flex items-center justify-between">
+   296→                    <span className="text-muted-foreground">Version</span>
+   297→                    <span className="font-mono">{APP_VERSION}</span>
+   298→                  </div>
+   299→                  <div className="flex items-center justify-between">
+   300→                    <span className="text-muted-foreground">Founder</span>
+   301→                    <span className="font-medium">{FOUNDER}</span>
+   302→                  </div>
+   303→                  <div className="flex items-center justify-between">
+   304→                    <span className="text-muted-foreground">Tagline</span>
+   305→                    <span className="italic">{TAGLINE}</span>
+   306→                  </div>
+   307→                  <Separator className="my-2" />
+   308→                  <a
+   309→                    href={GITHUB_URL}
+   310→                    target="_blank"
+   311→                    rel="noreferrer"
+   312→                    className="inline-flex min-h-[40px] items-center gap-2 rounded-md border px-3 text-sm hover:bg-accent"
+   313→                  >
+   314→                    <Github className="h-4 w-4" /> View on GitHub
+   315→                  </a>
+   316→                </div>
+   317→              </SettingsSection>
+   318→            </div>
+   319→          </ScrollArea>
+   320→        )}
+   321→      </SheetContent>
+   322→    </Sheet>
+   323→  )
+   324→}
+   325→
+   326→// ============================================================
+   327→// Helpers
+   328→// ============================================================
+   329→
+   330→function SettingsSection({
+   331→  icon,
+   332→  title,
+   333→  children,
+   334→}: {
+   335→  icon: React.ReactNode
+   336→  title: string
+   337→  children: React.ReactNode
+   338→}) {
+   339→  return (
+   340→    <section className="rounded-xl border bg-card p-4">
+   341→      <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+   342→        {icon} {title}
+   343→      </h3>
+   344→      {children}
+   345→    </section>
+   346→  )
+   347→}
+   348→
+   349→function AccountRow({ label, value }: { label: string; value: string }) {
+   350→  return (
+   351→    <div className="flex items-center justify-between gap-3 text-sm">
+   352→      <span className="text-muted-foreground">{label}</span>
+   353→      <span className="truncate font-medium">{value}</span>
+   354→    </div>
+   355→  )
+   356→}
+   357→
+   358→function SwitchRow({
+   359→  icon,
+   360→  label,
+   361→  desc,
+   362→  checked,
+   363→  saving,
+   364→  onToggle,
+   365→}: {
+   366→  icon: React.ReactNode
+   367→  label: string
+   368→  desc?: string
+   369→  checked: boolean
+   370→  saving?: boolean
+   371→  onToggle: (v: boolean) => void
+   372→}) {
+   373→  return (
+   374→    <div className="flex min-h-[44px] items-center gap-3 py-2">
+   375→      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+   376→        {icon}
+   377→      </div>
+   378→      <div className="min-w-0 flex-1">
+   379→        <p className="text-sm font-medium">{label}</p>
+   380→        {desc && <p className="text-xs text-muted-foreground">{desc}</p>}
+   381→      </div>
+   382→      {saving ? (
+   383→        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+   384→      ) : (
+   385→        <Switch checked={checked} onCheckedChange={onToggle} aria-label={label} />
+   386→      )}
+   387→    </div>
+   388→  )
+   389→}
+   390→
+   391→function PasswordChanger() {
+   392→  const { toast } = useToast()
+   393→  const [open, setOpen] = useState(false)
+   394→  const [cur, setCur] = useState('')
+   395→  const [next, setNext] = useState('')
+   396→  const [conf, setConf] = useState('')
+   397→  const [saving, setSaving] = useState(false)
+   398→
+   399→  const submit = async () => {
+   400→    if (!cur || !next || !conf) {
+   401→      toast({ title: 'All fields are required', variant: 'destructive' })
+   402→      return
+   403→    }
+   404→    if (next !== conf) {
+   405→      toast({ title: 'New passwords do not match', variant: 'destructive' })
+   406→      return
+   407→    }
+   408→    if (next.length < 6) {
+   409→      toast({ title: 'Password must be at least 6 characters', variant: 'destructive' })
+   410→      return
+   411→    }
+   412→    setSaving(true)
+   413→    try {
+   414→      await apiFetch('/api/users/me/password', {
+   415→        method: 'POST',
+   416→        body: JSON.stringify({ currentPassword: cur, newPassword: next }),
+   417→      })
+   418→      toast({ title: 'Password updated' })
+   419→      setOpen(false)
+   420→      setCur('')
+   421→      setNext('')
+   422→      setConf('')
+   423→    } catch (e: any) {
+   424→      toast({ title: e.message, variant: 'destructive' })
+   425→    } finally {
+   426→      setSaving(false)
+   427→    }
+   428→  }
+   429→
+   430→  if (!open) {
+   431→    return (
+   432→      <Button
+   433→        variant="outline"
+   434→        size="sm"
+   435→        onClick={() => setOpen(true)}
+   436→        className="min-h-[40px] w-full justify-start"
+   437→      >
+   438→        <KeyRound className="mr-2 h-4 w-4" /> Change password
+   439→      </Button>
+   440→    )
+   441→  }
+   442→  return (
+   443→    <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+   444→      <div className="flex items-center justify-between">
+   445→        <p className="text-sm font-medium">Change password</p>
+   446→        <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+   447→          Cancel
+   448→        </Button>
+   449→      </div>
+   450→      <Input
+   451→        type="password"
+   452→        placeholder="Current password"
+   453→        value={cur}
+   454→        onChange={(e) => setCur(e.target.value)}
+   455→        className="min-h-[40px]"
+   456→      />
+   457→      <Input
+   458→        type="password"
+   459→        placeholder="New password"
+   460→        value={next}
+   461→        onChange={(e) => setNext(e.target.value)}
+   462→        className="min-h-[40px]"
+   463→      />
+   464→      <Input
+   465→        type="password"
+   466→        placeholder="Confirm new password"
+   467→        value={conf}
+   468→        onChange={(e) => setConf(e.target.value)}
+   469→        className="min-h-[40px]"
+   470→      />
+   471→      <Button onClick={submit} disabled={saving} className="btn-brand min-h-[40px] w-full">
+   472→        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+   473→        Update password
+   474→      </Button>
+   475→    </div>
+   476→  )
+   477→}
+   478→
+   479→function DeleteAccount() {
+   480→  const { toast } = useToast()
+   481→  const { logout } = useAuth()
+   482→  const [open, setOpen] = useState(false)
+   483→  const [password, setPassword] = useState('')
+   484→  const [confirmText, setConfirmText] = useState('')
+   485→  const [saving, setSaving] = useState(false)
+   486→
+   487→  const canSubmit =
+   488→    password.length > 0 && confirmText === 'DELETE' && !saving
+   489→
+   490→  const handleDelete = async () => {
+   491→    if (!password) {
+   492→      toast({ title: 'Password is required', variant: 'destructive' })
+   493→      return
+   494→    }
+   495→    if (confirmText !== 'DELETE') {
+   496→      toast({ title: 'Please type DELETE to confirm', variant: 'destructive' })
+   497→      return
+   498→    }
+   499→    setSaving(true)
+   500→    try {
+   501→      await apiFetch('/api/account/delete', {
+   502→        method: 'POST',
+   503→        body: JSON.stringify({ password, confirmText }),
+   504→      })
+   505→      toast({ title: 'Account deleted', description: 'You will be logged out.' })
+   506→      setOpen(false)
+   507→      // Wipe auth state + redirect to auth screen
+   508→      logout()
+   509→      // Hard reload to clear any cached UI state.
+   510→      setTimeout(() => {
+   511→        window.location.href = window.location.origin
+   512→      }, 300)
+   513→    } catch (e: any) {
+   514→      toast({ title: e.message || 'Failed to delete account', variant: 'destructive' })
+   515→    } finally {
+   516→      setSaving(false)
+   517→    }
+   518→  }
+   519→
+   520→  const reset = () => {
+   521→    setPassword('')
+   522→    setConfirmText('')
+   523→    setSaving(false)
+   524→  }
+   525→
+   526→  return (
+   527→    <AlertDialog
+   528→      open={open}
+   529→      onOpenChange={(o) => {
+   530→        setOpen(o)
+   531→        if (!o) reset()
+   532→      }}
+   533→    >
+   534→      <AlertDialogTrigger asChild>
+   535→        <Button
+   536→          variant="ghost"
+   537→          size="sm"
+   538→          className="min-h-[44px] w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive"
+   539→        >
+   540→          <Trash2 className="mr-2 h-4 w-4" /> Delete account
+   541→        </Button>
+   542→      </AlertDialogTrigger>
+   543→      <AlertDialogContent>
+   544→        <AlertDialogHeader>
+   545→          <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+   546→            <AlertTriangle className="h-5 w-5" /> Delete your account?
+   547→          </AlertDialogTitle>
+   548→          <AlertDialogDescription>
+   549→            This will <span className="font-semibold text-destructive">permanently delete your account</span>.
+   550→            Your messages will be soft-deleted, your name anonymized to &quot;Deleted User&quot;, and
+   551→            you will be removed from all groups. This action <span className="font-semibold">cannot be undone</span>.
+   552→          </AlertDialogDescription>
+   553→        </AlertDialogHeader>
+   554→
+   555→        <div className="space-y-3 py-2">
+   556→          <div className="space-y-1.5">
+   557→            <Label htmlFor="del-password">Enter your password</Label>
+   558→            <Input
+   559→              id="del-password"
+   560→              type="password"
+   561→              placeholder="••••••••"
+   562→              value={password}
+   563→              onChange={(e) => setPassword(e.target.value)}
+   564→              className="min-h-[44px]"
+   565→              autoComplete="current-password"
+   566→            />
+   567→          </div>
+   568→          <div className="space-y-1.5">
+   569→            <Label htmlFor="del-confirm">
+   570→              Type <span className="font-mono font-semibold text-destructive">DELETE</span> to confirm
+   571→            </Label>
+   572→            <Input
+   573→              id="del-confirm"
+   574→              placeholder="DELETE"
+   575→              value={confirmText}
+   576→              onChange={(e) => setConfirmText(e.target.value)}
+   577→              className="min-h-[44px]"
+   578→              autoComplete="off"
+   579→            />
+   580→            {confirmText && confirmText !== 'DELETE' && (
+   581→              <p className="text-xs text-destructive">
+   582→                You must type exactly &quot;DELETE&quot;
+   583→              </p>
+   584→            )}
+   585→          </div>
+   586→        </div>
+   587→
+   588→        <AlertDialogFooter>
+   589→          <AlertDialogCancel disabled={saving} className="min-h-[44px]">
+   590→            Cancel
+   591→          </AlertDialogCancel>
+   592→          <AlertDialogAction
+   593→            onClick={(e) => {
+   594→              e.preventDefault() // keep dialog open until handler closes it
+   595→              handleDelete()
+   596→            }}
+   597→            disabled={!canSubmit}
+   598→            className="min-h-[44px] bg-destructive text-white hover:bg-destructive/90 disabled:opacity-40"
+   599→          >
+   600→            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+   601→            Delete account permanently
+   602→          </AlertDialogAction>
+   603→        </AlertDialogFooter>
+   604→      </AlertDialogContent>
+   605→    </AlertDialog>
+   606→  )
+   607→}
+   608→
+   609→// ============================================================
+   610→// V8 — Push notifications toggle (browser Notification API + Push API)
+   611→// ============================================================
+   612→
+   613→function PushNotificationsRow() {
+   614→  const { toast } = useToast()
+   615→  const {
+   616→    supported,
+   617→    pushSupported,
+   618→    permission,
+   619→    status,
+   620→    subscribe,
+   621→    unsubscribe,
+   622→  } = usePushNotifications()
+   623→
+   624→  // "Enabled" means we've actually created a subscription. Falls back to
+   625→  // "permission granted" for browsers that don't support the Push API
+   626→  // (e.g. iOS Safari) — those still get local notifications.
+   627→  const isChecked =
+   628→    !supported
+   629→      ? false
+   630→      : status === 'subscribed' ||
+   631→        (permission === 'granted' && !pushSupported)
+   632→
+   633→  const [busy, setBusy] = useState(false)
+   634→
+   635→  let statusLabel = 'Disabled'
+   636→  if (!supported) statusLabel = 'Not supported'
+   637→  else if (permission === 'denied') statusLabel = 'Permission denied'
+   638→  else if (isChecked) statusLabel = 'Enabled'
+   639→  else statusLabel = 'Disabled'
+   640→
+   641→  const handleToggle = async (v: boolean) => {
+   642→    setBusy(true)
+   643→    try {
+   644→      if (v) {
+   645→        if (!supported) {
+   646→          toast({
+   647→            title: 'Notifications not supported',
+   648→            description: 'This browser does not support desktop notifications.',
+   649→            variant: 'destructive',
+   650→          })
+   651→          return
+   652→        }
+   653→        const ok = await subscribe()
+   654→        if (ok) {
+   655→          toast({ title: 'Notifications enabled' })
+   656→        } else {
+   657→          toast({
+   658→            title: 'Could not enable notifications',
+   659→            description:
+   660→              permission === 'denied'
+   661→                ? 'Permission was denied. Update your browser settings to allow notifications.'
+   662→                : 'We could not create a push subscription. You will still get in-app alerts.',
+   663→            variant: 'destructive',
+   664→          })
+   665→        }
+   666→      } else {
+   667→        await unsubscribe()
+   668→        toast({ title: 'Notifications disabled' })
+   669→      }
+   670→    } finally {
+   671→      setBusy(false)
+   672→    }
+   673→  }
+   674→
+   675→  return (
+   676→    <div className="flex min-h-[44px] items-center gap-3 py-2">
+   677→      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+   678→        <Bell className="h-4 w-4" />
+   679→      </div>
+   680→      <div className="min-w-0 flex-1">
+   681→        <p className="text-sm font-medium">Desktop notifications</p>
+   682→        <p className="text-xs text-muted-foreground">{statusLabel}</p>
+   683→      </div>
+   684→      {busy ? (
+   685→        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+   686→      ) : (
+   687→        <Switch
+   688→          checked={isChecked}
+   689→          onCheckedChange={handleToggle}
+   690→          disabled={!supported}
+   691→          aria-label="Enable desktop notifications"
+   692→        />
+   693→      )}
+   694→    </div>
+   695→  )
+   696→}
+   697→
+   698→// ============================================================
+   699→// V9 — Two-Factor Authentication (TOTP)
+   700→// ============================================================
+   701→
+   702→interface TwoFactorState {
+   703→  enabled: boolean
+   704→  hasSecret: boolean
+   705→}
+   706→
+   707→function TwoFactorSection() {
+   708→  const { toast } = useToast()
+   709→  const [state, setState] = useState<TwoFactorState>({
+   710→    enabled: false,
+   711→    hasSecret: false,
+   712→  })
+   713→  const [loading, setLoading] = useState(true)
+   714→
+   715→  // Setup dialog state (open + QR data + verification code input)
+   716→  const [setupOpen, setSetupOpen] = useState(false)
+   717→  const [setupData, setSetupData] = useState<{
+   718→    qrDataUrl: string
+   719→    secret: string
+   720→    label: string
+   721→  } | null>(null)
+   722→  const [setupToken, setSetupToken] = useState('')
+   723→  const [settingUp, setSettingUp] = useState(false)
+   724→
+   725→  // Disable dialog state (password input)
+   726→  const [disableOpen, setDisableOpen] = useState(false)
+   727→  const [disablePassword, setDisablePassword] = useState('')
+   728→  const [disabling, setDisabling] = useState(false)
+   729→
+   730→  const loadStatus = async () => {
+   731→    setLoading(true)
+   732→    try {
+   733→      const res: any = await apiFetch('/api/auth/2fa/status')
+   734→      setState({
+   735→        enabled: !!res?.enabled,
+   736→        hasSecret: !!res?.hasSecret,
+   737→      })
+   738→    } catch {
+   739→      // Silent — section just shows "Disabled"
+   740→    } finally {
+   741→      setLoading(false)
+   742→    }
+   743→  }
+   744→
+   745→  useEffect(() => {
+   746→    loadStatus()
+   747→  }, [])
+   748→
+   749→  const startEnable = async () => {
+   750→    setSettingUp(true)
+   751→    setSetupToken('')
+   752→    try {
+   753→      const res: any = await apiFetch('/api/auth/2fa/setup', { method: 'POST' })
+   754→      setSetupData({
+   755→        qrDataUrl: res.qrDataUrl,
+   756→        secret: res.secret,
+   757→        label: res.label,
+   758→      })
+   759→      setSetupOpen(true)
+   760→    } catch (e: any) {
+   761→      toast({ title: e?.message || 'Failed to set up 2FA', variant: 'destructive' })
+   762→    } finally {
+   763→      setSettingUp(false)
+   764→    }
+   765→  }
+   766→
+   767→  const confirmEnable = async () => {
+   768→    const token = setupToken.replace(/\s+/g, '').trim()
+   769→    if (!/^\d{6}$/.test(token)) {
+   770→      toast({ title: 'Enter the 6-digit code', variant: 'destructive' })
+   771→      return
+   772→    }
+   773→    setSettingUp(true)
+   774→    try {
+   775→      await apiFetch('/api/auth/2fa/verify', {
+   776→        method: 'POST',
+   777→        body: JSON.stringify({ token }),
+   778→      })
+   779→      toast({ title: '2FA enabled', description: 'Your account is now protected by 2FA.' })
+   780→      setSetupOpen(false)
+   781→      setSetupToken('')
+   782→      setSetupData(null)
+   783→      setState({ enabled: true, hasSecret: true })
+   784→    } catch (e: any) {
+   785→      toast({ title: e?.message || 'Invalid code', variant: 'destructive' })
+   786→    } finally {
+   787→      setSettingUp(false)
+   788→    }
+   789→  }
+   790→
+   791→  const cancelSetup = async () => {
+   792→    setSetupOpen(false)
+   793→    setSetupToken('')
+   794→    setSetupData(null)
+   795→    // Optionally clear the stored secret so a future setup generates a fresh one.
+   796→    // We skip the explicit clear here because the next setup call will overwrite it.
+   797→  }
+   798→
+   799→  const confirmDisable = async () => {
+   800→    if (!disablePassword) {
+   801→      toast({ title: 'Password is required', variant: 'destructive' })
+   802→      return
+   803→    }
+   804→    setDisabling(true)
+   805→    try {
+   806→      await apiFetch('/api/auth/2fa/disable', {
+   807→        method: 'POST',
+   808→        body: JSON.stringify({ password: disablePassword }),
+   809→      })
+   810→      toast({ title: '2FA disabled', description: 'Two-factor authentication has been turned off.' })
+   811→      setDisableOpen(false)
+   812→      setDisablePassword('')
+   813→      setState({ enabled: false, hasSecret: false })
+   814→    } catch (e: any) {
+   815→      toast({ title: e?.message || 'Failed to disable 2FA', variant: 'destructive' })
+   816→    } finally {
+   817→      setDisabling(false)
+   818→    }
+   819→  }
+   820→
+   821→  return (
+   822→    <div className="space-y-2">
+   823→      <div className="flex min-h-[44px] items-center gap-3">
+   824→        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+   825→          {state.enabled ? <Shield className="h-4 w-4 text-emerald-600" /> : <Lock className="h-4 w-4" />}
+   826→        </div>
+   827→        <div className="min-w-0 flex-1">
+   828→          <div className="flex items-center gap-2">
+   829→            <p className="text-sm font-medium">Two-factor authentication</p>
+   830→            {loading ? (
+   831→              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+   832→            ) : state.enabled ? (
+   833→              <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+   834→                Enabled
+   835→              </Badge>
+   836→            ) : (
+   837→              <Badge variant="outline" className="text-muted-foreground">
+   838→                Disabled
+   839→              </Badge>
+   840→            )}
+   841→          </div>
+   842→          <p className="text-xs text-muted-foreground">
+   843→            {state.enabled
+   844→              ? 'Protect your account with a 6-digit code from your authenticator app.'
+   845→              : 'Add an extra layer of security to your account.'}
+   846→          </p>
+   847→        </div>
+   848→      </div>
+   849→
+   850→      <div className="flex flex-wrap gap-2">
+   851→        {!state.enabled && (
+   852→          <Button
+   853→            variant="outline"
+   854→            size="sm"
+   855→            className="min-h-[40px] flex-1"
+   856→            onClick={startEnable}
+   857→            disabled={settingUp}
+   858→          >
+   859→            {settingUp ? (
+   860→              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+   861→            ) : (
+   862→              <QrCode className="mr-2 h-4 w-4" />
+   863→            )}
+   864→            Enable 2FA
+   865→          </Button>
+   866→        )}
+   867→        {state.enabled && (
+   868→          <Button
+   869→            variant="outline"
+   870→            size="sm"
+   871→            className="min-h-[40px] flex-1 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+   872→            onClick={() => setDisableOpen(true)}
+   873→          >
+   874→            <Lock className="mr-2 h-4 w-4" /> Disable 2FA
+   875→          </Button>
+   876→        )}
+   877→      </div>
+   878→
+   879→      {/* ---------------- Setup dialog: QR + verification ---------------- */}
+   880→      <Dialog open={setupOpen} onOpenChange={(o) => !o && cancelSetup()}>
+   881→        <DialogContent className="sm:max-w-md">
+   882→          <DialogHeader>
+   883→            <DialogTitle className="flex items-center gap-2">
+   884→              <QrCode className="h-4 w-4 text-primary" /> Set up two-factor authentication
+   885→            </DialogTitle>
+   886→            <DialogDescription>
+   887→              Scan the QR code with an authenticator app (Google Authenticator, Authy, 1Password…).
+   888→              Then enter the 6-digit code your app generates.
+   889→            </DialogDescription>
+   890→          </DialogHeader>
+   891→
+   892→          {setupData && (
+   893→            <div className="space-y-3">
+   894→              <div className="flex justify-center rounded-md border bg-white p-3">
+   895→                <img
+   896→                  src={setupData.qrDataUrl}
+   897→                  alt="2FA QR code"
+   898→                  width={220}
+   899→                  height={220}
+   900→                  className="h-[220px] w-[220px]"
+   901→                />
+   902→              </div>
+   903→
+   904→              <div className="rounded-md border bg-muted/30 p-2.5 text-center">
+   905→                <p className="text-xs text-muted-foreground">
+   906→                  Or enter this code manually:
+   907→                </p>
+   908→                <code className="mt-1 block select-all break-all font-mono text-sm font-semibold tracking-wider text-foreground">
+   909→                  {setupData.secret}
+   910→                </code>
+   911→                <p className="mt-1 text-[10px] text-muted-foreground">
+   912→                  Account: {setupData.label}
+   913→                </p>
+   914→              </div>
+   915→
+   916→              <div className="space-y-1.5">
+   917→                <Label htmlFor="two-fa-token">Enter the 6-digit code</Label>
+   918→                <div className="flex justify-center">
+   919→                  <InputOTP
+   920→                    id="two-fa-token"
+   921→                    maxLength={6}
+   922→                    value={setupToken}
+   923→                    onChange={(v) => setSetupToken(v)}
+   924→                    autoFocus
+   925→                    onComplete={confirmEnable}
+   926→                  >
+   927→                    <InputOTPGroup>
+   928→                      <InputOTPSlot index={0} />
+   929→                      <InputOTPSlot index={1} />
+   930→                      <InputOTPSlot index={2} />
+   931→                      <InputOTPSlot index={3} />
+   932→                      <InputOTPSlot index={4} />
+   933→                      <InputOTPSlot index={5} />
+   934→                    </InputOTPGroup>
+   935→                  </InputOTP>
+   936→                </div>
+   937→              </div>
+   938→            </div>
+   939→          )}
+   940→
+   941→          <DialogFooter className="gap-2">
+   942→            <Button
+   943→              variant="ghost"
+   944→              className="min-h-[40px]"
+   945→              onClick={cancelSetup}
+   946→              disabled={settingUp}
+   947→            >
+   948→              Cancel
+   949→            </Button>
+   950→            <Button
+   951→              className="btn-brand min-h-[40px]"
+   952→              onClick={confirmEnable}
+   953→              disabled={settingUp || !/^\d{6}$/.test(setupToken.replace(/\s+/g, ''))}
+   954→            >
+   955→              {settingUp ? (
+   956→                <Loader2 className="h-4 w-4 animate-spin" />
+   957→              ) : (
+   958→                <Shield className="h-4 w-4" />
+   959→              )}
+   960→              Verify & enable
+   961→            </Button>
+   962→          </DialogFooter>
+   963→        </DialogContent>
+   964→      </Dialog>
+   965→
+   966→      {/* ---------------- Disable dialog: password ---------------- */}
+   967→      <Dialog open={disableOpen} onOpenChange={setDisableOpen}>
+   968→        <DialogContent className="sm:max-w-md">
+   969→          <DialogHeader>
+   970→            <DialogTitle className="flex items-center gap-2 text-destructive">
+   971→              <AlertTriangle className="h-4 w-4" /> Disable two-factor authentication?
+   972→            </DialogTitle>
+   973→            <DialogDescription>
+   974→              Your account will be less secure. To confirm, enter your password.
+   975→            </DialogDescription>
+   976→          </DialogHeader>
+   977→
+   978→          <div className="space-y-1.5">
+   979→            <Label htmlFor="two-fa-pw">Enter your password</Label>
+   980→            <Input
+   981→              id="two-fa-pw"
+   982→              type="password"
+   983→              placeholder="••••••••"
+   984→              value={disablePassword}
+   985→              onChange={(e) => setDisablePassword(e.target.value)}
+   986→              className="min-h-[44px]"
+   987→              autoComplete="current-password"
+   988→              autoFocus
+   989→              onKeyDown={(e) => {
+   990→                if (e.key === 'Enter') {
+   991→                  e.preventDefault()
+   992→                  confirmDisable()
+   993→                }
+   994→              }}
+   995→            />
+   996→          </div>
+   997→
+   998→          <DialogFooter className="gap-2">
+   999→            <Button
+  1000→              variant="ghost"
+  1001→              className="min-h-[40px]"
+  1002→              onClick={() => {
+  1003→                setDisableOpen(false)
+  1004→                setDisablePassword('')
+  1005→              }}
+  1006→              disabled={disabling}
+  1007→            >
+  1008→              Cancel
+  1009→            </Button>
+  1010→            <Button
+  1011→              variant="destructive"
+  1012→              className="min-h-[40px]"
+  1013→              onClick={confirmDisable}
+  1014→              disabled={disabling || !disablePassword}
+  1015→            >
+  1016→              {disabling ? (
+  1017→                <Loader2 className="h-4 w-4 animate-spin" />
+  1018→              ) : (
+  1019→                <Lock className="h-4 w-4" />
+  1020→              )}
+  1021→              Disable 2FA
+  1022→            </Button>
+  1023→          </DialogFooter>
+  1024→        </DialogContent>
+  1025→      </Dialog>
+  1026→    </div>
+  1027→  )
+  1028→}
+  1029→
+  1030→
+  1031→

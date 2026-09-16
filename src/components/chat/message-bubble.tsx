@@ -38,6 +38,10 @@ interface MessageBubbleProps {
   messageStyle: string // bubble | sharp | tail | none
   fontFamilyClass?: string
   fontSizePx?: number
+  /** V13 — per-conversation sent bubble color override (hex). */
+  sentBubbleColor?: string | null
+  /** V13 — per-conversation received bubble color override (hex). */
+  receivedBubbleColor?: string | null
   /** Whether this is the first message in a group from the same sender (consecutive). */
   isFirstInGroup?: boolean
   /** Whether this is the last message in a group from the same sender. */
@@ -83,6 +87,20 @@ function bubbleStyleClass(style: string, isMine: boolean): string {
     default:
       return '' // default bubble shape
   }
+}
+
+// V13 — Determine readable text color (white/black) for a given hex bubble background.
+// Used when applying per-conversation sent/received bubble color overrides.
+function readableTextOn(hex: string | null): string {
+  if (!hex) return '#ffffff'
+  const m = /^#([0-9a-fA-F]{6})$/.exec(hex.trim())
+  if (!m) return '#ffffff'
+  const r = parseInt(m[1].slice(0, 2), 16)
+  const g = parseInt(m[1].slice(2, 4), 16)
+  const b = parseInt(m[1].slice(4, 6), 16)
+  // YIQ contrast formula — light backgrounds get dark text, dark backgrounds get white.
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000
+  return yiq >= 140 ? '#111111' : '#ffffff'
 }
 
 // ---------------------------------------------------------------------------
@@ -149,6 +167,8 @@ export const MessageBubble = React.forwardRef<MessageBubbleHandle, MessageBubble
       messageStyle,
       fontFamilyClass,
       fontSizePx,
+      sentBubbleColor,
+      receivedBubbleColor,
       isFirstInGroup,
       isLastInGroup,
       showDateSeparator,
@@ -163,6 +183,12 @@ export const MessageBubble = React.forwardRef<MessageBubbleHandle, MessageBubble
       registerActionAnchor,
       members,
     } = props
+
+    // R1-3 — onForward prop is kept on the MessageBubble interface so the
+    // existing chat-view wiring continues to typecheck, but the long-press
+    // "Forward" action menu item has been removed. Forwarding as a
+    // feature is parked under "Coming Soon" in the Profile screen.
+    void onForward
 
     // Refs for touch handling
     const rootRef = React.useRef<HTMLDivElement | null>(null)
@@ -490,11 +516,31 @@ export const MessageBubble = React.forwardRef<MessageBubbleHandle, MessageBubble
                 // For tail style, last-in-group bubbles get the tail radius.
                 // We've already applied bubble-tail-sent/received via styleCls.
                 isTail && isMine && 'rounded-br-md',
-                isTail && !isMine && 'rounded-bl-md'
+                isTail && !isMine && 'rounded-bl-md',
+                // V13 — when a per-conversation bubble color override is set,
+                // drop the default .bubble-sent / .bubble-received classes so
+                // the inline style is the only background source.
+                isMine && sentBubbleColor && 'bg-none !bg-transparent',
+                !isMine && receivedBubbleColor && 'bg-none !bg-transparent'
               )}
               style={{
                 fontSize: fontSizePx ? `${fontSizePx}px` : undefined,
                 fontFamily: fontFamilyClass ? undefined : undefined,
+                // V13 — apply per-conversation bubble color overrides.
+                ...(sentBubbleColor && isMine
+                  ? {
+                      backgroundColor: sentBubbleColor,
+                      color: readableTextOn(sentBubbleColor),
+                      border: 'none',
+                    }
+                  : {}),
+                ...(receivedBubbleColor && !isMine
+                  ? {
+                      backgroundColor: receivedBubbleColor,
+                      color: readableTextOn(receivedBubbleColor),
+                      border: 'none',
+                    }
+                  : {}),
               }}
             >
               {/* Apply font family class on bubble content */}
@@ -633,12 +679,17 @@ interface MessageActionMenuProps {
   onClose: () => void
   onReply: () => void
   onCopy: () => void
-  onForward: () => void
   onEdit: () => void
   onDelete: () => void
   onPin: () => void
   onReact: (emoji: string) => void
-  /** V6 — open the schedule-message dialog with this message as the reply target. */
+  /** R1-3 — onForward is kept on the interface for backward-compat with
+   *  chat-view's wiring, but the "Forward" action menu item is removed
+   *  (feature parked under "Coming Soon" in Profile). */
+  onForward?: () => void
+  /** R1-3 — onSchedule is kept on the interface for backward-compat with
+   *  chat-view's wiring, but the "Schedule" action menu item is removed
+   *  (feature parked under "Coming Soon" in Profile). */
   onSchedule?: () => void
 }
 
@@ -657,6 +708,11 @@ export function MessageActionMenu({
   onReact,
   onSchedule,
 }: MessageActionMenuProps) {
+  // R1-3 — onForward / onSchedule are no longer rendered in this menu,
+  // but kept on the interface for backward-compat. Mark them as used so
+  // eslint doesn't complain.
+  void onForward
+  void onSchedule
   // Backdrop + a popover positioned above the anchor.
   const [showExpandedReactions, setShowExpandedReactions] = React.useState(false)
   if (!open || !message) return null
@@ -743,14 +799,6 @@ export function MessageActionMenu({
         <div className="flex w-[300px] max-w-[calc(100vw-16px)] flex-col gap-0.5 rounded-md border bg-popover p-1 shadow-md">
           <ActionMenuItem icon={<Reply className="h-4 w-4" />} label="Reply" onClick={() => { onReply(); onClose() }} />
           <ActionMenuItem icon={<Copy className="h-4 w-4" />} label="Copy" onClick={() => { onCopy(); onClose() }} />
-          <ActionMenuItem icon={<Forward className="h-4 w-4" />} label="Forward" onClick={() => { onForward(); onClose() }} />
-          {onSchedule && (
-            <ActionMenuItem
-              icon={<Clock className="h-4 w-4" />}
-              label="Schedule"
-              onClick={() => { onSchedule(); onClose() }}
-            />
-          )}
           {isMine && message.type === 'text' && !message.deletedAt && (
             <ActionMenuItem icon={<Pencil className="h-4 w-4" />} label="Edit" onClick={() => { onEdit(); onClose() }} />
           )}

@@ -1,21 +1,20 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
+  ChevronLeft,
   ChevronRight,
   Compass,
   Loader2,
   Lock,
   LogOut,
-  Plus,
   Search,
   Users,
   X,
 } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
-import { CATEGORIES } from '@/components/taly/customizer-context'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import {
@@ -42,16 +41,38 @@ interface GroupItem {
 // Track per-group state: 'idle' (default Join), 'requested' (private, request sent)
 type JoinState = 'idle' | 'joined' | 'requested'
 
+// R8-11 — Capsule slider categories. These are the labels the user picks
+// from the horizontal capsule/pill slider. They are sent verbatim to the
+// discover API as the `category` filter, so the API only returns groups
+// tagged with the exact matching category.
+const CAPSULE_CATEGORIES = [
+  'AI',
+  'Game',
+  'Fun',
+  'Technology',
+  'Education',
+  'Music',
+  'Foodie',
+  'Travel',
+  'Trend',
+  'Clothes',
+  'Other',
+] as const
+
 // Category → ring color (used for avatar ring + badge tint)
 function categoryRing(cat?: string | null): string {
   switch ((cat || '').toLowerCase()) {
     case 'gaming':
+    case 'game':
       return 'ring-violet-400/70'
     case 'technology':
-    case 'ai':
+    case 'tech':
       return 'ring-blue-400/70'
+    case 'ai':
+      return 'ring-cyan-400/70'
     case 'cricket':
     case 'sports':
+    case 'trend':
       return 'ring-orange-400/70'
     case 'entertainment':
     case 'movies':
@@ -64,11 +85,17 @@ function categoryRing(cat?: string | null): string {
     case 'jobs':
       return 'ring-yellow-400/70'
     case 'memes':
+    case 'fun':
       return 'ring-fuchsia-400/70'
     case 'news':
       return 'ring-cyan-400/70'
     case 'local':
+    case 'travel':
       return 'ring-teal-400/70'
+    case 'foodie':
+      return 'ring-rose-400/70'
+    case 'clothes':
+      return 'ring-indigo-400/70'
     default:
       return 'ring-emerald-400/70'
   }
@@ -78,12 +105,16 @@ function categoryRing(cat?: string | null): string {
 function categoryTopBorder(cat?: string | null): string {
   switch ((cat || '').toLowerCase()) {
     case 'gaming':
+    case 'game':
       return 'border-t-violet-500'
     case 'technology':
-    case 'ai':
+    case 'tech':
       return 'border-t-blue-500'
+    case 'ai':
+      return 'border-t-cyan-500'
     case 'cricket':
     case 'sports':
+    case 'trend':
       return 'border-t-orange-500'
     case 'entertainment':
     case 'movies':
@@ -96,11 +127,17 @@ function categoryTopBorder(cat?: string | null): string {
     case 'jobs':
       return 'border-t-yellow-500'
     case 'memes':
+    case 'fun':
       return 'border-t-fuchsia-500'
     case 'news':
       return 'border-t-cyan-500'
     case 'local':
+    case 'travel':
       return 'border-t-teal-500'
+    case 'foodie':
+      return 'border-t-rose-500'
+    case 'clothes':
+      return 'border-t-indigo-500'
     default:
       return 'border-t-emerald-500'
   }
@@ -110,12 +147,16 @@ function categoryTopBorder(cat?: string | null): string {
 function categoryBadge(cat?: string | null): string {
   switch ((cat || '').toLowerCase()) {
     case 'gaming':
+    case 'game':
       return 'bg-violet-500/10 text-violet-600'
     case 'technology':
-    case 'ai':
+    case 'tech':
       return 'bg-blue-500/10 text-blue-600'
+    case 'ai':
+      return 'bg-cyan-500/10 text-cyan-600'
     case 'cricket':
     case 'sports':
+    case 'trend':
       return 'bg-orange-500/10 text-orange-600'
     case 'entertainment':
     case 'movies':
@@ -128,11 +169,17 @@ function categoryBadge(cat?: string | null): string {
     case 'jobs':
       return 'bg-yellow-500/10 text-yellow-700'
     case 'memes':
+    case 'fun':
       return 'bg-fuchsia-500/10 text-fuchsia-600'
     case 'news':
       return 'bg-cyan-500/10 text-cyan-600'
     case 'local':
+    case 'travel':
       return 'bg-teal-500/10 text-teal-600'
+    case 'foodie':
+      return 'bg-rose-500/10 text-rose-600'
+    case 'clothes':
+      return 'bg-indigo-500/10 text-indigo-600'
     default:
       return 'bg-emerald-500/10 text-emerald-600'
   }
@@ -145,12 +192,16 @@ function categoryBadge(cat?: string | null): string {
 function categoryGradient(cat?: string | null): string {
   switch ((cat || '').toLowerCase()) {
     case 'gaming':
+    case 'game':
       return 'from-violet-500/10'
     case 'technology':
-    case 'ai':
+    case 'tech':
       return 'from-blue-500/10'
+    case 'ai':
+      return 'from-cyan-500/10'
     case 'cricket':
     case 'sports':
+    case 'trend':
       return 'from-orange-500/10'
     case 'entertainment':
     case 'movies':
@@ -163,11 +214,17 @@ function categoryGradient(cat?: string | null): string {
     case 'jobs':
       return 'from-yellow-500/10'
     case 'memes':
+    case 'fun':
       return 'from-fuchsia-500/10'
     case 'news':
       return 'from-cyan-500/10'
     case 'local':
+    case 'travel':
       return 'from-teal-500/10'
+    case 'foodie':
+      return 'from-rose-500/10'
+    case 'clothes':
+      return 'from-indigo-500/10'
     default:
       return 'from-gray-500/10'
   }
@@ -182,13 +239,62 @@ export interface DiscoverScreenProps {
     avatar?: string
     isGroup: boolean
   }) => void
-  // V12 — Called when the empty-state "Create {Category} Group" button is
-  // tapped. Wired up to navigate the user to the Groups tab so they can
-  // start a community in the chosen category.
-  onCreateGroup?: (category?: string) => void
 }
 
-export function DiscoverScreen({ onOpenChat, onCreateGroup }: DiscoverScreenProps = {}) {
+// ============================================================
+// R8-11 — CapsuleCategorySlider
+// Horizontal scrolling capsule / pill chips for the Discover category
+// filter. Each capsule is a rounded-full button with scroll-snap-align
+// start so the slider snaps one capsule at a time. The active capsule
+// uses the brand emerald gradient + white text; inactive capsules are
+// subtle tinted pills. The whole row is horizontally scrollable with
+// hidden scrollbar (.no-scrollbar) so it stays clean on mobile.
+// ============================================================
+function CapsuleCategorySlider({
+  categories,
+  activeCategory,
+  onSelect,
+}: {
+  categories: string[]
+  activeCategory: string | null
+  onSelect: (cat: string) => void
+}) {
+  return (
+    <div
+      className="no-scrollbar scroll-pan-y -mx-4 mt-3 w-full overflow-x-auto px-4"
+      style={{
+        scrollSnapType: 'x proximity',
+        scrollPaddingLeft: '16px',
+        scrollPaddingRight: '16px',
+      }}
+    >
+      <div className="flex min-w-0 gap-2 pb-1">
+        {categories.map((cat) => {
+          const active = activeCategory === cat
+          return (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => onSelect(cat)}
+              aria-pressed={active}
+              className={
+                'min-h-[40px] shrink-0 rounded-full border px-4 py-2 text-sm font-medium transition-colors ' +
+                (active
+                  ? 'btn-brand border-transparent text-primary-foreground shadow-sm'
+                  : 'border-border bg-card text-foreground/80 hover:bg-accent hover:text-foreground')
+              }
+              style={{ scrollSnapAlign: 'start' }}
+            >
+              {cat}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+export function DiscoverScreen({ onOpenChat }: DiscoverScreenProps = {}) {
   const { toast } = useToast()
   const [trending, setTrending] = useState<GroupItem[]>([])
   const [popular, setPopular] = useState<GroupItem[]>([])
@@ -391,23 +497,6 @@ export function DiscoverScreen({ onOpenChat, onCreateGroup }: DiscoverScreenProp
     setCategoryResults([])
   }
 
-  // V12 — Handle the "Create {Category} Group" CTA in the no-results
-  // empty state. If the parent wired onCreateGroup, delegate to it
-  // (TalyApp navigates to the Groups tab). Otherwise show a friendly
-  // toast so the click is never a no-op.
-  const handleCreateGroup = () => {
-    if (onCreateGroup) {
-      onCreateGroup(activeCategory || undefined)
-    } else {
-      toast({
-        title: 'Open the Groups tab',
-        description: activeCategory
-          ? `Tap the + button there to start a ${activeCategory} community.`
-          : 'Tap the + button there to start a new community.',
-      })
-    }
-  }
-
   const totalGroups = trending.length + popular.length + newGroups.length
 
   return (
@@ -424,28 +513,16 @@ export function DiscoverScreen({ onOpenChat, onCreateGroup }: DiscoverScreenProp
         </p>
       </motion.div>
 
-      {/* Category chips — solid emerald active state + horizontal scroll snap */}
-      <div
-        className="no-scrollbar scroll-pan-y -mx-4 mt-3 w-full overflow-x-auto px-4"
-        style={{ scrollSnapType: 'x proximity' }}
-      >
-        <div className="flex min-w-0 gap-2 pb-1">
-          {CATEGORIES.map((cat) => {
-            const active = activeCategory === cat
-            return (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => handleCategoryClick(cat)}
-                className={`category-chip min-h-[36px] ${active ? 'active' : ''}`}
-                style={{ scrollSnapAlign: 'start' }}
-              >
-                {cat}
-              </button>
-            )
-          })}
-        </div>
-      </div>
+      {/* R8-11 — Capsule slider: horizontal scrolling capsule/pill chips for
+          the new category list (AI, Game, Fun, …). Each capsule is a pill
+          with rounded-full + scroll-snap-align start so the slider snaps
+          one capsule at a time. The active capsule uses the brand gradient
+          (btn-brand look) so it stands out from the rest. */}
+      <CapsuleCategorySlider
+        categories={CAPSULE_CATEGORIES as unknown as string[]}
+        activeCategory={activeCategory}
+        onSelect={handleCategoryClick}
+      />
 
       {/* V12 — Active filter banner: shows below the chips row when a
           category filter is selected, with a clear (✕) button to reset. */}
@@ -479,7 +556,8 @@ export function DiscoverScreen({ onOpenChat, onCreateGroup }: DiscoverScreenProp
         </div>
       )}
 
-      {/* Category results */}
+      {/* Category results — when a capsule is selected, show every group
+          in that category as a vertical list (no slider). */}
       {activeCategory && (
         <section className="mt-4 animate-fade-in-up">
           <h2 className="section-header">
@@ -489,31 +567,24 @@ export function DiscoverScreen({ onOpenChat, onCreateGroup }: DiscoverScreenProp
             {catLoading ? (
               <InlineLoadingRow />
             ) : categoryResults.length === 0 ? (
-              // V12 — Friendly no-results empty state: magnifying glass,
-              // "No groups found in {Category}", "Be the first to create
-              // one!" + a Create button (emerald action-btn) and a "Browse
-              // Trending instead" text link.
+              // Friendly no-results empty state: magnifying glass + clear
+              // filter CTA. The old "Create {Category} Group" button has
+              // been removed because group creation is no longer
+              // available from the Groups tab (R8-11).
               <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card p-8 text-center">
                 <Search className="h-12 w-12 text-muted-foreground/40" />
                 <p className="mt-3 text-sm font-semibold text-foreground">
                   No groups found in {activeCategory}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Be the first to create one!
+                  Try another category — new communities are added daily.
                 </p>
                 <button
                   type="button"
-                  onClick={handleCreateGroup}
-                  className="action-btn mt-4 min-h-[44px]"
-                >
-                  <Plus className="h-4 w-4" /> Create {activeCategory} Group
-                </button>
-                <button
-                  type="button"
                   onClick={clearCategory}
-                  className="mt-3 inline-flex min-h-[40px] items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-primary"
+                  className="action-btn mt-4 inline-flex min-h-[40px] items-center gap-1 !px-4"
                 >
-                  Browse Trending instead <ChevronRight className="h-3 w-3" />
+                  <ChevronLeft className="h-3.5 w-3.5" /> Browse all categories
                 </button>
               </div>
             ) : (
@@ -538,7 +609,9 @@ export function DiscoverScreen({ onOpenChat, onCreateGroup }: DiscoverScreenProp
         </section>
       )}
 
-      {/* Default sections */}
+      {/* Default sections — R8-11: each section is now a "2 cards at a
+          time" horizontal slider with scroll-snap. Two cards fill the
+          viewport, and the user swipes left/right to reveal more. */}
       {!activeCategory && (
         <>
           <Section
@@ -678,35 +751,96 @@ function Section({
   onPreview: (g: GroupItem) => void
   delay?: number
 }) {
+  // R8-11 — 2-at-a-time horizontal slider. Cards are 50% of the visible
+  // container width (calc(50% - 6px) so two cards + the 12px gap fit the
+  // viewport exactly). The slider uses CSS scroll-snap so each swipe
+  // advances by one card width, revealing the next pair.
+  const trackRef = useRef<HTMLDivElement | null>(null)
+
+  const scrollByCard = (direction: 1 | -1) => {
+    const el = trackRef.current
+    if (!el) return
+    // Advance by ~2 card widths (= ~one full viewport of 2 cards).
+    const cardWidth = el.clientWidth * 0.5
+    el.scrollBy({ left: direction * cardWidth * 2, behavior: 'smooth' })
+  }
+
+  // Show a chevron on either side only when there's something to scroll to.
+  // We use the simpler "more than 2 groups" check — the scroll container's
+  // overflow itself indicates scrollability.
+  const canScroll = !loading && groups.length > 2
+
   return (
     <section
       className="mt-6 animate-fade-in-up"
       style={{ animationDelay: `${delay}s` }}
     >
-      {/* Sticky header — backdrop blur + category icon */}
+      {/* Sticky header — backdrop blur + category icon + slider nav */}
       <div className="sticky top-0 z-10 -mx-4 mb-2 flex items-center gap-1.5 bg-background/95 px-4 py-2 backdrop-blur">
         {icon && <span aria-hidden className="text-base">{icon}</span>}
-        <h2 className="section-header">{title}</h2>
+        <h2 className="section-header flex-1">{title}</h2>
+        {canScroll && (
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => scrollByCard(-1)}
+              aria-label={`Previous ${title} groups`}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollByCard(1)}
+              aria-label={`Next ${title} groups`}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </div>
-      <div className="no-scrollbar scroll-pan-y -mx-4 w-full overflow-x-auto px-4">
+
+      {/* 2-cards-at-a-time horizontal slider with scroll-snap */}
+      <div
+        ref={trackRef}
+        className="no-scrollbar scroll-pan-y -mx-4 w-full overflow-x-auto px-4"
+        style={{
+          scrollSnapType: 'x mandatory',
+          scrollPaddingLeft: '16px',
+          scrollPaddingRight: '16px',
+        }}
+      >
         {loading ? (
           <CardLoadingRow />
         ) : groups.length === 0 ? (
           <p className="px-4 text-sm text-muted-foreground">No groups yet.</p>
         ) : (
-          <div className="flex min-w-0 gap-3 pb-1">
+          <div
+            className="flex min-w-0 pb-1"
+            style={{ columnGap: '12px' }}
+          >
             {groups.map((g) => (
-              <GroupCard
+              <div
                 key={g.id}
-                g={g}
-                state={joinStateFor(g)}
-                joining={joining === g.id}
-                leaving={leaving === g.id}
-                onJoin={onJoin}
-                onOpen={onOpen}
-                onLeave={onLeave}
-                onPreview={() => onPreview(g)}
-              />
+                className="shrink-0"
+                style={{
+                  width: 'calc(50% - 6px)',
+                  scrollSnapAlign: 'start',
+                  scrollSnapStop: 'normal',
+                }}
+              >
+                <GroupCard
+                  g={g}
+                  state={joinStateFor(g)}
+                  joining={joining === g.id}
+                  leaving={leaving === g.id}
+                  onJoin={onJoin}
+                  onOpen={onOpen}
+                  onLeave={onLeave}
+                  onPreview={() => onPreview(g)}
+                />
+              </div>
             ))}
           </div>
         )}
@@ -740,7 +874,9 @@ function GroupCard({
   const isActive = g.membersCount > 5
   return (
     <div
-      className={`group-card relative w-44 shrink-0 overflow-hidden border-t-2 ${categoryTopBorder(g.category)} p-3`}
+      // R8-11 — Full-width inside the 50%-width slider slot. The parent
+      // wrapper (in Section) sets the 2-cards-at-a-time width + snap align.
+      className={`group-card relative w-full overflow-hidden border-t-2 ${categoryTopBorder(g.category)} p-3`}
     >
       {/* V12 — Category gradient overlay tinting the top portion of the card */}
       <div
@@ -1065,12 +1201,17 @@ function JoinButton({
 }
 
 function CardLoadingRow() {
+  // R8-11 — Show 2 loading cards at a time to match the new 2-card slider.
   return (
-    <div className="flex min-w-0 gap-3 px-4 pb-1">
-      {[0, 1, 2, 3].map((i) => (
+    <div
+      className="flex min-w-0 pb-1"
+      style={{ columnGap: '12px' }}
+    >
+      {[0, 1].map((i) => (
         <div
           key={i}
-          className="group-card w-44 shrink-0 p-3"
+          className="group-card shrink-0 p-3"
+          style={{ width: 'calc(50% - 6px)' }}
         >
           <div className="mx-auto h-14 w-14 animate-pulse rounded-full bg-muted" />
           <div className="mt-2 h-3 w-3/4 animate-pulse rounded bg-muted" />

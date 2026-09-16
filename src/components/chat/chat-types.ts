@@ -80,6 +80,10 @@ export interface ChatConversation {
   pinned?: boolean
   autoDeleteAfter?: number | null
   themeColor?: string | null
+  /** V13 — per-conversation sent bubble color override. */
+  sentBubbleColor?: string | null
+  /** V13 — per-conversation received bubble color override. */
+  receivedBubbleColor?: string | null
   otherUser?: ChatUser | null
   members?: ChatMember[]
   group?: any

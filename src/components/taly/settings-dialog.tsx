@@ -176,7 +176,10 @@ export function SettingsDialog({ open, onClose }: Props) {
                     </Button>
                   </div>
                   <PasswordChanger />
-                  <TwoFactorSection />
+                  {/* R1-3 — TwoFactorSection removed; 2FA feature parked under
+                      "Coming Soon" in Profile. The function is kept below
+                      for future re-enablement. */}
+                  {/* <TwoFactorSection /> */}
                   <DeleteAccount />
                 </div>
               </SettingsSection>
@@ -268,8 +271,10 @@ export function SettingsDialog({ open, onClose }: Props) {
               {/* Notifications */}
               <SettingsSection icon={<Bell className="h-4 w-4 text-primary" />} title="Notifications">
                 <div className="space-y-1">
-                  {/* V8 — Push notifications toggle (browser Notification API + Push API) */}
-                  <PushNotificationsRow />
+                  {/* R1-3 — PushNotificationsRow removed; desktop push
+                      notifications parked under "Coming Soon" in Profile.
+                      The function is kept below for future re-enablement. */}
+                  {/* <PushNotificationsRow /> */}
                   <SwitchRow
                     icon={<MessageSquare className="h-4 w-4" />}
                     label="Direct messages"

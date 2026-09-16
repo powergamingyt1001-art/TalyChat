@@ -13,12 +13,15 @@ interface ChatAdBoxProps {
 }
 
 /**
- * In-chat ad box (PRD section 10). Split-pane layout: left ad image (~35%),
- * right content (~65%). Brand + "Sponsored" badge, headline, description,
- * CTA button, close button top-right.
+ * In-chat ad box (PRD section 10). Rectangular split-pane layout:
+ *   - Left pane (~35%): ad image, full-bleed cover
+ *   - Right pane (~65%): brand + "Sponsored" badge, headline, description, CTA
  *
- * The close ✕ appears after 3 seconds (handled here via state). Hiding the
- * ad calls `onClose` which the parent uses to restart the timer.
+ * The close ✕ appears after 6 seconds (handled here via state). Hiding
+ * the ad calls `onClose` which the parent uses to restart the 45s/35s
+ * timer (private = 45s, group = 35s). Both users in the chat see the ad
+ * at the same position because the timer is driven by the chat's
+ * last-message activity and re-scheduled after each close.
  */
 export function ChatAdBox({ ad, onClose, onCtaClick, className }: ChatAdBoxProps) {
   const [closeVisible, setCloseVisible] = React.useState(false)
@@ -27,7 +30,7 @@ export function ChatAdBox({ ad, onClose, onCtaClick, className }: ChatAdBoxProps
     // Reset close visibility whenever the ad changes.
     setCloseVisible(false)
     if (!ad) return
-    const t = setTimeout(() => setCloseVisible(true), 3000)
+    const t = setTimeout(() => setCloseVisible(true), 6000)
     return () => clearTimeout(t)
   }, [ad?.id])
 
@@ -45,7 +48,10 @@ export function ChatAdBox({ ad, onClose, onCtaClick, className }: ChatAdBoxProps
   return (
     <div
       className={cn(
-        'ad-box mx-auto my-2 flex w-full max-w-md items-stretch overflow-hidden',
+        // Rectangular (wider than tall) split-pane ad box. The .ad-box CSS
+        // class (globals.css) provides border, radius, card bg, and overflow
+        // hidden. Layout is locked to flex-row split: 35% image / 65% content.
+        'ad-box mx-auto my-2 flex w-full max-w-md flex-row items-stretch overflow-hidden',
         className
       )}
       role="complementary"

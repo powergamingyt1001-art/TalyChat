@@ -38,6 +38,8 @@ import {
   ChevronDown,
   MapPin,
   Download,
+  Target,
+  ShieldAlert,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-store'
 import { apiFetch, apiUpload } from '@/lib/api'
@@ -51,7 +53,6 @@ import {
   FONT_OPTIONS,
 } from '@/components/taly/customizer-context'
 import { CustomizeDialog } from '@/components/taly/customize-dialog'
-import { ChatThemePicker } from '@/components/chat/chat-theme-picker'
 import { GroupAnnouncementsBar } from '@/components/chat/group-announcements-bar'
 import { PremiumAvatar } from '@/components/premium-avatar'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -88,9 +89,7 @@ import { EmojiPicker } from './emoji-picker'
 import { ChatAdBox } from './chat-ad'
 import { ReportDialog } from './report-dialog'
 import { AddMemberDialog } from './add-member-dialog'
-import { ForwardDialog } from './forward-dialog'
 import { PinnedMessagesDialog } from './pinned-messages-dialog'
-import { ScheduleMessageDialog } from './schedule-message-dialog'
 import { SharedMediaDialog } from './shared-media-dialog'
 import { LocationShareDialog } from './location-share-dialog'
 import { ExportChatDialog } from './export-chat-dialog'
@@ -139,8 +138,15 @@ function useCustomizerSafe(preferences: any) {
 // ---------------------------------------------------------------------------
 
 const PAGE_SIZE = 50
-const AD_DELAY_PRIVATE = 25_000 // 25s
-const AD_DELAY_GROUP = 30_000 // 30s
+// R8-11 — Ad timing: private chat = 45s, group chat = 35s after the last
+// message activity. Cross button appears after 6s (handled in ChatAdBox).
+// Loop: after the ad is closed, the 45s/35s timer restarts so the ad
+// reappears continuously while the chat is open. The timer also resets
+// whenever a new message is sent or received, so the ad only shows up
+// after the chat goes quiet for 45s/35s — keeping it out of the way
+// during active conversation.
+const AD_DELAY_PRIVATE = 45_000 // 45s
+const AD_DELAY_GROUP = 35_000 // 35s
 const TYPING_DEBOUNCE = 300 // ms
 const TYPING_STOP_DEBOUNCE = 1000 // ms
 const SWIPE_REPLY_THRESHOLD = 60 // px
@@ -217,17 +223,10 @@ export function ChatView({
   const [reportOpen, setReportOpen] = React.useState(false)
   const [addMemberOpen, setAddMemberOpen] = React.useState(false)
   const [customizeOpen, setCustomizeOpen] = React.useState(false)
-  const [themePickerOpen, setThemePickerOpen] = React.useState(false)
   const [confirmClear, setConfirmClear] = React.useState(false)
   const [confirmLeave, setConfirmLeave] = React.useState(false)
   const [confirmBlock, setConfirmBlock] = React.useState(false)
   const [sharedMediaOpen, setSharedMediaOpen] = React.useState(false)
-
-  // Forward dialog state
-  const [forwardState, setForwardState] = React.useState<{
-    open: boolean
-    message: ChatMessage | null
-  }>({ open: false, message: null })
 
   // V8 — Live location share dialog state (opened from the paperclip menu)
   const [locationShareOpen, setLocationShareOpen] = React.useState(false)
@@ -235,31 +234,9 @@ export function ChatView({
   // V11 — Chat export dialog state (opened from the 3-dot menu)
   const [exportOpen, setExportOpen] = React.useState(false)
 
-  // Schedule-message dialog state (V6). initialContent lets the dialog
-  // pre-fill with text the user had typed into the composer when they
-  // tapped "Schedule send" from the 3-dot menu. replyTo is set when the
-  // user opens the schedule dialog from a message's action menu.
-  const [scheduleState, setScheduleState] = React.useState<{
-    open: boolean
-    replyTo: ChatMessage | null
-    initialContent?: string
-    initialMediaUrl?: string
-    initialType?: 'text' | 'image'
-  }>({ open: false, replyTo: null, initialContent: '', initialType: 'text' })
-
-  const openScheduleDialogFromComposer = React.useCallback(() => {
-    // Capture whatever the user has typed so far so they don't lose it.
-    setScheduleState({
-      open: true,
-      replyTo: null,
-      initialContent: text,
-      initialType: 'text',
-    })
-    // Clear the composer so the message lives only inside the schedule
-    // dialog until it's submitted (avoids accidental double-send if the
-    // user hits Enter after closing).
-    setText('')
-  }, [text])
+  // R1-3 — Forward and Schedule features moved to "Coming Soon". The
+  // state and dialog JSX below are intentionally removed; the underlying
+  // backend endpoints (/api/messages/schedule) remain intact.
 
   // Pinned messages state
   const [pinnedMessages, setPinnedMessages] = React.useState<any[]>([])
@@ -612,6 +589,17 @@ export function ChatView({
     }
   }, [scheduleNextAd])
 
+  // R8-11 — Restart the 45s/35s "quiet period" timer whenever a new
+  // message is sent or received. The ad should only appear after the
+  // chat has been quiet for 45s (private) or 35s (group). Skip the
+  // reset while an ad is currently visible so the user can dismiss it
+  // first (closing the ad re-schedules via handleCloseAd).
+  React.useEffect(() => {
+    if (adVisible) return // wait for user to close the current ad
+    if (messages.length === 0) return
+    scheduleNextAd()
+  }, [messages.length, adVisible, scheduleNextAd])
+
   const handleCloseAd = () => {
     setAdVisible(false)
     setAd(null)
@@ -847,19 +835,16 @@ export function ChatView({
     }
   }
 
-  const handleForward = (m: ChatMessage) => {
-    setForwardState({ open: true, message: m })
+  // R1-3 — handleForward and handleScheduleReply kept as no-op shims so
+  // existing internal call sites and the MessageActionMenu wiring don't
+  // have to change. Forwarding + scheduling UI has been removed; these
+  // features live under "Coming Soon" in the Profile screen.
+  const handleForward = (_m: ChatMessage) => {
+    toast({ title: 'Message forwarding is coming soon!' })
   }
 
-  // Open the schedule dialog with a specific message as the reply target.
-  // (Used by the long-press "Schedule" action on a message bubble.)
-  const handleScheduleReply = (m: ChatMessage) => {
-    setScheduleState({
-      open: true,
-      replyTo: m,
-      initialContent: '',
-      initialType: 'text',
-    })
+  const handleScheduleReply = (_m: ChatMessage) => {
+    toast({ title: 'Scheduled messages are coming soon!' })
   }
 
   // ----- Jump to message (from pinned dialog) -----
@@ -1325,16 +1310,6 @@ export function ChatView({
           </div>
         </button>
 
-        <button
-          type="button"
-          onClick={() => setSearchOpen((v) => !v)}
-          aria-label="Search messages"
-          aria-pressed={searchOpen}
-          className="flex h-10 w-10 min-h-[44px] min-w-[44px] items-center justify-center rounded-full hover:bg-accent"
-        >
-          <SearchIcon className="h-5 w-5" />
-        </button>
-
         {/* Three-dot menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -1381,9 +1356,6 @@ export function ChatView({
                 <DropdownMenuItem onClick={() => setCustomizeOpen(true)}>
                   <Palette className="h-4 w-4" /> Customize
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setThemePickerOpen(true)}>
-                  <Palette className="h-4 w-4" /> Chat theme
-                </DropdownMenuItem>
                 <DropdownMenuItem onClick={togglePin}>
                   {conversation?.pinned ? (
                     <>
@@ -1394,9 +1366,6 @@ export function ChatView({
                       <PinIcon className="h-4 w-4" /> Pin Group
                     </>
                   )}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={openScheduleDialogFromComposer}>
-                  <Clock className="h-4 w-4" /> Schedule send
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setConfirmClear(true)}>
                   <Trash2 className="h-4 w-4" /> Clear Chat
@@ -1447,10 +1416,7 @@ export function ChatView({
                   <ShieldCheck className="h-4 w-4" /> Privacy
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setCustomizeOpen(true)}>
-                  <Palette className="h-4 w-4" /> Customize chat
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setThemePickerOpen(true)}>
-                  <Palette className="h-4 w-4" /> Chat theme
+                  <Palette className="h-4 w-4" /> Customize
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={togglePin}>
                   {conversation?.pinned ? (
@@ -1462,9 +1428,6 @@ export function ChatView({
                       <PinIcon className="h-4 w-4" /> Pin Chat
                     </>
                   )}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={openScheduleDialogFromComposer}>
-                  <Clock className="h-4 w-4" /> Schedule send
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setConfirmClear(true)}>
                   <Trash2 className="h-4 w-4" /> Clear chat now
@@ -1705,6 +1668,8 @@ export function ChatView({
                     messageStyle={messageStyle}
                     fontFamilyClass={fontFamilyClass}
                     fontSizePx={fontSizePx}
+                    sentBubbleColor={conversation?.sentBubbleColor || null}
+                    receivedBubbleColor={conversation?.receivedBubbleColor || null}
                     isFirstInGroup={item.isFirstInGroup}
                     isLastInGroup={item.isLastInGroup}
                     showDateSeparator={false}
@@ -1974,22 +1939,15 @@ export function ChatView({
         />
       )}
 
-      {/* Customize dialog */}
+      {/* Customize dialog (V13 — merged Customize + Chat Theme) */}
       <CustomizeDialog
         open={customizeOpen}
         onClose={() => setCustomizeOpen(false)}
         onOpenChange={setCustomizeOpen}
         conversationId={conversationId}
         isGroup={isGroup}
-      />
-
-      {/* V7 — per-conversation chat theme picker */}
-      <ChatThemePicker
-        open={themePickerOpen}
-        onClose={() => setThemePickerOpen(false)}
-        conversationId={conversationId}
-        currentColor={conversation?.themeColor || null}
-        onApply={(color) => {
+        currentThemeColor={conversation?.themeColor || null}
+        onApplyThemeColor={(color) => {
           // Optimistically update the local conversation state so the
           // background re-renders immediately without needing a refetch.
           setConversation((c) => (c ? { ...c, themeColor: color } : c))
@@ -2017,13 +1975,6 @@ export function ChatView({
           setProfileViewOpen(false)
           setConfirmLeave(true)
         }}
-      />
-
-      {/* Forward dialog */}
-      <ForwardDialog
-        open={forwardState.open}
-        onClose={() => setForwardState({ open: false, message: null })}
-        message={forwardState.message}
       />
 
       {/* Pinned messages dialog */}
@@ -2065,25 +2016,6 @@ export function ChatView({
         onClose={() => setExportOpen(false)}
         conversationId={conversationId}
         conversationName={name}
-      />
-
-      {/* Schedule-message dialog (V6) — opened from the 3-dot menu
-          ("Schedule send") or from the long-press action menu on a
-          message ("Schedule"). */}
-      <ScheduleMessageDialog
-        open={scheduleState.open}
-        onClose={() =>
-          setScheduleState((s) => ({ ...s, open: false, replyTo: null }))
-        }
-        conversationId={conversationId}
-        replyTo={scheduleState.replyTo || undefined}
-        initialContent={scheduleState.initialContent}
-        initialMediaUrl={scheduleState.initialMediaUrl}
-        initialType={scheduleState.initialType}
-        onScheduled={() => {
-          // Optimistic: bump conversation list so a count badge can appear
-          // in Profile → Scheduled Messages if the user navigates there.
-        }}
       />
 
       {/* Confirm dialogs */}
@@ -2291,20 +2223,46 @@ function UserProfileBody({
   const lastSeen = display.lastSeen
   const createdAt = display.createdAt
 
+  // V13 — behavior score (returned from /api/users/[id]). Used to render
+  // a behavior bar + score so the viewer can see how trustworthy this
+  // user is. Default to 100 if not present.
+  const behaviorScore: number =
+    typeof display.behaviorScore === 'number'
+      ? Math.max(0, Math.min(100, display.behaviorScore))
+      : 100
+
+  // V8-style thresholds: green ≥80, amber ≥50, red <50
+  const behaviorColorClass =
+    behaviorScore >= 80
+      ? 'text-emerald-600 dark:text-emerald-400'
+      : behaviorScore >= 50
+        ? 'text-amber-600 dark:text-amber-400'
+        : 'text-red-600 dark:text-red-400'
+  const behaviorStatusLabel =
+    behaviorScore >= 80
+      ? 'Excellent'
+      : behaviorScore >= 50
+        ? 'Good'
+        : 'Needs improvement'
+
   return (
     <div className="space-y-4">
       {/* Avatar + name block */}
       <div className="flex flex-col items-center gap-3 text-center">
-        <PremiumAvatar
-          user={{
-            isPremium: display.isPremium,
-            premiumTier: display.premiumTier,
-            avatar: avatarUrl || undefined,
-            name: displayName,
-          }}
-          size={96}
-          showAura
-        />
+        {/* V13 — dark-avatar-glow wrapper adds emerald + cream glow
+            around the avatar in dark theme so it stays visible. */}
+        <div className="dark-avatar-glow rounded-full">
+          <PremiumAvatar
+            user={{
+              isPremium: display.isPremium,
+              premiumTier: display.premiumTier,
+              avatar: avatarUrl || undefined,
+              name: displayName,
+            }}
+            size={96}
+            showAura
+          />
+        </div>
         <div>
           <div className="flex items-center justify-center gap-2">
             <h3 className="text-lg font-bold">{displayName}</h3>
@@ -2343,6 +2301,52 @@ function UserProfileBody({
           No bio
         </div>
       )}
+
+      {/* V13 — Behavior score (shown below the bio).
+          Builds trust — viewers can see if someone has a good behavior
+          score before deciding to chat with them. Uses the same visual
+          language as the user's own profile (gradient red→green bar). */}
+      <div className="rounded-lg border border-border bg-muted/30 p-3">
+        <div className="mb-2 flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+            <Target className="h-3.5 w-3.5 text-primary" />
+            Behavior Score
+          </div>
+          <span
+            className={`text-xs font-bold tabular-nums ${behaviorColorClass}`}
+          >
+            {behaviorScore}%
+          </span>
+        </div>
+        {/* Gradient behavior bar (red→orange→green) — same as own profile. */}
+        <div
+          className="behavior-bar"
+          style={{ height: '10px' }}
+          aria-label={`Behavior score ${behaviorScore}%`}
+        >
+          <div
+            className="behavior-bar-fill"
+            style={{ width: `${behaviorScore}%` }}
+          />
+        </div>
+        <div className="mt-1.5 flex items-center justify-between text-[11px] text-muted-foreground">
+          <span className={behaviorColorClass}>{behaviorStatusLabel}</span>
+          <span>
+            {behaviorScore >= 50
+              ? 'Can send messages'
+              : 'Restricted — too low to message'}
+          </span>
+        </div>
+        {behaviorScore < 50 && (
+          <div className="mt-2 flex items-start gap-1.5 rounded-md bg-red-500/10 p-2 text-[11px] font-medium text-red-600 dark:text-red-400">
+            <ShieldAlert className="mt-0.5 h-3 w-3 shrink-0" />
+            <span>
+              This user&apos;s behavior score is below 50 — they currently
+              cannot send new messages.
+            </span>
+          </div>
+        )}
+      </div>
 
       {/* Joined date */}
       {createdAt && (

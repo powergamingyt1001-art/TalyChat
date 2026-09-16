@@ -1,39 +1,21 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ImagePlus, Loader2, Lock, Plus, Users, Clock } from 'lucide-react'
-import { apiFetch, apiUpload } from '@/lib/api'
-import { useToast } from '@/hooks/use-toast'
-import { CATEGORIES } from '@/components/taly/customizer-context'
+import { Loader2, Lock, Search, Users, Clock } from 'lucide-react'
+import { apiFetch } from '@/lib/api'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import type { ConversationSummary } from '@/components/taly-app'
 
 interface GroupsProps {
   conversations: ConversationSummary[]
   onOpenChat: (c: ConversationSummary) => void
   onRefresh: () => void
+  // R8-11 — Find button: navigates to the Discover tab so the user can
+  // browse / join communities instead of creating a new one from this tab.
+  onOpenDiscover?: () => void
 }
 
 interface SentRequest {
@@ -85,9 +67,7 @@ function groupLogo(c: ConversationSummary): string | undefined {
   return undefined
 }
 
-export function GroupsScreen({ conversations, onOpenChat, onRefresh }: GroupsProps) {
-  const { toast } = useToast()
-  const [createOpen, setCreateOpen] = useState(false)
+export function GroupsScreen({ conversations, onOpenChat, onRefresh, onOpenDiscover }: GroupsProps) {
   const [filter, setFilter] = useState<'all' | 'unread' | 'private' | 'requests'>('all')
   const [sentRequests, setSentRequests] = useState<SentRequest[]>([])
   const [requestsLoading, setRequestsLoading] = useState(false)
@@ -138,9 +118,15 @@ export function GroupsScreen({ conversations, onOpenChat, onRefresh }: GroupsPro
     <div className="mx-auto max-w-2xl p-4 pb-20 lg:pb-6">
       <div className="flex items-center justify-between gap-2">
         <h1 className="section-header">Groups</h1>
-        {/* Desktop "Create" button — on mobile a FAB is rendered at the bottom */}
-        <Button onClick={() => setCreateOpen(true)} className="btn-brand hidden min-h-[44px] lg:inline-flex">
-          <Plus className="h-4 w-4" /> Create
+        {/* R8-11 — Find button replaces the old Create button + FAB.
+            Tapping it navigates the user to the Discover tab so they can
+            browse and join existing communities. */}
+        <Button
+          onClick={() => (onOpenDiscover ? onOpenDiscover() : undefined)}
+          disabled={!onOpenDiscover}
+          className="btn-brand min-h-[44px]"
+        >
+          <Search className="h-4 w-4" /> Find
         </Button>
       </div>
 
@@ -179,7 +165,7 @@ export function GroupsScreen({ conversations, onOpenChat, onRefresh }: GroupsPro
               ? 'No unread groups 🎉'
               : filter === 'private'
                 ? 'You haven’t joined any private groups yet.'
-                : 'You haven’t joined any groups yet. Tap “Create” above or discover groups from the Discover tab.'}
+                : 'You haven’t joined any groups yet. Tap “Find” above to discover communities.'}
           </div>
         ) : (
           filtered.map((c) => {
@@ -229,24 +215,6 @@ export function GroupsScreen({ conversations, onOpenChat, onRefresh }: GroupsPro
           })
         )}
       </div>
-
-      {/* Floating Create button — mobile only, sits above the bottom nav */}
-      <button
-        onClick={() => setCreateOpen(true)}
-        aria-label="Create a new group"
-        className="action-btn fixed bottom-20 right-4 z-30 h-14 w-14 !rounded-full !p-0 shadow-xl lg:hidden"
-      >
-        <Plus className="h-6 w-6" />
-      </button>
-
-      <CreateGroupDialog
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onCreated={() => {
-          setCreateOpen(false)
-          onRefresh()
-        }}
-      />
     </div>
   )
 }
@@ -450,213 +418,3 @@ function SentRequestCard({ request }: { request: SentRequest }) {
   )
 }
 
-// ============================================================
-// Create group dialog
-// ============================================================
-
-function CreateGroupDialog({
-  open,
-  onClose,
-  onCreated,
-}: {
-  open: boolean
-  onClose: () => void
-  onCreated: (g: any) => void
-}) {
-  const { toast } = useToast()
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [category, setCategory] = useState<string>('')
-  const [isPublic, setIsPublic] = useState(true)
-  const [logo, setLogo] = useState<string>('')
-  const [uploading, setUploading] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-
-  const reset = () => {
-    setName('')
-    setDescription('')
-    setCategory('')
-    setIsPublic(true)
-    setLogo('')
-  }
-
-  const handleLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploading(true)
-    try {
-      const res: any = await apiUpload('/api/upload', file)
-      setLogo(res.url)
-      toast({ title: 'Logo uploaded' })
-    } catch (err: any) {
-      toast({ title: err?.message || 'Upload failed', variant: 'destructive' })
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  const handleSubmit = async () => {
-    if (!name.trim() || !category) {
-      toast({ title: 'Name and category are required', variant: 'destructive' })
-      return
-    }
-    setSubmitting(true)
-    try {
-      const res: any = await apiFetch('/api/groups', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: name.trim(),
-          description: description.trim(),
-          logo: logo || undefined,
-          category,
-          isPublic,
-        }),
-      })
-      // Defensive: API returns { group: {...} } (201), fall back to bare object.
-      const group = res?.group || (res?.id ? res : null)
-      const code = group?.inviteCode
-      toast({
-        title: code ? `Group created! Invite code: ${code}` : 'Group created 🎉',
-      })
-      reset()
-      onCreated(group)
-    } catch (err: any) {
-      toast({ title: err?.message || 'Failed to create group', variant: 'destructive' })
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        if (!o) {
-          reset()
-          onClose()
-        }
-      }}
-    >
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Create a new group</DialogTitle>
-          <DialogDescription className="sr-only">
-            Fill in the name, description, category, and visibility for your new group, then tap Create group.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-3">
-          {/* Logo + name */}
-          <div className="flex items-center gap-3">
-            <label className="relative flex h-16 w-16 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-xl border border-dashed bg-muted/50 hover:bg-muted">
-              {logo ? (
-                <img src={logo} alt="Group logo" className="h-full w-full object-cover" />
-              ) : uploading ? (
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              ) : (
-                <ImagePlus className="h-6 w-6 text-muted-foreground" />
-              )}
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleLogo}
-              />
-            </label>
-            <div className="flex-1">
-              <Label htmlFor="group-name" className="text-xs text-muted-foreground">
-                Group name *
-              </Label>
-              <Input
-                id="group-name"
-                placeholder="My Awesome Group"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div>
-            <Label htmlFor="group-desc" className="text-xs text-muted-foreground">
-              Description
-            </Label>
-            <Textarea
-              id="group-desc"
-              placeholder="What's this group about?"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={2}
-              className="resize-none"
-            />
-          </div>
-
-          <div>
-            <Label className="text-xs text-muted-foreground">Category *</Label>
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Pick a category" />
-              </SelectTrigger>
-              <SelectContent>
-                {CATEGORIES.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center justify-between rounded-lg border border-border p-3">
-            <div>
-              <p className="text-sm font-medium">Public group</p>
-              <p className="text-xs text-muted-foreground">
-                {isPublic
-                  ? 'Anyone can find and join'
-                  : 'People must request to join'}
-              </p>
-            </div>
-            <Switch checked={isPublic} onCheckedChange={setIsPublic} />
-          </div>
-
-          {/* Live preview */}
-          <div className="rounded-lg border border-dashed border-border bg-muted/30 p-3">
-            <p className="mb-2 text-xs font-medium text-muted-foreground">Preview</p>
-            <div className="flex items-center gap-3">
-              <Avatar className="h-10 w-10 rounded-lg">
-                <AvatarImage src={logo || undefined} />
-                <AvatarFallback className="rounded-lg bg-primary/10 text-primary">
-                  {name?.[0]?.toUpperCase() || '?'}
-                </AvatarFallback>
-              </Avatar>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">{name || 'Group name'}</p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {category || 'Category'} · 1 member · {isPublic ? 'Public' : 'Private'}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              reset()
-              onClose()
-            }}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={submitting || !name.trim() || !category}
-            className="btn-brand min-h-[44px]"
-          >
-            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create group'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}

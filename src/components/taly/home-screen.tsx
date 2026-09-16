@@ -24,14 +24,6 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { PremiumAvatar } from '@/components/premium-avatar'
 import { Button } from '@/components/ui/button'
 import type { ConversationSummary } from '@/components/taly-app'
-import {
-  StoriesRow,
-  type StoriesGroup,
-  type StoryAuthor,
-  type StoryItem,
-} from '@/components/taly/stories-row'
-import { StoryViewerDialog } from '@/components/taly/story-viewer-dialog'
-import { CreateStoryDialog } from '@/components/taly/create-story-dialog'
 import { GlobalSearchDialog } from '@/components/taly/global-search-dialog'
 
 interface HomeProps {
@@ -39,8 +31,6 @@ interface HomeProps {
   onOpenChat: (c: ConversationSummary) => void
   onNavigate: (tab: any) => void
   onOpenTaly: () => void
-  onOpenCreateStory?: () => void
-  storiesSignal?: number
 }
 
 function relativeTime(iso?: string): string {
@@ -120,78 +110,14 @@ function categoryColor(cat?: string | null): string {
   }
 }
 
-export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly, onOpenCreateStory, storiesSignal }: HomeProps) {
+export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly }: HomeProps) {
   const [chats, setChats] = useState<ConversationSummary[]>([])
   const [notifications, setNotifications] = useState<any[]>([])
   const [trending, setTrending] = useState<any[]>([])
   const [ad, setAd] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Stories state
-  const [myStories, setMyStories] = useState<StoryItem[]>([])
-  const [friendsStories, setFriendsStories] = useState<StoriesGroup[]>([])
-  const [storiesLoading, setStoriesLoading] = useState(true)
-  const [viewerOpen, setViewerOpen] = useState(false)
-  const [viewerUserId, setViewerUserId] = useState<string | null>(null)
-  const [viewerInitialIndex, setViewerInitialIndex] = useState(0)
-  const [createOpen, setCreateOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
-
-  const refreshStories = React.useCallback(async () => {
-    setStoriesLoading(true)
-    try {
-      const res: any = await apiFetch('/api/stories')
-      setMyStories((res?.myStories as StoryItem[]) || [])
-      setFriendsStories((res?.friends as StoriesGroup[]) || [])
-    } catch {
-      // silent — stories are non-critical
-    } finally {
-      setStoriesLoading(false)
-    }
-  }, [])
-
-  // Fetch stories on mount + when storiesSignal changes (e.g. socket push)
-  useEffect(() => {
-    refreshStories()
-  }, [refreshStories, storiesSignal])
-
-  const handleOpenStory = (userId: string, storyIndex: number) => {
-    setViewerUserId(userId)
-    setViewerInitialIndex(storyIndex)
-    setViewerOpen(true)
-  }
-
-  const handleAddStory = () => {
-    // Use parent handler if provided (so the same dialog can be triggered
-    // from the top bar). Otherwise open the local instance.
-    if (onOpenCreateStory) {
-      onOpenCreateStory()
-    } else {
-      setCreateOpen(true)
-    }
-  }
-
-  // Compose the active "all stories" list for the viewer (myStories +
-  // friends, with the author attached to my stories)
-  const myAuthor: StoryAuthor = React.useMemo(
-    () => ({
-      id: user?.id || 'me',
-      name: user?.name || 'Me',
-      username: user?.username,
-      avatar: user?.avatar || null,
-      isPremium: !!user?.isPremium,
-      premiumTier: user?.premiumTier,
-    }),
-    [user]
-  )
-
-  const allStoriesForViewer: StoriesGroup[] = React.useMemo(() => {
-    const myGroup: StoriesGroup | null =
-      myStories.length > 0
-        ? { user: myAuthor, stories: myStories, hasUnviewed: false }
-        : null
-    return [...(myGroup ? [myGroup] : []), ...friendsStories]
-  }, [myStories, myAuthor, friendsStories])
 
   useEffect(() => {
     let cancelled = false
@@ -351,16 +277,6 @@ export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly, onOpenCre
           </button>
         </div>
       </motion.div>
-
-      {/* Stories row */}
-      <StoriesRow
-        myStoryAuthor={myAuthor}
-        myStories={myStories}
-        friends={friendsStories}
-        onOpenStory={handleOpenStory}
-        onAddStory={handleAddStory}
-        loading={storiesLoading}
-      />
 
       {/* Recent private chats */}
       <section className="mt-6 animate-fade-in-up" style={{ animationDelay: '0.05s' }}>
@@ -555,35 +471,6 @@ export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly, onOpenCre
       {/* Sponsored ad */}
       {ad && <SponsoredAdCard ad={ad} onDismiss={() => setAd(null)} />}
 
-      {/* Story viewer dialog */}
-      <StoryViewerDialog
-        open={viewerOpen}
-        onClose={() => setViewerOpen(false)}
-        userId={viewerUserId || ''}
-        initialIndex={viewerInitialIndex}
-        allStories={allStoriesForViewer}
-        onStoryDeleted={refreshStories}
-        onOpenChat={(c) => {
-          // After a story reply is sent, navigate to the private
-          // conversation so the user can continue the chat.
-          onOpenChat({
-            id: c.id,
-            type: c.type,
-            name: c.name,
-            avatar: c.avatar || undefined,
-          } as any)
-        }}
-      />
-
-      {/* Create story dialog (local fallback when no parent handler) */}
-      {!onOpenCreateStory && (
-        <CreateStoryDialog
-          open={createOpen}
-          onClose={() => setCreateOpen(false)}
-          onCreated={refreshStories}
-        />
-      )}
-
       {/* Global search dialog */}
       <GlobalSearchDialog
         open={searchOpen}
@@ -630,7 +517,7 @@ function SponsoredAdCard({ ad, onDismiss }: { ad: any; onDismiss: () => void }) 
             />
           ) : (
             <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500/15 to-emerald-500/5 text-emerald-600">
-              <Sparkles className="h-6 w-6" />
+              <Gift className="h-6 w-6" />
             </div>
           )}
           <div className="min-w-0 flex-1">
