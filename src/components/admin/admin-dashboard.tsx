@@ -334,7 +334,7 @@ export function AdminDashboard() {
                 {loading || !stats ? (
                   <Skeleton className="h-full w-full" />
                 ) : isAllZeroRegister(stats.registerData) ? (
-                  <ChartEmptyState icon={BarChart3} label="No data yet" hint="New sign-ups will appear here once users start joining." />
+                  <ChartEmptyState icon={BarChart3} label="No registrations yet" hint="New sign-ups will appear here once users start joining." cta={{ label: "Invite users" }} />
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
@@ -374,7 +374,7 @@ export function AdminDashboard() {
                   {loading || !stats ? (
                     <Skeleton className="h-full w-full" />
                   ) : isAllZeroActiveInactive(stats) ? (
-                    <ChartEmptyState icon={PieChartIcon} label="No data yet" hint="No active/inactive users to display." />
+                    <ChartEmptyState icon={PieChartIcon} label="No user activity yet" hint="Active vs inactive will appear here once users are online." />
                   ) : (
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
@@ -431,7 +431,7 @@ export function AdminDashboard() {
                   {loading || !stats ? (
                     <Skeleton className="h-full w-full" />
                   ) : isAllZeroGrowth(stats.userGrowth) ? (
-                    <ChartEmptyState icon={BarChart3} label="No data yet" hint="User growth will populate as users join TalyChat." />
+                    <ChartEmptyState icon={BarChart3} label="No growth data yet" hint="User growth will populate as users join TalyChat." />
                   ) : (
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart
@@ -479,7 +479,7 @@ export function AdminDashboard() {
                 {loading || !stats ? (
                   <Skeleton className="h-full w-full" />
                 ) : isAllZeroSubs(stats) ? (
-                  <ChartEmptyState icon={PieChartIcon} label="No data yet" hint="No subscriptions to display yet." />
+                  <ChartEmptyState icon={PieChartIcon} label="No subscriptions yet" hint="Subscriptions will appear here once users upgrade to premium." cta={{ label: "Create redeem code" }} />
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
@@ -656,22 +656,39 @@ function isAllZeroSubs(stats: AdminStats): boolean {
 
 // ============================================================
 // V5 — ChartEmptyState — centered empty-state placeholder for charts
-// whose data is empty (all zeros). Shows a muted icon + message.
+// whose data is empty (all zeros). Shows a muted icon + message + optional CTA.
 // ============================================================
 function ChartEmptyState({
   icon: Icon,
   label,
   hint,
+  cta,
 }: {
   icon: React.ComponentType<{ className?: string }>
   label: string
   hint?: string
+  cta?: { label: string; onClick?: () => void }
 }) {
   return (
-    <div className="dotted-bg flex h-full w-full flex-col items-center justify-center gap-2 rounded-md bg-muted/20 text-center">
-      <Icon className="h-10 w-10 text-muted-foreground/40" />
-      <p className="text-sm font-semibold text-muted-foreground">{label}</p>
-      {hint && <p className="max-w-xs text-xs text-muted-foreground/70">{hint}</p>}
+    <div className="relative flex h-full w-full flex-col items-center justify-center gap-3 overflow-hidden rounded-md bg-muted/10 text-center">
+      {/* Decorative dotted bg */}
+      <div className="dotted-bg absolute inset-0" aria-hidden />
+      {/* Floating icon */}
+      <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-primary/5">
+        <Icon className="h-8 w-8 text-primary/50" />
+      </div>
+      <div className="relative space-y-1">
+        <p className="text-sm font-semibold text-muted-foreground">{label}</p>
+        {hint && <p className="mx-auto max-w-xs text-xs text-muted-foreground/60">{hint}</p>}
+      </div>
+      {cta && (
+        <button
+          onClick={cta.onClick}
+          className="relative rounded-full border border-primary/20 bg-primary/5 px-4 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+        >
+          {cta.label}
+        </button>
+      )}
     </div>
   )
 }

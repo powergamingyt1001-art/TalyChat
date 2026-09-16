@@ -79,6 +79,8 @@ model User {
   referralTasks        ReferralTask[]
   // Stories
   stories              Story[]
+  // Story highlights (V7 — saved expired stories)
+  highlights           StoryHighlight[]
   // Scheduled messages (V6)
   scheduledMessages    ScheduledMessage[]
 
@@ -99,6 +101,7 @@ model Conversation {
   ownerId   String?                       // for groups
   groupId   String?  @unique                 // link to Group if type=group
   wallpaper String?
+  themeColor String?                       // V7 — per-conversation accent color (premium)
   muted     Boolean  @default(false)
   pinned    Boolean  @default(false)
   autoDeleteAfter Int?                    // seconds; null = no auto-delete
@@ -598,4 +601,22 @@ model ScheduledMessage {
 
   @@index([isSent, scheduledFor])
   @@index([senderId])
+}
+
+// ============================================================
+// STORY HIGHLIGHTS (V7) — saved expired stories on a profile
+// ============================================================
+
+model StoryHighlight {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String   @default("Highlights")
+  coverColor  String   @default("#10b981")
+  storyIds    String   @default("")  // comma-separated story IDs
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

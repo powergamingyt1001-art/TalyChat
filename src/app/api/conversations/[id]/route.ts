@@ -85,6 +85,7 @@ export async function GET(
         ownerId: conv.ownerId,
         groupId: conv.groupId,
         wallpaper: conv.wallpaper,
+        themeColor: conv.themeColor,
         muted: conv.muted,
         pinned: conv.pinned,
         autoDeleteAfter: conv.autoDeleteAfter,
@@ -140,6 +141,20 @@ export async function PATCH(
     if ('muted' in body) data.muted = Boolean(body.muted)
     if ('pinned' in body) data.pinned = Boolean(body.pinned)
     if ('wallpaper' in body) data.wallpaper = body.wallpaper
+    if ('themeColor' in body) {
+      // V7 — per-conversation accent color. Accepts a hex string or null to reset.
+      const raw = body.themeColor
+      if (raw === null || raw === undefined || raw === '') {
+        data.themeColor = null
+      } else {
+        // Validate hex color (e.g. #10b981 or #10B981)
+        const hex = String(raw).trim()
+        if (!/^#[0-9a-fA-F]{6}$/.test(hex)) {
+          return jsonError(400, 'themeColor must be a 6-digit hex string like #10b981')
+        }
+        data.themeColor = hex.toLowerCase()
+      }
+    }
     if ('autoDeleteAfter' in body) {
       const v = body.autoDeleteAfter
       data.autoDeleteAfter = v === null || v === undefined ? null : Number(v)

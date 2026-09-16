@@ -525,6 +525,16 @@ export function CustomizeDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {/* V7 — note about per-conversation chat themes (premium feature) */}
+        <div className="border-b bg-primary/5 px-4 py-2.5">
+          <p className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">Chat Themes</span>{' '}
+            are available per-conversation via the{' '}
+            <span className="font-medium text-foreground">3-dot menu</span> in
+            each chat (premium only).
+          </p>
+        </div>
+
         <ScrollArea className="max-h-[70dvh]">
           <div className="space-y-6 p-4">
             {!isPremium ? (

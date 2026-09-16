@@ -12,6 +12,7 @@ import {
   Info,
   MessageCircle,
   MessageSquare,
+  Search,
   Share2,
   Sparkles,
   TrendingUp,
@@ -31,6 +32,7 @@ import {
 } from '@/components/taly/stories-row'
 import { StoryViewerDialog } from '@/components/taly/story-viewer-dialog'
 import { CreateStoryDialog } from '@/components/taly/create-story-dialog'
+import { GlobalSearchDialog } from '@/components/taly/global-search-dialog'
 
 interface HomeProps {
   user: any
@@ -133,6 +135,7 @@ export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly, onOpenCre
   const [viewerUserId, setViewerUserId] = useState<string | null>(null)
   const [viewerInitialIndex, setViewerInitialIndex] = useState(0)
   const [createOpen, setCreateOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
 
   const refreshStories = React.useCallback(async () => {
     setStoriesLoading(true)
@@ -293,6 +296,18 @@ export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly, onOpenCre
           {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
         </p>
       </motion.div>
+
+      {/* Global search bar */}
+      <motion.button
+        initial={{ opacity: 0, y: -4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.1 }}
+        onClick={() => setSearchOpen(true)}
+        className="mt-4 flex w-full items-center gap-3 rounded-full border bg-muted/50 px-4 py-3 text-left text-sm text-muted-foreground transition-all hover:bg-muted hover:shadow-md"
+      >
+        <Search className="h-4 w-4 text-primary" />
+        <span>Search messages, people, or groups…</span>
+      </motion.button>
 
       {/* Hero banner — glassmorphism */}
       <motion.div
@@ -586,6 +601,20 @@ export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly, onOpenCre
           onCreated={refreshStories}
         />
       )}
+
+      {/* Global search dialog */}
+      <GlobalSearchDialog
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onOpenChat={(c) => {
+          onOpenChat({
+            id: c.conversationId,
+            type: c.isGroup ? 'group' : 'private',
+            name: c.name,
+            avatar: c.avatar,
+          } as any)
+        }}
+      />
     </div>
   )
 }

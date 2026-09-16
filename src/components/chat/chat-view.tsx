@@ -49,6 +49,7 @@ import {
   FONT_OPTIONS,
 } from '@/components/taly/customizer-context'
 import { CustomizeDialog } from '@/components/taly/customize-dialog'
+import { ChatThemePicker } from '@/components/chat/chat-theme-picker'
 import { PremiumAvatar } from '@/components/premium-avatar'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -211,6 +212,7 @@ export function ChatView({
   const [reportOpen, setReportOpen] = React.useState(false)
   const [addMemberOpen, setAddMemberOpen] = React.useState(false)
   const [customizeOpen, setCustomizeOpen] = React.useState(false)
+  const [themePickerOpen, setThemePickerOpen] = React.useState(false)
   const [confirmClear, setConfirmClear] = React.useState(false)
   const [confirmLeave, setConfirmLeave] = React.useState(false)
   const [confirmBlock, setConfirmBlock] = React.useState(false)
@@ -1240,6 +1242,15 @@ export function ChatView({
   const fontSizePx = customizer.fontSize || 14
   const messageStyle = customizer.messageStyle || 'bubble'
 
+  // V7 — per-conversation theme color overrides the global wallpaper when set.
+  // Renders as a subtle gradient background for the message list.
+  const themeColor: string | null = conversation?.themeColor || null
+  const messageListStyle: React.CSSProperties = themeColor
+    ? {
+        background: `linear-gradient(135deg, ${themeColor}33, ${themeColor}0d 50%, ${themeColor}1a)`,
+      }
+    : (wallpaperStyle as React.CSSProperties)
+
   const otherUserId = conversation?.otherUser?.id
 
   // ----- Render -----
@@ -1356,6 +1367,9 @@ export function ChatView({
                 <DropdownMenuItem onClick={() => setCustomizeOpen(true)}>
                   <Palette className="h-4 w-4" /> Customize
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setThemePickerOpen(true)}>
+                  <Palette className="h-4 w-4" /> Chat theme
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={togglePin}>
                   {conversation?.pinned ? (
                     <>
@@ -1417,6 +1431,9 @@ export function ChatView({
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setCustomizeOpen(true)}>
                   <Palette className="h-4 w-4" /> Customize chat
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setThemePickerOpen(true)}>
+                  <Palette className="h-4 w-4" /> Chat theme
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={togglePin}>
                   {conversation?.pinned ? (
@@ -1611,7 +1628,7 @@ export function ChatView({
         ref={scrollRef}
         onScroll={handleScroll}
         className="scroll-pan-y relative flex-1 overflow-y-auto"
-        style={wallpaperStyle}
+        style={messageListStyle}
       >
         {/* Top loader */}
         {hasMore && (
@@ -1920,6 +1937,19 @@ export function ChatView({
         onOpenChange={setCustomizeOpen}
         conversationId={conversationId}
         isGroup={isGroup}
+      />
+
+      {/* V7 — per-conversation chat theme picker */}
+      <ChatThemePicker
+        open={themePickerOpen}
+        onClose={() => setThemePickerOpen(false)}
+        conversationId={conversationId}
+        currentColor={conversation?.themeColor || null}
+        onApply={(color) => {
+          // Optimistically update the local conversation state so the
+          // background re-renders immediately without needing a refetch.
+          setConversation((c) => (c ? { ...c, themeColor: color } : c))
+        }}
       />
 
       {/* Profile / Group info dialog (opened from header) */}

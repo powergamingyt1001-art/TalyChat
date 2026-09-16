@@ -69,6 +69,9 @@ import {
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { SettingsDialog } from '@/components/taly/settings-dialog'
+import { HighlightsRow, type Highlight } from '@/components/taly/highlights-row'
+import { CreateHighlightDialog } from '@/components/taly/create-highlight-dialog'
+import { StoryViewerDialog } from '@/components/taly/story-viewer-dialog'
 
 const UPI_ID = process.env.NEXT_PUBLIC_PAYMENT_UPI_ID || '9897186065@fam'
 const QR_SRC = process.env.NEXT_PUBLIC_PAYMENT_QR || '/payment/qr-code.png'
@@ -181,6 +184,12 @@ export function ProfileScreen() {
   // V6 — Scheduled messages state
   const [scheduledOpen, setScheduledOpen] = useState(false)
   const [scheduledCount, setScheduledCount] = useState<number>(0)
+
+  // V7 — Story highlights state
+  const [highlights, setHighlights] = useState<Highlight[]>([])
+  const [highlightsLoading, setHighlightsLoading] = useState(false)
+  const [createHighlightOpen, setCreateHighlightOpen] = useState(false)
+  const [activeHighlight, setActiveHighlight] = useState<Highlight | null>(null)
 
   // Behavior + watch-ad state
   const [behavior, setBehavior] = useState<BehaviorData | null>(null)
@@ -345,6 +354,22 @@ export function ProfileScreen() {
     }
   }, [])
 
+  // V7 — Fetch my story highlights (with story contents).
+  const loadHighlights = useCallback(async () => {
+    setHighlightsLoading(true)
+    try {
+      const res: any = await apiFetch('/api/highlights/me')
+      const list: Highlight[] = Array.isArray(res?.highlights)
+        ? res.highlights
+        : []
+      setHighlights(list)
+    } catch {
+      setHighlights([])
+    } finally {
+      setHighlightsLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
      
     loadProfile()
@@ -353,7 +378,8 @@ export function ProfileScreen() {
     loadBlockedCount()
     loadBehavior()
     loadScheduledCount()
-  }, [loadProfile, loadReferral, loadBlockedCount, loadBehavior, loadScheduledCount])
+    loadHighlights()
+  }, [loadProfile, loadReferral, loadBlockedCount, loadBehavior, loadScheduledCount, loadHighlights])
 
   if (loading && !profile) {
     return (
@@ -535,6 +561,18 @@ export function ProfileScreen() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* V7 — Story Highlights row (own profile) */}
+      <div className="animate-fade-in-up" style={{ animationDelay: '30ms' }}>
+        <HighlightsRow
+          highlights={highlights}
+          loading={highlightsLoading}
+          isOwn
+          onOpenHighlight={(h) => setActiveHighlight(h)}
+          onCreateHighlight={() => setCreateHighlightOpen(true)}
+          onHighlightsChanged={loadHighlights}
+        />
       </div>
 
       {/* Behavior Bar — V3: section-header + behavior-bar pill with inner glow */}
@@ -752,6 +790,26 @@ export function ProfileScreen() {
 
       {/* Settings dialog */}
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
+      {/* V7 — Create-highlight dialog (picks from archive of own stories) */}
+      <CreateHighlightDialog
+        open={createHighlightOpen}
+        onClose={() => setCreateHighlightOpen(false)}
+        onCreated={() => loadHighlights()}
+      />
+
+      {/* V7 — Highlight viewer (StoryViewerDialog in highlight mode) */}
+      <StoryViewerDialog
+        open={!!activeHighlight}
+        onClose={() => setActiveHighlight(null)}
+        userId={user?.id || ''}
+        allStories={[]}
+        mode="highlight"
+        highlightTitle={activeHighlight?.title}
+        highlightCoverColor={activeHighlight?.coverColor}
+        highlightStories={activeHighlight?.stories}
+        onHighlightsChanged={loadHighlights}
+      />
 
       {/* Block list dialog */}
       <BlockListDialog

@@ -76,6 +76,7 @@ export interface ChatConversation {
   muted?: boolean
   pinned?: boolean
   autoDeleteAfter?: number | null
+  themeColor?: string | null
   otherUser?: ChatUser | null
   members?: ChatMember[]
   group?: any
