@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { PremiumAvatar } from '@/components/premium-avatar'
 import { Button } from '@/components/ui/button'
 import type { ConversationSummary } from '@/components/taly-app'
 
@@ -44,10 +45,6 @@ function convAvatar(c: any): string | undefined {
   if (c.type === 'private' && c.otherUser?.avatar) return c.otherUser.avatar
   if (c.type === 'group' && c.group?.logo) return c.group.logo
   return undefined
-}
-
-function convInitial(c: any): string {
-  return (c.name || c.otherUser?.name || c.group?.name || '?').toString()[0]?.toUpperCase() || '?'
 }
 
 export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly }: HomeProps) {
@@ -200,12 +197,16 @@ export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly }: HomePro
                 onClick={() => onOpenChat(c)}
                 className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-3 text-left transition-colors hover:bg-accent/50"
               >
-                <Avatar className="h-10 w-10">
-                  <AvatarImage src={convAvatar(c)} />
-                  <AvatarFallback className="bg-primary/10 text-primary">
-                    {convInitial(c)}
-                  </AvatarFallback>
-                </Avatar>
+                <PremiumAvatar
+                  user={{
+                    isPremium: (c.otherUser as any)?.isPremium,
+                    premiumTier: (c.otherUser as any)?.premiumTier,
+                    avatar: convAvatar(c),
+                    name: c.name || c.otherUser?.name || '?',
+                  }}
+                  size={40}
+                  showAura
+                />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="truncate text-sm font-semibold">{c.name}</span>

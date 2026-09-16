@@ -88,7 +88,11 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
   }
 }
 
-// PATCH /api/admin/users/[id] — update user (premium / restricted / role / premiumUntil)
+// PATCH /api/admin/users/[id] — update user (premium / restricted / role / premiumUntil / ban)
+// Body (new ban fields):
+//   banDuration?: number (hours)  -> sets isBlocked=true, blockedUntil=now+banDuration, banReason
+//   banReason?: string             -> sets banReason (used with banDuration)
+//   unban?: true                   -> clears isBlocked, blockedUntil, banReason
 export async function PATCH(req: NextRequest, ctx: RouteContext) {
   await ensureSeed()
   try {
@@ -96,20 +100,63 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     const { id } = await ctx.params
 
     const body = await req.json().catch(() => ({}))
-    const { isPremium, premiumUntil, isRestricted, restrictedUntil, role } = body || {}
+    const {
+      isPremium,
+      premiumUntil,
+      premiumTier,
+      isRestricted,
+      restrictedUntil,
+      role,
+      banDuration,
+      banReason,
+      unban,
+    } = body || {}
 
     const existing = await db.user.findUnique({ where: { id } })
     if (!existing) return jsonError(404, 'User not found')
 
+    // Cannot ban / unban main admin
+    if ((banDuration !== undefined || unban) && existing.email === 'admin.in') {
+      return jsonError(400, 'Cannot ban or unban the main admin account')
+    }
+
     const data: any = {}
     if (typeof isPremium === 'boolean') data.isPremium = isPremium
     if (typeof isRestricted === 'boolean') data.isRestricted = isRestricted
+    if (
+      typeof premiumTier === 'string' &&
+      ['free', 'bronze', 'silver', 'gold'].includes(premiumTier)
+    ) {
+      data.premiumTier = premiumTier
+    }
     if (role === 'admin' || role === 'user') data.role = role
     if (premiumUntil !== undefined) {
       data.premiumUntil = premiumUntil ? new Date(premiumUntil) : null
     }
     if (restrictedUntil !== undefined) {
       data.restrictedUntil = restrictedUntil ? new Date(restrictedUntil) : null
+    }
+
+    // ---------- Ban system (V2) ----------
+    if (unban === true) {
+      data.isBlocked = false
+      data.blockedUntil = null
+      data.banReason = null
+    } else if (banDuration !== undefined && banDuration !== null) {
+      const hours = Number(banDuration)
+      if (!Number.isFinite(hours) || hours <= 0) {
+        return jsonError(400, 'banDuration must be a positive number of hours')
+      }
+      const until = new Date(Date.now() + hours * 60 * 60 * 1000)
+      data.isBlocked = true
+      data.blockedUntil = until
+      data.banReason =
+        typeof banReason === 'string' && banReason.trim() ? banReason.trim() : null
+      // Force offline when banned
+      data.isOnline = false
+    } else if (typeof banReason === 'string') {
+      // Update ban reason without changing ban state
+      data.banReason = banReason.trim() || null
     }
 
     if (Object.keys(data).length === 0) {

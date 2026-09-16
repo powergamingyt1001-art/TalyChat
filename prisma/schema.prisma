@@ -29,13 +29,21 @@ model User {
   role            String   @default("user")   // user | admin
   isPremium       Boolean  @default(false)
   premiumUntil    DateTime?
+  premiumTier     String   @default("free")    // free | bronze | silver | gold (for premium ring)
   isOnline        Boolean  @default(false)
   lastSeen        DateTime @default(now())
   isRestricted    Boolean  @default(false)
   restrictedUntil DateTime?
   isBlocked       Boolean  @default(false)
+  blockedUntil    DateTime?                    // temporary ban with duration
+  banReason       String?
   authProvider    String   @default("email")  // email | google | phone
   referralCode    String?                    // who referred this user
+  // Behavior system
+  behaviorScore   Int      @default(100)       // 0-100, <50 = can't message
+  behaviorLogs    String   @default("")        // JSON: [{date, adsWatched}]
+  adsWatchedToday Int      @default(0)          // max 10/day
+  lastAdWatchedAt DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -62,6 +70,13 @@ model User {
   createdCodes      RedeemCode[]
   createdGroups     Group[]              @relation("groupCreator")
   ownedConvs        Conversation[]       @relation("convOwner")
+  // Chat request system
+  sentChatRequests     ChatRequest[]    @relation("chatReqSender")
+  receivedChatRequests ChatRequest[]    @relation("chatReqReceiver")
+  // Group join requests (for private groups)
+  sentGroupRequests    GroupRequest[]   @relation("groupReqSender")
+  // Referral tasks
+  referralTasks        ReferralTask[]
 
   @@index([email])
   @@index([username])
@@ -177,6 +192,7 @@ model Group {
   creator     User?          @relation("groupCreator", fields: [creatorId], references: [id])
   members     GroupMember[]
   conversation Conversation? @relation("GroupConversations")
+  joinRequests GroupRequest[]
   reports     Report[]
 
   @@index([category])
@@ -453,3 +469,65 @@ model AppSetting {
   value     String
   updatedAt DateTime @updatedAt
 }
+
+// ============================================================
+// CHAT REQUESTS (P2P private chat opt-in)
+// ============================================================
+
+model ChatRequest {
+  id          String   @id @default(cuid())
+  senderId    String
+  receiverId  String
+  message     String   @default("")     // optional intro message
+  status      String   @default("pending") // pending | accepted | rejected
+  createdAt   DateTime @default(now())
+  decidedAt   DateTime?
+
+  sender      User  @relation("chatReqSender", fields: [senderId], references: [id])
+  receiver    User  @relation("chatReqReceiver", fields: [receiverId], references: [id])
+
+  @@unique([senderId, receiverId])
+  @@index([receiverId, status])
+}
+
+// ============================================================
+// GROUP JOIN REQUESTS (for private groups)
+// ============================================================
+
+model GroupRequest {
+  id          String   @id @default(cuid())
+  groupId     String
+  senderId    String
+  message     String   @default("")
+  status      String   @default("pending") // pending | accepted | rejected
+  createdAt   DateTime @default(now())
+  decidedAt   DateTime?
+
+  group       Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  sender      User  @relation("groupReqSender", fields: [senderId], references: [id])
+
+  @@unique([groupId, senderId])
+  @@index([groupId, status])
+}
+
+// ============================================================
+// REFERRAL TASKS (user selects a tier task to complete)
+// ============================================================
+
+model ReferralTask {
+  id           String   @id @default(cuid())
+  userId       String
+  tier         String   // 8members7d | 18members15d | 25members30d
+  requiredCount Int
+  windowDays   Int
+  rewardMonths Int
+  selectedAt   DateTime @default(now())
+  completedAt  DateTime?
+  expiresAt    DateTime
+  isActive     Boolean  @default(true)
+
+  user         User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+}
+

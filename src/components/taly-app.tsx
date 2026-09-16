@@ -18,6 +18,7 @@ import { DailyRewardDialog } from '@/components/taly/daily-reward-dialog'
 import { useMediaQuery } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { CustomizerProvider } from '@/components/taly/customizer-context'
+import { FloatingAIAgent } from '@/components/floating-ai-agent'
 
 export type TalyTab = (typeof NAV_ITEMS)[number]['id']
 export type TalyView =
@@ -236,6 +237,9 @@ export function TalyApp() {
           </main>
         </div>
       </div>
+
+      {/* Floating AI Agent — visible on all tabs EXCEPT when a chat is open */}
+      <FloatingAIAgent onClick={() => setTalyOpen(true)} hidden={!!openChat} />
 
       <DailyRewardDialog open={dailyOpen} onClose={() => setDailyOpen(false)} />
     </CustomizerProvider>

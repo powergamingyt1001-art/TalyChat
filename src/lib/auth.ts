@@ -11,6 +11,7 @@ export interface SessionUser {
   name: string
   role: string
   isPremium: boolean
+  premiumTier?: string
   avatar?: string | null
 }
 
@@ -31,6 +32,7 @@ export async function getSessionUser(req: Request): Promise<SessionUser | null> 
       name: true,
       role: true,
       isPremium: true,
+      premiumTier: true,
       avatar: true,
     },
   })

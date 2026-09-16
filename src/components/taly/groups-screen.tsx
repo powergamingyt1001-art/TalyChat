@@ -1,16 +1,18 @@
 'use client'
 
-import { useState } from 'react'
-import { ImagePlus, Loader2, Plus, Users } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { ImagePlus, Loader2, Lock, Plus, Users, Clock } from 'lucide-react'
 import { apiFetch, apiUpload } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
 import { CATEGORIES } from '@/components/taly/customizer-context'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Select,
   SelectContent,
@@ -31,6 +33,25 @@ interface GroupsProps {
   conversations: ConversationSummary[]
   onOpenChat: (c: ConversationSummary) => void
   onRefresh: () => void
+}
+
+interface SentRequest {
+  id: string
+  groupId: string
+  message: string
+  status: string
+  createdAt: string
+  decidedAt: string | null
+  group: {
+    id: string
+    name: string
+    logo?: string | null
+    category?: string | null
+    isPublic: boolean
+    membersCount: number
+    inviteCode: string
+    ownerId: string
+  }
 }
 
 function relativeTime(iso?: string): string {
@@ -56,37 +77,66 @@ function messagePreview(last: any): string {
   return last.content || 'No messages yet'
 }
 
+function groupLogo(c: ConversationSummary): string | undefined {
+  // Prefer group's own logo, then conversation avatar, fall back to undefined.
+  if (c.group?.logo) return c.group.logo
+  if (c.avatar) return c.avatar
+  return undefined
+}
+
+function groupInitial(c: ConversationSummary): string {
+  const name = (c.name || c.group?.name || '?').toString()
+  return name[0]?.toUpperCase() || '?'
+}
+
 export function GroupsScreen({ conversations, onOpenChat, onRefresh }: GroupsProps) {
   const { toast } = useToast()
   const [createOpen, setCreateOpen] = useState(false)
-  const [inviteCode, setInviteCode] = useState('')
-  const [joining, setJoining] = useState(false)
+  const [filter, setFilter] = useState<'all' | 'unread' | 'private' | 'requests'>('all')
+  const [sentRequests, setSentRequests] = useState<SentRequest[]>([])
+  const [requestsLoading, setRequestsLoading] = useState(false)
 
-  const handleJoinByCode = async () => {
-    const code = inviteCode.trim().toUpperCase()
-    if (!code) return
-    setJoining(true)
+  // Only group conversations are shown on the Groups tab.
+  const groupConversations = useMemo(
+    () => conversations.filter((c) => c.type === 'group'),
+    [conversations],
+  )
+
+  const filtered = useMemo(() => {
+    switch (filter) {
+      case 'unread':
+        return groupConversations.filter((c) => (c.unread || 0) > 0)
+      case 'private':
+        // Private groups the user has joined.
+        return groupConversations.filter((c) => c.group?.isPublic === false)
+      case 'requests':
+        // Requests tab is rendered separately below.
+        return []
+      default:
+        return groupConversations
+    }
+  }, [filter, groupConversations])
+
+  const loadSentRequests = async () => {
+    setRequestsLoading(true)
     try {
-      const res: any = await apiFetch('/api/groups/join', {
-        method: 'POST',
-        body: JSON.stringify({ inviteCode: code }),
-      })
-      // Defensive: API returns { group: {...}, alreadyMember, role }.
-      // Fall back to bare group object just in case shape changes.
-      const group = res?.group || (res?.id ? res : null)
-      toast({
-        title: res?.alreadyMember
-          ? 'You are already a member'
-          : `Joined ${group?.name || 'group'} 🎉`,
-      })
-      setInviteCode('')
-      onRefresh()
-    } catch (e: any) {
-      toast({ title: e?.message || 'Failed to join', variant: 'destructive' })
+      const res: any = await apiFetch('/api/groups/requests/sent')
+      const list: SentRequest[] = Array.isArray(res)
+        ? res
+        : (res?.requests || res?.items || [])
+      setSentRequests(list)
+    } catch {
+      setSentRequests([])
     } finally {
-      setJoining(false)
+      setRequestsLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (filter === 'requests') {
+      loadSentRequests()
+    }
+  }, [filter])
 
   return (
     <div className="mx-auto max-w-2xl p-4 pb-20 lg:pb-6">
@@ -97,41 +147,54 @@ export function GroupsScreen({ conversations, onOpenChat, onRefresh }: GroupsPro
         </Button>
       </div>
 
-      {/* Join by invite code */}
-      <div className="mt-4 rounded-xl border border-border bg-card p-4">
-        <Label className="text-sm font-medium">Have an invite code?</Label>
-        <div className="mt-2 flex gap-2">
-          <Input
-            placeholder="e.g. AB12CD"
-            value={inviteCode}
-            onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-            onKeyDown={(e) => e.key === 'Enter' && handleJoinByCode()}
-            className="uppercase"
-          />
-          <Button
-            onClick={handleJoinByCode}
-            disabled={joining || !inviteCode.trim()}
-            className="min-h-[44px]"
-          >
-            {joining ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Join'}
-          </Button>
-        </div>
-      </div>
+      {/* Tabs: All / Unread / Private / Requests (no bottom indicator) */}
+      <Tabs
+        value={filter}
+        onValueChange={(v) => setFilter(v as 'all' | 'unread' | 'private' | 'requests')}
+        className="mt-4"
+      >
+        <TabsList className="w-full">
+          <TabsTrigger value="all" className="flex-1">
+            All
+          </TabsTrigger>
+          <TabsTrigger value="unread" className="flex-1">
+            Unread
+          </TabsTrigger>
+          <TabsTrigger value="private" className="flex-1">
+            Private
+          </TabsTrigger>
+          <TabsTrigger value="requests" className="flex-1">
+            Requests
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
 
-      {/* List of joined groups */}
-      <h2 className="mt-5 text-base font-semibold">Your groups</h2>
-      <div className="mt-2 space-y-2">
-        {conversations.length === 0 ? (
+      {/* Tab content */}
+      <div className="mt-4 space-y-2">
+        {filter === 'requests' ? (
+          <RequestsTab
+            requests={sentRequests}
+            loading={requestsLoading}
+            onRefresh={loadSentRequests}
+            onOpenChat={onOpenChat}
+            conversations={groupConversations}
+          />
+        ) : filtered.length === 0 ? (
           <div className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
             <Users className="mx-auto mb-2 h-8 w-8 opacity-40" />
-            You haven&apos;t joined any groups. Use an invite code or create one above.
+            {filter === 'unread'
+              ? 'No unread groups 🎉'
+              : filter === 'private'
+                ? 'You haven’t joined any private groups yet.'
+                : 'You haven’t joined any groups yet. Tap “Create” above or discover groups from the Discover tab.'}
           </div>
         ) : (
-          conversations.map((c) => {
+          filtered.map((c) => {
             const g = c.group
             const memberCount = g?.membersCount || 0
             const last = c.lastMessage
             const preview = messagePreview(last)
+            const isPrivate = g?.isPublic === false
             return (
               <button
                 key={c.id}
@@ -139,23 +202,35 @@ export function GroupsScreen({ conversations, onOpenChat, onRefresh }: GroupsPro
                 className="flex w-full min-h-[60px] items-center gap-3 rounded-xl border border-border bg-card p-3 text-left transition-colors hover:bg-accent/50"
               >
                 <Avatar className="h-10 w-10 rounded-lg">
-                  <AvatarImage src={g?.logo || c.avatar || undefined} />
+                  <AvatarImage src={groupLogo(c)} alt={c.name} />
                   <AvatarFallback className="rounded-lg bg-primary/10 text-primary">
-                    {(c.name || '?')[0]?.toUpperCase()}
+                    {groupInitial(c)}
                   </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-2">
-                    <span className="truncate text-sm font-semibold">{c.name}</span>
+                    <span className="flex items-center gap-1 truncate text-sm font-semibold">
+                      {isPrivate && (
+                        <Lock className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      )}
+                      <span className="truncate">{c.name}</span>
+                    </span>
                     <span className="shrink-0 text-[10px] text-muted-foreground">
                       {relativeTime(last?.createdAt || c.updatedAt)}
                     </span>
                   </div>
                   <p className="truncate text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground/80">{memberCount} members</span>
+                    <span className="font-medium text-foreground/80">
+                      {memberCount} members
+                    </span>
                     {last && <span> · {preview}</span>}
                   </p>
                 </div>
+                {(c.unread || 0) > 0 && (
+                  <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                    {(c.unread || 0) > 99 ? '99+' : c.unread}
+                  </span>
+                )}
               </button>
             )
           })
@@ -173,6 +248,127 @@ export function GroupsScreen({ conversations, onOpenChat, onRefresh }: GroupsPro
     </div>
   )
 }
+
+// ============================================================
+// Requests tab — shows pending join requests the user has SENT
+// ============================================================
+
+function RequestsTab({
+  requests,
+  loading,
+  onRefresh,
+  conversations,
+}: {
+  requests: SentRequest[]
+  loading: boolean
+  onRefresh: () => void
+  onOpenChat: (c: ConversationSummary) => void
+  conversations: ConversationSummary[]
+}) {
+  // Defensive: only show pending requests by default.
+  const pending = requests.filter((r) => r.status === 'pending')
+  const decided = requests.filter((r) => r.status !== 'pending')
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8 text-muted-foreground">
+        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+        Loading requests…
+      </div>
+    )
+  }
+
+  if (requests.length === 0) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+        <Users className="mx-auto mb-2 h-8 w-8 opacity-40" />
+        No pending requests. When you ask to join a private group, it will appear here.
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      {pending.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Pending ({pending.length})
+          </p>
+          {pending.map((r) => (
+            <SentRequestCard key={r.id} request={r} />
+          ))}
+        </div>
+      )}
+      {decided.length > 0 && (
+        <div className="space-y-2">
+          <p className="mt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Recent decisions
+          </p>
+          {decided.map((r) => (
+            <SentRequestCard key={r.id} request={r} />
+          ))}
+        </div>
+      )}
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={onRefresh}
+        className="mt-2 min-h-[36px] w-full"
+      >
+        Refresh
+      </Button>
+      {/* conversations unused intentionally — kept for future "open chat" action */}
+      <span className="hidden">{conversations.length}</span>
+    </div>
+  )
+}
+
+function SentRequestCard({ request }: { request: SentRequest }) {
+  const g = request.group
+  const statusLabel =
+    request.status === 'pending'
+      ? 'Pending'
+      : request.status === 'accepted'
+        ? 'Accepted'
+        : 'Rejected'
+  const badgeClass =
+    request.status === 'pending'
+      ? 'bg-amber-500/10 text-amber-600 border-amber-500/30'
+      : request.status === 'accepted'
+        ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+        : 'bg-destructive/10 text-destructive border-destructive/30'
+
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+      <Avatar className="h-10 w-10 rounded-lg">
+        <AvatarImage src={g?.logo || undefined} alt={g?.name} />
+        <AvatarFallback className="rounded-lg bg-primary/10 text-primary">
+          {(g?.name || '?')[0]?.toUpperCase()}
+        </AvatarFallback>
+      </Avatar>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1">
+          <Lock className="h-3 w-3 shrink-0 text-muted-foreground" />
+          <p className="truncate text-sm font-semibold">{g?.name}</p>
+        </div>
+        <p className="truncate text-xs text-muted-foreground">
+          {g?.membersCount || 0} members · {g?.category || 'Group'}
+        </p>
+        <p className="mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground">
+          <Clock className="h-3 w-3" />
+          Sent {relativeTime(request.createdAt)}
+        </p>
+      </div>
+      <Badge variant="outline" className={badgeClass}>
+        {statusLabel}
+      </Badge>
+    </div>
+  )
+}
+
+// ============================================================
+// Create group dialog
+// ============================================================
 
 function CreateGroupDialog({
   open,
@@ -235,7 +431,9 @@ function CreateGroupDialog({
       // Defensive: API returns { group: {...} } (201), fall back to bare object.
       const group = res?.group || (res?.id ? res : null)
       const code = group?.inviteCode
-      toast({ title: code ? `Group created! Invite code: ${code}` : 'Group created 🎉' })
+      toast({
+        title: code ? `Group created! Invite code: ${code}` : 'Group created 🎉',
+      })
       reset()
       onCreated(group)
     } catch (err: any) {
@@ -324,7 +522,11 @@ function CreateGroupDialog({
           <div className="flex items-center justify-between rounded-lg border border-border p-3">
             <div>
               <p className="text-sm font-medium">Public group</p>
-              <p className="text-xs text-muted-foreground">Anyone can find and join</p>
+              <p className="text-xs text-muted-foreground">
+                {isPublic
+                  ? 'Anyone can find and join'
+                  : 'People must request to join'}
+              </p>
             </div>
             <Switch checked={isPublic} onCheckedChange={setIsPublic} />
           </div>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Check, Loader2, Users } from 'lucide-react'
+import { Check, Loader2, Lock, Users } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
 import { CATEGORIES } from '@/components/taly/customizer-context'
@@ -27,6 +27,9 @@ interface GroupItem {
   conversationId?: string | null
 }
 
+// Track per-group state: 'idle' (default Join), 'requested' (private, request sent)
+type JoinState = 'idle' | 'joined' | 'requested'
+
 export function DiscoverScreen() {
   const { toast } = useToast()
   const [trending, setTrending] = useState<GroupItem[]>([])
@@ -38,7 +41,9 @@ export function DiscoverScreen() {
   const [loading, setLoading] = useState(true)
   const [catLoading, setCatLoading] = useState(false)
   const [joining, setJoining] = useState<string | null>(null)
+  // joinedIds = public joined; requestedIds = private groups with sent requests
   const [joinedIds, setJoinedIds] = useState<Set<string>>(new Set())
+  const [requestedIds, setRequestedIds] = useState<Set<string>>(new Set())
   const [preview, setPreview] = useState<GroupItem | null>(null)
 
   useEffect(() => {
@@ -91,6 +96,25 @@ export function DiscoverScreen() {
     }
   }, [])
 
+  // Load the user's sent group join requests once on mount so we can mark
+  // private groups as "requested".
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const res: any = await apiFetch('/api/groups/requests/sent')
+        const list: any[] = Array.isArray(res) ? res : (res?.requests || res?.items || [])
+        const pending = new Set<string>(
+          list
+            .filter((r: any) => r.status === 'pending' && r.group?.id)
+            .map((r: any) => r.group.id),
+        )
+        setRequestedIds(pending)
+      } catch {
+        // ignore — feature best-effort
+      }
+    })()
+  }, [])
+
   const fetchCategory = async (cat: string) => {
     setCatLoading(true)
     try {
@@ -119,6 +143,13 @@ export function DiscoverScreen() {
     }
   }
 
+  // Returns the join state for a group, factoring in joined + requested sets.
+  const joinStateFor = (g: GroupItem): JoinState => {
+    if (joinedIds.has(g.id)) return 'joined'
+    if (!g.isPublic && requestedIds.has(g.id)) return 'requested'
+    return 'idle'
+  }
+
   const handleJoin = async (g: GroupItem) => {
     setJoining(g.id)
     try {
@@ -128,10 +159,18 @@ export function DiscoverScreen() {
       })
       if (res?.alreadyMember) {
         toast({ title: 'You are already a member' })
+        setJoinedIds((prev) => new Set(prev).add(g.id))
+      } else if (res?.requested) {
+        // Private group → request was sent
+        toast({
+          title: 'Join request sent! Wait for admin approval.',
+        })
+        setRequestedIds((prev) => new Set(prev).add(g.id))
       } else {
+        // Public group → direct join
         toast({ title: `Joined ${g.name} 🎉` })
+        setJoinedIds((prev) => new Set(prev).add(g.id))
       }
-      setJoinedIds((prev) => new Set(prev).add(g.id))
     } catch (e: any) {
       toast({ title: e?.message || 'Failed to join', variant: 'destructive' })
     } finally {
@@ -142,24 +181,30 @@ export function DiscoverScreen() {
   return (
     <div className="mx-auto max-w-2xl p-4 pb-20 lg:pb-6">
       <h1 className="text-2xl font-bold">Discover</h1>
-      <p className="text-sm text-muted-foreground">Find communities that match your interests</p>
+      <p className="text-sm text-muted-foreground">
+        Find communities that match your interests
+      </p>
 
-      {/* Category chips */}
-      <div className="no-scrollbar scroll-pan-y -mx-4 mt-3 overflow-x-auto px-4">
-        <div className="flex gap-2 pb-1">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => handleCategoryClick(cat)}
-              className={`min-h-[36px] shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
-                activeCategory === cat
-                  ? 'bg-primary text-primary-foreground'
-                  : 'border border-border bg-card text-foreground hover:bg-accent'
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
+      {/* Category chips — polished, smooth horizontal scroll */}
+      <div className="no-scrollbar scroll-pan-y -mx-4 mt-3 w-full overflow-x-auto px-4">
+        <div className="flex min-w-0 gap-2 pb-1">
+          {CATEGORIES.map((cat) => {
+            const active = activeCategory === cat
+            return (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => handleCategoryClick(cat)}
+                className={`min-h-[36px] shrink-0 whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                  active
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'border border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground'
+                }`}
+              >
+                {cat}
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -180,7 +225,7 @@ export function DiscoverScreen() {
                   <li key={g.id}>
                     <GroupRow
                       g={g}
-                      joined={joinedIds.has(g.id)}
+                      state={joinStateFor(g)}
                       joining={joining === g.id}
                       onJoin={handleJoin}
                       onPreview={() => setPreview(g)}
@@ -200,7 +245,7 @@ export function DiscoverScreen() {
             title="Trending"
             loading={loading}
             groups={trending}
-            joinedIds={joinedIds}
+            joinStateFor={joinStateFor}
             joining={joining}
             onJoin={handleJoin}
             onPreview={(g) => setPreview(g)}
@@ -209,7 +254,7 @@ export function DiscoverScreen() {
             title="Popular"
             loading={loading}
             groups={popular}
-            joinedIds={joinedIds}
+            joinStateFor={joinStateFor}
             joining={joining}
             onJoin={handleJoin}
             onPreview={(g) => setPreview(g)}
@@ -218,7 +263,7 @@ export function DiscoverScreen() {
             title="New"
             loading={loading}
             groups={newGroups}
-            joinedIds={joinedIds}
+            joinStateFor={joinStateFor}
             joining={joining}
             onJoin={handleJoin}
             onPreview={(g) => setPreview(g)}
@@ -228,8 +273,8 @@ export function DiscoverScreen() {
           {sponsored.length > 0 && (
             <section className="mt-5">
               <h2 className="text-base font-semibold">Sponsored Communities</h2>
-              <div className="no-scrollbar scroll-pan-y -mx-4 mt-2 overflow-x-auto px-4">
-                <div className="flex gap-3 pb-1">
+              <div className="no-scrollbar scroll-pan-y -mx-4 mt-2 w-full overflow-x-auto px-4">
+                <div className="flex min-w-0 gap-3 pb-1">
                   {sponsored.map((ad) => (
                     <a
                       key={ad.id}
@@ -250,7 +295,9 @@ export function DiscoverScreen() {
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold">{ad.brandName}</p>
                           {ad.headline && (
-                            <p className="line-clamp-2 text-xs text-muted-foreground">{ad.headline}</p>
+                            <p className="line-clamp-2 text-xs text-muted-foreground">
+                              {ad.headline}
+                            </p>
                           )}
                         </div>
                       </div>
@@ -271,7 +318,7 @@ export function DiscoverScreen() {
       {/* Group preview dialog */}
       <GroupPreviewDialog
         group={preview}
-        joined={preview ? joinedIds.has(preview.id) : false}
+        state={preview ? joinStateFor(preview) : 'idle'}
         joining={preview ? joining === preview.id : false}
         onJoin={handleJoin}
         onClose={() => setPreview(null)}
@@ -284,7 +331,7 @@ function Section({
   title,
   loading,
   groups,
-  joinedIds,
+  joinStateFor,
   joining,
   onJoin,
   onPreview,
@@ -292,7 +339,7 @@ function Section({
   title: string
   loading: boolean
   groups: GroupItem[]
-  joinedIds: Set<string>
+  joinStateFor: (g: GroupItem) => JoinState
   joining: string | null
   onJoin: (g: GroupItem) => void
   onPreview: (g: GroupItem) => void
@@ -300,18 +347,18 @@ function Section({
   return (
     <section className="mt-5">
       <h2 className="text-base font-semibold">{title}</h2>
-      <div className="no-scrollbar scroll-pan-y -mx-4 mt-2 overflow-x-auto px-4">
+      <div className="no-scrollbar scroll-pan-y -mx-4 mt-2 w-full overflow-x-auto px-4">
         {loading ? (
           <CardLoadingRow />
         ) : groups.length === 0 ? (
           <p className="px-4 text-sm text-muted-foreground">No groups yet.</p>
         ) : (
-          <div className="flex gap-3 pb-1">
+          <div className="flex min-w-0 gap-3 pb-1">
             {groups.map((g) => (
               <GroupCard
                 key={g.id}
                 g={g}
-                joined={joinedIds.has(g.id)}
+                state={joinStateFor(g)}
                 joining={joining === g.id}
                 onJoin={onJoin}
                 onPreview={() => onPreview(g)}
@@ -326,13 +373,13 @@ function Section({
 
 function GroupCard({
   g,
-  joined,
+  state,
   joining,
   onJoin,
   onPreview,
 }: {
   g: GroupItem
-  joined: boolean
+  state: JoinState
   joining: boolean
   onJoin: (g: GroupItem) => void
   onPreview: () => void
@@ -344,36 +391,34 @@ function GroupCard({
         className="flex w-full flex-col items-center p-3 text-center"
       >
         <Avatar className="h-12 w-12">
-          <AvatarImage src={g.logo || undefined} />
+          <AvatarImage src={g.logo || undefined} alt={g.name} />
           <AvatarFallback className="bg-primary/10 text-primary">
             {(g.name || '?')[0]?.toUpperCase()}
           </AvatarFallback>
         </Avatar>
-        <p className="mt-2 line-clamp-1 w-full text-sm font-semibold">{g.name}</p>
-        <p className="line-clamp-1 w-full text-xs text-muted-foreground">{g.category || 'Group'}</p>
+        <p className="mt-2 flex items-center gap-1 text-sm font-semibold">
+          {g.isPublic === false && <Lock className="h-3 w-3 text-muted-foreground" />}
+          <span className="line-clamp-1">{g.name}</span>
+        </p>
+        <p className="line-clamp-1 w-full text-xs text-muted-foreground">
+          {g.category || 'Group'}
+        </p>
         <p className="mt-1 text-[10px] text-muted-foreground">{g.membersCount} members</p>
         {g.description && (
-          <p className="mt-1 line-clamp-1 w-full text-[11px] text-muted-foreground">{g.description}</p>
+          <p className="mt-1 line-clamp-1 w-full text-[11px] text-muted-foreground">
+            {g.description}
+          </p>
         )}
       </button>
       <div className="px-3 pb-3">
-        <Button
-          size="sm"
-          variant={joined ? 'outline' : 'default'}
-          disabled={joined || joining}
+        <JoinButton
+          state={state}
+          joining={joining}
+          isPublic={g.isPublic}
           onClick={() => onJoin(g)}
-          className="w-full min-h-[36px]"
-        >
-          {joining ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : joined ? (
-            <>
-              <Check className="h-3.5 w-3.5" /> Joined
-            </>
-          ) : (
-            'Join'
-          )}
-        </Button>
+          size="sm"
+          block
+        />
       </div>
     </div>
   )
@@ -381,13 +426,13 @@ function GroupCard({
 
 function GroupRow({
   g,
-  joined,
+  state,
   joining,
   onJoin,
   onPreview,
 }: {
   g: GroupItem
-  joined: boolean
+  state: JoinState
   joining: boolean
   onJoin: (g: GroupItem) => void
   onPreview: () => void
@@ -399,13 +444,16 @@ function GroupRow({
         className="flex min-w-0 flex-1 items-center gap-3 text-left"
       >
         <Avatar className="h-10 w-10">
-          <AvatarImage src={g.logo || undefined} />
+          <AvatarImage src={g.logo || undefined} alt={g.name} />
           <AvatarFallback className="bg-primary/10 text-primary">
             {(g.name || '?')[0]?.toUpperCase()}
           </AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold">{g.name}</p>
+          <p className="flex items-center gap-1 truncate text-sm font-semibold">
+            {g.isPublic === false && <Lock className="h-3 w-3 shrink-0 text-muted-foreground" />}
+            <span className="truncate">{g.name}</span>
+          </p>
           <p className="truncate text-xs text-muted-foreground">
             {g.membersCount} members · {g.category || 'Group'}
           </p>
@@ -414,30 +462,66 @@ function GroupRow({
           )}
         </div>
       </button>
-      <Button
-        size="sm"
-        variant={joined ? 'outline' : 'default'}
-        disabled={joined || joining}
+      <JoinButton
+        state={state}
+        joining={joining}
+        isPublic={g.isPublic}
         onClick={() => onJoin(g)}
-        className="min-h-[36px]"
-      >
-        {joining ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : joined ? (
-          <>
-            <Check className="h-3.5 w-3.5" /> Joined
-          </>
-        ) : (
-          'Join'
-        )}
-      </Button>
+        size="sm"
+      />
     </div>
+  )
+}
+
+// ============================================================
+// Reusable Join / Request to Join / Joined button
+// ============================================================
+
+function JoinButton({
+  state,
+  joining,
+  isPublic,
+  onClick,
+  size = 'default',
+  block = false,
+}: {
+  state: JoinState
+  joining: boolean
+  isPublic: boolean
+  onClick: () => void
+  size?: 'sm' | 'default'
+  block?: boolean
+}) {
+  const label = () => {
+    if (joining) return null
+    if (state === 'joined') return (
+      <>
+        <Check className="h-3.5 w-3.5" /> Joined
+      </>
+    )
+    if (state === 'requested') return 'Requested'
+    return isPublic === false ? 'Request to Join' : 'Join'
+  }
+
+  const variant = state === 'joined' || state === 'requested' ? 'outline' : 'default'
+  const disabled = joining || state === 'joined' || state === 'requested'
+
+  return (
+    <Button
+      size={size}
+      variant={variant}
+      disabled={disabled}
+      onClick={onClick}
+      className={`${block ? 'w-full' : ''} min-h-[36px]`}
+    >
+      {joining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : label()}
+    </Button>
   )
 }
 
 function CardLoadingRow() {
   return (
-    <div className="flex gap-3 px-4 pb-1">
+    <div className="flex min-w-0 gap-3 px-4 pb-1">
       {[0, 1, 2, 3].map((i) => (
         <div
           key={i}
@@ -473,17 +557,27 @@ function InlineLoadingRow() {
 
 function GroupPreviewDialog({
   group,
-  joined,
+  state,
   joining,
   onJoin,
   onClose,
 }: {
   group: GroupItem | null
-  joined: boolean
+  state: JoinState
   joining: boolean
   onJoin: (g: GroupItem) => void
   onClose: () => void
 }) {
+  const label = () => {
+    if (joining) return <Loader2 className="h-4 w-4 animate-spin" />
+    if (state === 'joined') return (
+      <>
+        <Check className="h-4 w-4" /> Joined
+      </>
+    )
+    if (state === 'requested') return 'Requested'
+    return group?.isPublic === false ? 'Request to Join' : 'Join group'
+  }
   return (
     <Dialog open={!!group} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-md">
@@ -493,18 +587,28 @@ function GroupPreviewDialog({
         {group && (
           <div className="flex flex-col items-center text-center">
             <Avatar className="h-16 w-16">
-              <AvatarImage src={group.logo || undefined} />
+              <AvatarImage src={group.logo || undefined} alt={group.name} />
               <AvatarFallback className="bg-primary/10 text-primary text-lg">
                 {(group.name || '?')[0]?.toUpperCase()}
               </AvatarFallback>
             </Avatar>
-            <h3 className="mt-2 text-lg font-bold">{group.name}</h3>
+            <h3 className="mt-2 flex items-center gap-1 text-lg font-bold">
+              {group.isPublic === false && (
+                <Lock className="h-4 w-4 text-muted-foreground" />
+              )}
+              {group.name}
+            </h3>
             <p className="text-sm text-muted-foreground">{group.category || 'Group'}</p>
             <div className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
               <Users className="h-4 w-4" /> {group.membersCount} members
             </div>
             {group.description && (
               <p className="mt-3 text-sm text-muted-foreground">{group.description}</p>
+            )}
+            {group.isPublic === false && (
+              <p className="mt-2 rounded-md bg-amber-500/10 px-2 py-1 text-xs text-amber-600">
+                Private group — your request will need admin approval.
+              </p>
             )}
           </div>
         )}
@@ -514,19 +618,11 @@ function GroupPreviewDialog({
           </Button>
           {group && (
             <Button
-              disabled={joined || joining}
+              disabled={joining || state === 'joined' || state === 'requested'}
               onClick={() => onJoin(group)}
               className="btn-brand min-h-[44px]"
             >
-              {joining ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : joined ? (
-                <>
-                  <Check className="h-4 w-4" /> Joined
-                </>
-              ) : (
-                'Join group'
-              )}
+              {label()}
             </Button>
           )}
         </DialogFooter>

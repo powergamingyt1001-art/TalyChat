@@ -16,6 +16,7 @@ function serializeUser(u: any) {
     bio: u.bio,
     gender: u.gender,
     isPremium: u.isPremium,
+    premiumTier: u.premiumTier,
     isOnline: u.isOnline,
     lastSeen: u.lastSeen,
     role: u.role,

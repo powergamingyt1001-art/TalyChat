@@ -10,6 +10,7 @@ export interface AuthUser {
   name: string
   role: 'user' | 'admin'
   isPremium: boolean
+  premiumTier?: string // free | bronze | silver | gold (V2 — premium ring)
   avatar?: string | null
   bio?: string
   isRestricted?: boolean

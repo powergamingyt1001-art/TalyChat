@@ -27,6 +27,13 @@ import {
   Clock,
   Palette,
   ShieldCheck,
+  Crown,
+  Calendar as CalendarIcon,
+  MessageCircle,
+  AtSign,
+  BadgeCheck,
+  Info,
+  Copy,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-store'
 import { apiFetch, apiUpload } from '@/lib/api'
@@ -39,6 +46,7 @@ import {
   FONT_OPTIONS,
 } from '@/components/taly/customizer-context'
 import { CustomizeDialog } from '@/components/taly/customize-dialog'
+import { PremiumAvatar } from '@/components/premium-avatar'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -65,6 +73,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { format as formatDate } from 'date-fns'
 
 import { MessageBubble, MessageActionMenu } from './message-bubble'
 import { EmojiPicker } from './emoji-picker'
@@ -194,6 +204,9 @@ export function ChatView({
   const [confirmClear, setConfirmClear] = React.useState(false)
   const [confirmLeave, setConfirmLeave] = React.useState(false)
   const [confirmBlock, setConfirmBlock] = React.useState(false)
+
+  // Profile / Group info dialog (opened by clicking the header name/avatar)
+  const [profileViewOpen, setProfileViewOpen] = React.useState(false)
 
   // Ad system state
   const [ad, setAd] = React.useState<ChatAd | null>(null)
@@ -1092,28 +1105,51 @@ export function ChatView({
           <ArrowLeft className="h-5 w-5" />
         </button>
 
-        <Avatar className="h-9 w-9 shrink-0">
-          {avatar && <AvatarImage src={avatar} alt={name} />}
-          <AvatarFallback>{(name || '?').charAt(0).toUpperCase()}</AvatarFallback>
-        </Avatar>
+        <button
+          type="button"
+          onClick={() => setProfileViewOpen(true)}
+          aria-label="Open profile"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-1 text-left hover:bg-accent/50"
+        >
+          {isGroup ? (
+            <Avatar className="h-9 w-9 shrink-0">
+              {avatar && <AvatarImage src={avatar} alt={name} />}
+              <AvatarFallback className="bg-primary/15 font-semibold text-primary">
+                {(name || 'U').charAt(0).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+          ) : (
+            <PremiumAvatar
+              user={{
+                isPremium: (conversation?.otherUser as any)?.isPremium,
+                premiumTier: (conversation?.otherUser as any)?.premiumTier,
+                avatar: avatar || conversation?.otherUser?.avatar || undefined,
+                name: name || conversation?.otherUser?.name || 'U',
+              }}
+              size={36}
+              showAura
+              className="shrink-0"
+            />
+          )}
 
-        <div className="min-w-0 flex-1 overflow-hidden">
-          <div className="truncate text-sm font-semibold">
-            {name}
-            {isGroup && conversation?.group?.isPublic === false && (
-              <ShieldCheck className="ml-1 inline h-3.5 w-3.5 text-muted-foreground" />
-            )}
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <div className="truncate text-sm font-semibold">
+              {name}
+              {isGroup && conversation?.group?.isPublic === false && (
+                <ShieldCheck className="ml-1 inline h-3.5 w-3.5 text-muted-foreground" />
+              )}
+            </div>
+            <div className="truncate text-xs text-muted-foreground">
+              {otherTyping ? (
+                <span className="text-primary">typing…</span>
+              ) : statusText ? (
+                statusText
+              ) : (
+                <Loader2 className="inline h-3 w-3 animate-spin" />
+              )}
+            </div>
           </div>
-          <div className="truncate text-xs text-muted-foreground">
-            {otherTyping ? (
-              <span className="text-primary">typing…</span>
-            ) : statusText ? (
-              statusText
-            ) : (
-              <Loader2 className="inline h-3 w-3 animate-spin" />
-            )}
-          </div>
-        </div>
+        </button>
 
         <button
           type="button"
@@ -1590,9 +1626,33 @@ export function ChatView({
       {/* Customize dialog */}
       <CustomizeDialog
         open={customizeOpen}
+        onClose={() => setCustomizeOpen(false)}
         onOpenChange={setCustomizeOpen}
         conversationId={conversationId}
         isGroup={isGroup}
+      />
+
+      {/* Profile / Group info dialog (opened from header) */}
+      <ProfileViewDialog
+        open={profileViewOpen}
+        onOpenChange={setProfileViewOpen}
+        isGroup={isGroup}
+        name={name}
+        avatar={avatar}
+        otherUserId={otherUserId}
+        groupId={conversation?.groupId || null}
+        onBlock={() => {
+          setProfileViewOpen(false)
+          setConfirmBlock(true)
+        }}
+        onAddMember={() => {
+          setProfileViewOpen(false)
+          setAddMemberOpen(true)
+        }}
+        onLeaveGroup={() => {
+          setProfileViewOpen(false)
+          setConfirmLeave(true)
+        }}
       />
 
       {/* Confirm dialogs */}
@@ -1656,5 +1716,396 @@ export function ChatView({
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Profile / Group Info dialog — opened by clicking the header name/avatar.
+// For private chats: fetches the other user's public profile.
+// For group chats: fetches the group's details + members list.
+// ---------------------------------------------------------------------------
+
+interface ProfileViewDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  isGroup: boolean
+  name: string
+  avatar?: string
+  otherUserId?: string | null
+  groupId?: string | null
+  onBlock: () => void
+  onAddMember: () => void
+  onLeaveGroup: () => void
+}
+
+function ProfileViewDialog({
+  open,
+  onOpenChange,
+  isGroup,
+  name,
+  avatar,
+  otherUserId,
+  groupId,
+  onBlock,
+  onAddMember,
+  onLeaveGroup,
+}: ProfileViewDialogProps) {
+  const { user } = useAuth()
+  const { toast } = useToast()
+  const [loading, setLoading] = React.useState(false)
+  const [profile, setProfile] = React.useState<any>(null)
+  const [group, setGroup] = React.useState<any>(null)
+
+  // Reset + fetch whenever the dialog opens.
+  React.useEffect(() => {
+    if (!open) return
+    setProfile(null)
+    setGroup(null)
+    setLoading(true)
+    let cancelled = false
+    ;(async () => {
+      try {
+        if (isGroup) {
+          if (!groupId) return
+          const res: any = await apiFetch(`/api/groups/${groupId}`)
+          const g = res?.group || (res?.id ? res : null)
+          if (!cancelled) setGroup(g)
+        } else {
+          if (!otherUserId) return
+          const res: any = await apiFetch(`/api/users/${otherUserId}`)
+          const u = res?.user || (res?.id ? res : null)
+          if (!cancelled) setProfile(u)
+        }
+      } catch (e: any) {
+        if (!cancelled) toast({ title: e?.message || 'Failed to load profile', variant: 'destructive' })
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open, isGroup, groupId, otherUserId, toast])
+
+  const copyInviteCode = async () => {
+    const code = group?.inviteCode
+    if (!code) return
+    try {
+      await navigator.clipboard.writeText(code)
+      toast({ title: 'Invite code copied', description: code })
+    } catch {
+      toast({ title: 'Copy failed', variant: 'destructive' })
+    }
+  }
+
+  const myRole = group?.myRole
+  const canManageGroup = myRole === 'owner' || myRole === 'admin'
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{isGroup ? 'Group info' : 'Profile'}</DialogTitle>
+        </DialogHeader>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-8 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+          </div>
+        ) : isGroup ? (
+          <GroupInfoBody
+            group={group}
+            name={name}
+            avatar={avatar}
+            canManage={canManageGroup}
+            currentUserId={user?.id}
+            onAddMember={onAddMember}
+            onLeaveGroup={onLeaveGroup}
+            onCopyInviteCode={copyInviteCode}
+          />
+        ) : (
+          <UserProfileBody
+            profile={profile}
+            name={name}
+            avatar={avatar}
+            onMessage={() => onOpenChange(false)}
+            onBlock={onBlock}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function UserProfileBody({
+  profile,
+  name,
+  avatar,
+  onMessage,
+  onBlock,
+}: {
+  profile: any
+  name: string
+  avatar?: string
+  onMessage: () => void
+  onBlock: () => void
+}) {
+  const display = profile || {}
+  const avatarUrl = display.avatar || avatar
+  const displayName = display.name || name || 'User'
+  const username = display.username || ''
+  const bio = display.bio || ''
+  const isPremium = !!display.isPremium
+  const isOnline = !!display.isOnline
+  const lastSeen = display.lastSeen
+  const createdAt = display.createdAt
+
+  return (
+    <div className="space-y-4">
+      {/* Avatar + name block */}
+      <div className="flex flex-col items-center gap-3 text-center">
+        <PremiumAvatar
+          user={{
+            isPremium: display.isPremium,
+            premiumTier: display.premiumTier,
+            avatar: avatarUrl || undefined,
+            name: displayName,
+          }}
+          size={96}
+          showAura
+        />
+        <div>
+          <div className="flex items-center justify-center gap-2">
+            <h3 className="text-lg font-bold">{displayName}</h3>
+            {isPremium && (
+              <span className="premium-badge">
+                <Crown className="h-3 w-3" /> Premium
+              </span>
+            )}
+          </div>
+          {username && (
+            <p className="mt-0.5 inline-flex items-center justify-center gap-1 text-sm text-muted-foreground">
+              <AtSign className="h-3 w-3" />
+              {username}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Online status */}
+      <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+        <span
+          className={`inline-block h-2 w-2 rounded-full ${
+            isOnline ? 'bg-green-500' : 'bg-muted-foreground'
+          }`}
+        />
+        {isOnline ? 'Online' : lastSeen ? `Last seen ${formatDate(new Date(lastSeen), 'dd MMM yyyy')}` : 'Offline'}
+      </div>
+
+      {/* Bio */}
+      {bio ? (
+        <div className="rounded-md border bg-muted/30 p-3 text-sm">
+          {bio}
+        </div>
+      ) : (
+        <div className="rounded-md border border-dashed bg-muted/10 p-3 text-center text-sm italic text-muted-foreground">
+          No bio
+        </div>
+      )}
+
+      {/* Joined date */}
+      {createdAt && (
+        <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+          <CalendarIcon className="h-3 w-3" />
+          Joined {formatDate(new Date(createdAt), 'MMM yyyy')}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex gap-2">
+        <Button onClick={onMessage} className="btn-brand min-h-[44px] flex-1">
+          <MessageCircle className="h-4 w-4" /> Message
+        </Button>
+        <Button
+          variant="outline"
+          onClick={onBlock}
+          className="min-h-[44px] flex-1 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+        >
+          <Ban className="h-4 w-4" /> Block
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function GroupInfoBody({
+  group,
+  name,
+  avatar,
+  canManage,
+  currentUserId,
+  onAddMember,
+  onLeaveGroup,
+  onCopyInviteCode,
+}: {
+  group: any
+  name: string
+  avatar?: string
+  canManage: boolean
+  currentUserId?: string
+  onAddMember: () => void
+  onLeaveGroup: () => void
+  onCopyInviteCode: () => void
+}) {
+  const g = group || {}
+  const logo = g.logo || avatar
+  const groupName = g.name || name || 'Group'
+  const description = g.description || ''
+  const category = g.category || ''
+  const membersCount = g.membersCount ?? (Array.isArray(g.members) ? g.members.length : 0)
+  const members: any[] = Array.isArray(g.members) ? g.members : []
+  const inviteCode = g.inviteCode || ''
+  const isPublic = g.isPublic
+
+  return (
+    <ScrollArea className="max-h-[80dvh]">
+      <div className="space-y-4 pr-2">
+        {/* Logo + name */}
+        <div className="flex flex-col items-center gap-3 text-center">
+          <Avatar className="h-20 w-20 border-2 border-primary/30">
+            {logo && <AvatarImage src={logo} alt={groupName} />}
+            <AvatarFallback className="bg-primary/15 text-xl font-bold text-primary">
+              {groupName.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <div>
+            <div className="flex items-center justify-center gap-2">
+              <h3 className="text-lg font-bold">{groupName}</h3>
+              <span
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                  isPublic
+                    ? 'bg-primary/10 text-primary'
+                    : 'bg-amber-500/15 text-amber-600'
+                }`}
+              >
+                <ShieldCheck className="h-3 w-3" />
+                {isPublic ? 'Public' : 'Private'}
+              </span>
+            </div>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {membersCount} {membersCount === 1 ? 'member' : 'members'}
+            </p>
+          </div>
+        </div>
+
+        {/* Description */}
+        {description ? (
+          <div className="rounded-md border bg-muted/30 p-3 text-sm">
+            {description}
+          </div>
+        ) : (
+          <div className="rounded-md border border-dashed bg-muted/10 p-3 text-center text-sm italic text-muted-foreground">
+            No description
+          </div>
+        )}
+
+        {/* Category */}
+        {category && (
+          <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+            <BadgeCheck className="h-3 w-3 text-primary" />
+            {category}
+          </div>
+        )}
+
+        {/* Members list */}
+        <div>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Members ({members.length})
+          </p>
+          {members.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No members found.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {members.map((m: any) => {
+                const u = m.user || {}
+                const role = m.role
+                const isOwner = role === 'owner'
+                const isAdmin = role === 'admin'
+                return (
+                  <li
+                    key={m.id || u.id || `${m.userId}-${role}`}
+                    className="flex items-center gap-2 rounded-md border p-2"
+                  >
+                    <PremiumAvatar
+                      user={{
+                        isPremium: u.isPremium,
+                        premiumTier: (u as any).premiumTier,
+                        avatar: u.avatar || undefined,
+                        name: u.name || u.username || 'U',
+                      }}
+                      size={32}
+                      showAura={false}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">
+                        {u.name || u.username || 'User'}
+                        {u.id === currentUserId && (
+                          <span className="ml-1 text-xs text-muted-foreground">(you)</span>
+                        )}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">@{u.username}</p>
+                    </div>
+                    {isOwner ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-600">
+                        <Crown className="h-3 w-3" /> Owner
+                      </span>
+                    ) : isAdmin ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                        <BadgeCheck className="h-3 w-3" /> Admin
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        Member
+                      </span>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex flex-wrap gap-2 pt-2">
+          {canManage && (
+            <Button onClick={onAddMember} className="btn-brand min-h-[44px] flex-1">
+              <UserPlus className="h-4 w-4" /> Add member
+            </Button>
+          )}
+          {canManage && inviteCode && (
+            <Button
+              variant="outline"
+              onClick={onCopyInviteCode}
+              className="min-h-[44px] flex-1"
+            >
+              <Copy className="h-4 w-4" /> Invite code
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            onClick={onLeaveGroup}
+            className="min-h-[44px] flex-1 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          >
+            <LogOut className="h-4 w-4" /> Leave
+          </Button>
+        </div>
+
+        {inviteCode && (
+          <p className="text-center text-xs text-muted-foreground">
+            Invite code: <code className="rounded bg-muted px-1.5 py-0.5 font-mono">{inviteCode}</code>
+          </p>
+        )}
+      </div>
+    </ScrollArea>
   )
 }

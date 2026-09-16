@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
         avatar: true,
         isOnline: true,
         isPremium: true,
+        premiumTier: true,
       },
       orderBy: { username: 'asc' },
     })

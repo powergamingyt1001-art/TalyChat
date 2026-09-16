@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { PremiumAvatar } from '@/components/premium-avatar'
 import {
   Dialog,
   DialogContent,
@@ -309,22 +309,20 @@ export const MessageBubble = React.forwardRef<MessageBubbleHandle, MessageBubble
 
           {/* Avatar */}
           {showAvatar ? (
-            <Avatar
+            <PremiumAvatar
+              user={{
+                isPremium: (message.sender as any)?.isPremium,
+                premiumTier: (message.sender as any)?.premiumTier,
+                avatar: message.sender?.avatar || undefined,
+                name: message.sender?.name || message.sender?.username || '?',
+              }}
+              size={28}
+              showAura={false}
               className={cn(
-                'h-7 w-7 shrink-0',
+                'shrink-0',
                 !isLastInGroup && 'opacity-0'
               )}
-            >
-              {message.sender?.avatar && (
-                <AvatarImage
-                  src={message.sender.avatar}
-                  alt={message.sender?.name || message.sender?.username || ''}
-                />
-              )}
-              <AvatarFallback className="text-xs">
-                {(message.sender?.name || message.sender?.username || '?').charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
+            />
           ) : null}
 
           {/* Bubble column */}
@@ -345,19 +343,19 @@ export const MessageBubble = React.forwardRef<MessageBubbleHandle, MessageBubble
             {message.replyTo && !isDeleted && (
               <div
                 className={cn(
-                  'mb-1 flex max-w-full items-center gap-1.5 truncate rounded-md px-2 py-1 text-xs',
+                  'mb-1 flex max-w-full items-center gap-1.5 truncate rounded-md border-l-2 border-primary/70 px-2 py-1 text-[13px]',
                   isMine
-                    ? 'self-end bg-white/15 text-white/90'
-                    : 'self-start bg-accent text-accent-foreground'
+                    ? 'self-end bg-black/10 text-foreground'
+                    : 'self-start bg-muted/80 text-foreground'
                 )}
               >
-                <CornerUpLeft className="h-3 w-3 shrink-0" />
+                <CornerUpLeft className="h-3 w-3 shrink-0 text-primary" />
                 <span className="truncate">
-                  <span className="font-semibold">
+                  <span className="font-bold text-primary">
                     @{message.replyTo.sender?.username || message.replyTo.sender?.name || 'user'}
                     {': '}
                   </span>
-                  <span className="opacity-80">
+                  <span className="font-medium opacity-90">
                     {message.replyTo.deletedAt
                       ? 'Message deleted'
                       : messagePreview({

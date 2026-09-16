@@ -1,33 +1,47 @@
 'use client'
 
 import * as React from 'react'
-import { LayoutDashboard, Users, Ticket, Flag, Settings, LogOut, type LucideIcon } from 'lucide-react'
+import {
+  LayoutDashboard,
+  Ticket,
+  CreditCard,
+  Repeat,
+  UserCog,
+  LogOut,
+  type LucideIcon,
+} from 'lucide-react'
 import { useAuth } from '@/lib/auth-store'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { AdminDashboard } from './admin-dashboard'
-import { AdminMembers } from './admin-members'
 import { AdminRedeem } from './admin-redeem'
-import { AdminReports } from './admin-reports'
-import { AdminSettings } from './admin-settings'
+import { AdminPayments } from './admin-payments'
+import { AdminSubscriptions } from './admin-subscriptions'
+import { AdminProfile } from './admin-profile'
 import { initials } from './admin-shared'
 
-type AdminTab = 'dashboard' | 'members' | 'redeem' | 'reports' | 'settings'
+// V2 — new 5-tab admin navigation.
+// Old tabs (Members / Reports / Settings) are merged into Dashboard drilldowns
+// or into the new Profile tab.
+export type AdminTab = 'dashboard' | 'redeem' | 'payments' | 'subscriptions' | 'profile'
 
 const NAV: { id: AdminTab; label: string; icon: LucideIcon }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'members', label: 'Members', icon: Users },
   { id: 'redeem', label: 'Redeem', icon: Ticket },
-  { id: 'reports', label: 'Reports', icon: Flag },
-  { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'payments', label: 'Payments', icon: CreditCard },
+  { id: 'subscriptions', label: 'Subscriptions', icon: Repeat },
+  { id: 'profile', label: 'Profile', icon: UserCog },
 ]
 
 export function AdminApp() {
   const { user, logout } = useAuth()
   const isMobile = useIsMobile()
   const [tab, setTab] = React.useState<AdminTab>('dashboard')
+
+  // Allow child tabs to programmatically switch tabs (e.g. Payments → Subscriptions).
+  const switchTab = React.useCallback((t: AdminTab) => setTab(t), [])
 
   return (
     <div className="taly-shell min-h-[100dvh] overflow-hidden bg-background">
@@ -99,10 +113,10 @@ export function AdminApp() {
         <main className="scroll-pan-y min-w-0 flex-1 overflow-y-auto p-3 sm:p-5 md:p-6">
           <div className="mx-auto max-w-6xl">
             {tab === 'dashboard' && <AdminDashboard />}
-            {tab === 'members' && <AdminMembers />}
             {tab === 'redeem' && <AdminRedeem />}
-            {tab === 'reports' && <AdminReports />}
-            {tab === 'settings' && <AdminSettings onLogout={logout} />}
+            {tab === 'payments' && <AdminPayments onGotoSubscriptions={() => switchTab('subscriptions')} />}
+            {tab === 'subscriptions' && <AdminSubscriptions />}
+            {tab === 'profile' && <AdminProfile onLogout={logout} />}
           </div>
           {/* Bottom spacer for mobile nav */}
           {isMobile && <div className="h-16" />}

@@ -61,6 +61,7 @@ export async function GET(req: NextRequest) {
             name: true,
             avatar: true,
             isPremium: true,
+            premiumTier: true,
           },
         },
       },
@@ -139,6 +140,18 @@ export async function POST(req: NextRequest) {
       return jsonError(403, 'Not a member of this conversation')
     }
 
+    // Behavior check: behaviorScore must be >= 50 to send messages.
+    // (Admins are exempt.)
+    if (user.role !== 'admin') {
+      const me = await db.user.findUnique({
+        where: { id: user.id },
+        select: { behaviorScore: true },
+      })
+      if (me && me.behaviorScore < 50) {
+        return jsonError(403, 'Behavior too low. Watch ads to increase your score.')
+      }
+    }
+
     const conv = await db.conversation.findUnique({
       where: { id: conversationId },
       include: {
@@ -207,6 +220,7 @@ export async function POST(req: NextRequest) {
             name: true,
             avatar: true,
             isPremium: true,
+            premiumTier: true,
           },
         },
       },

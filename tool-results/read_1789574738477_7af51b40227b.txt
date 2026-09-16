@@ -1,0 +1,1661 @@
+     1→'use client'
+     2→
+     3→import * as React from 'react'
+     4→import {
+     5→  ArrowLeft,
+     6→  Search as SearchIcon,
+     7→  MoreVertical,
+     8→  Send,
+     9→  Smile,
+    10→  Paperclip,
+    11→  Mic,
+    12→  Loader2,
+    13→  Image as ImageIcon,
+    14→  Sticker as StickerIcon,
+    15→  X,
+    16→  Bell,
+    17→  BellOff,
+    18→  Pin as PinIcon,
+    19→  PinOff,
+    20→  Trash2,
+    21→  Ban,
+    22→  Flag,
+    23→  UserPlus,
+    24→  LogOut,
+    25→  Users,
+    26→  Eye,
+    27→  Clock,
+    28→  Palette,
+    29→  ShieldCheck,
+    30→} from 'lucide-react'
+    31→import { useAuth } from '@/lib/auth-store'
+    32→import { apiFetch, apiUpload } from '@/lib/api'
+    33→import { useSocket, getSocket } from '@/lib/socket'
+    34→import { useToast } from '@/hooks/use-toast'
+    35→import {
+    36→  useCustomizer,
+    37→  getWallpaperStyle,
+    38→  WALLPAPERS,
+    39→  FONT_OPTIONS,
+    40→} from '@/components/taly/customizer-context'
+    41→import { CustomizeDialog } from '@/components/taly/customize-dialog'
+    42→import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+    43→import { Button } from '@/components/ui/button'
+    44→import { Input } from '@/components/ui/input'
+    45→import {
+    46→  DropdownMenu,
+    47→  DropdownMenuContent,
+    48→  DropdownMenuItem,
+    49→  DropdownMenuSeparator,
+    50→  DropdownMenuSub,
+    51→  DropdownMenuSubContent,
+    52→  DropdownMenuSubTrigger,
+    53→  DropdownMenuTrigger,
+    54→} from '@/components/ui/dropdown-menu'
+    55→import {
+    56→  Popover,
+    57→  PopoverContent,
+    58→  PopoverTrigger,
+    59→} from '@/components/ui/popover'
+    60→import {
+    61→  Dialog,
+    62→  DialogContent,
+    63→  DialogDescription,
+    64→  DialogFooter,
+    65→  DialogHeader,
+    66→  DialogTitle,
+    67→} from '@/components/ui/dialog'
+    68→
+    69→import { MessageBubble, MessageActionMenu } from './message-bubble'
+    70→import { EmojiPicker } from './emoji-picker'
+    71→import { ChatAdBox } from './chat-ad'
+    72→import { ReportDialog } from './report-dialog'
+    73→import { AddMemberDialog } from './add-member-dialog'
+    74→import {
+    75→  ChatMessage,
+    76→  ChatConversation,
+    77→  ChatAd,
+    78→} from './chat-types'
+    79→import { STICKER_SET } from './chat-types'
+    80→import {
+    81→  dateSeparatorLabel,
+    82→  formatTime,
+    83→  formatLastSeen,
+    84→  groupStatusLine,
+    85→  isSameDay,
+    86→  messagePreview,
+    87→} from './chat-helpers'
+    88→import { cn } from '@/lib/utils'
+    89→
+    90→// ---------------------------------------------------------------------------
+    91→// Safe customizer hook (works with or without the CustomizerProvider).
+    92→// ---------------------------------------------------------------------------
+    93→
+    94→function useCustomizerSafe(preferences: any) {
+    95→  try {
+    96→    const ctx = useCustomizer()
+    97→    return ctx
+    98→  } catch {
+    99→    // CustomizerProvider not available — derive from preferences prop.
+   100→    const wallpaper = WALLPAPERS.find((w) => w.id === preferences?.wallpaper) || WALLPAPERS[0]
+   101→    const fontFamily = FONT_OPTIONS.find((f) => f.id === preferences?.fontFamily) || FONT_OPTIONS[0]
+   102→    return {
+   103→      preferences,
+   104→      wallpaper,
+   105→      fontFamily,
+   106→      messageStyle: preferences?.messageStyle || 'bubble',
+   107→      fontSize: preferences?.fontSize || 14,
+   108→      setPreference: async () => {},
+   109→    }
+   110→  }
+   111→}
+   112→
+   113→// ---------------------------------------------------------------------------
+   114→// Constants
+   115→// ---------------------------------------------------------------------------
+   116→
+   117→const PAGE_SIZE = 50
+   118→const AD_DELAY_PRIVATE = 25_000 // 25s
+   119→const AD_DELAY_GROUP = 30_000 // 30s
+   120→const TYPING_DEBOUNCE = 300 // ms
+   121→const TYPING_STOP_DEBOUNCE = 1000 // ms
+   122→const SWIPE_REPLY_THRESHOLD = 60 // px
+   123→const MAX_RECORD_SECONDS = 120 // 2 minutes
+   124→const TEXTAREA_MAX_LINES = 4
+   125→
+   126→// ---------------------------------------------------------------------------
+   127→// Public component
+   128→// ---------------------------------------------------------------------------
+   129→
+   130→export interface ChatViewProps {
+   131→  conversationId: string
+   132→  name: string
+   133→  avatar?: string
+   134→  isGroup?: boolean
+   135→  onBack: () => void
+   136→  preferences?: any
+   137→}
+   138→
+   139→export function ChatView({
+   140→  conversationId,
+   141→  name,
+   142→  avatar,
+   143→  isGroup = false,
+   144→  onBack,
+   145→  preferences,
+   146→}: ChatViewProps) {
+   147→  const { user } = useAuth()
+   148→  const { toast } = useToast()
+   149→  const customizer = useCustomizerSafe(preferences)
+   150→
+   151→  // ----- State -----
+   152→  const [messages, setMessages] = React.useState<ChatMessage[]>([])
+   153→  const [loading, setLoading] = React.useState(true)
+   154→  const [hasMore, setHasMore] = React.useState(true)
+   155→  const [cursor, setCursor] = React.useState<string | null>(null)
+   156→  const [conversation, setConversation] = React.useState<ChatConversation | null>(null)
+   157→  const [statusText, setStatusText] = React.useState<string>('')
+   158→
+   159→  const [text, setText] = React.useState('')
+   160→  const [replyingTo, setReplyingTo] = React.useState<ChatMessage | null>(null)
+   161→  const [editingMessage, setEditingMessage] = React.useState<ChatMessage | null>(null)
+   162→  const [sending, setSending] = React.useState(false)
+   163→
+   164→  // Search overlay
+   165→  const [searchOpen, setSearchOpen] = React.useState(false)
+   166→  const [searchQuery, setSearchQuery] = React.useState('')
+   167→
+   168→  // Action menu (long-press / right-click)
+   169→  const [actionMenu, setActionMenu] = React.useState<{
+   170→    message: ChatMessage
+   171→    anchorRect: DOMRect
+   172→  } | null>(null)
+   173→
+   174→  // Voice recording
+   175→  const [isRecording, setIsRecording] = React.useState(false)
+   176→  const [recordSeconds, setRecordSeconds] = React.useState(0)
+   177→  const mediaRecorderRef = React.useRef<MediaRecorder | null>(null)
+   178→  const recordChunksRef = React.useRef<Blob[]>([])
+   179→  const recordTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null)
+   180→  const recordStreamRef = React.useRef<MediaStream | null>(null)
+   181→  const recordMimeRef = React.useRef<string>('')
+   182→
+   183→  // Attachment menu state — used by Popover trigger
+   184→  const [attachmentOpen, setAttachmentOpen] = React.useState(false)
+   185→  const fileInputRef = React.useRef<HTMLInputElement | null>(null)
+   186→
+   187→  // Typing indicator (other user is typing)
+   188→  const [otherTyping, setOtherTyping] = React.useState(false)
+   189→
+   190→  // Three-dot menu items that open dialogs
+   191→  const [reportOpen, setReportOpen] = React.useState(false)
+   192→  const [addMemberOpen, setAddMemberOpen] = React.useState(false)
+   193→  const [customizeOpen, setCustomizeOpen] = React.useState(false)
+   194→  const [confirmClear, setConfirmClear] = React.useState(false)
+   195→  const [confirmLeave, setConfirmLeave] = React.useState(false)
+   196→  const [confirmBlock, setConfirmBlock] = React.useState(false)
+   197→
+   198→  // Ad system state
+   199→  const [ad, setAd] = React.useState<ChatAd | null>(null)
+   200→  const [adVisible, setAdVisible] = React.useState(false)
+   201→  const adTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+   202→
+   203→  // ----- Refs -----
+   204→  const scrollRef = React.useRef<HTMLDivElement | null>(null)
+   205→  const textareaRef = React.useRef<HTMLTextAreaElement | null>(null)
+   206→  const wasNearBottomRef = React.useRef(true)
+   207→  const typingStopTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+   208→  const typingStartTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+   209→  const hasEmittedTypingRef = React.useRef(false)
+   210→
+   211→  // ----- API: Load conversation (for header status & members) -----
+   212→  const loadConversation = React.useCallback(async () => {
+   213→    try {
+   214→      const res: any = await apiFetch(`/api/conversations/${conversationId}`)
+   215→      // Defensive: API returns { conversation: {...} }, fall back to bare object.
+   216→      const conv: ChatConversation = res?.conversation || (res?.id ? res : null)
+   217→      setConversation(conv)
+   218→      // Compute status text for header
+   219→      if (isGroup) {
+   220→        setStatusText(groupStatusLine(conv?.members))
+   221→      } else {
+   222→        const other = conv?.otherUser
+   223→        if (other?.isOnline) setStatusText('online')
+   224→        else setStatusText(formatLastSeen(other?.lastSeen ? new Date(other.lastSeen) : null))
+   225→      }
+   226→    } catch (e: any) {
+   227→      // Not fatal — header will just show empty status
+   228→      console.warn('Failed to load conversation:', e?.message)
+   229→    }
+   230→  }, [conversationId, isGroup])
+   231→
+   232→  // ----- API: Load messages (cursor pagination) -----
+   233→  const loadMessages = React.useCallback(
+   234→    async (cur: string | null) => {
+   235→      try {
+   236→        const params = new URLSearchParams({
+   237→          conversationId,
+   238→          limit: String(PAGE_SIZE),
+   239→        })
+   240→        if (cur) params.set('cursor', cur)
+   241→        const res: any = await apiFetch(`/api/messages?${params.toString()}`)
+   242→        // Defensive: API returns { messages: [...], hasMore, nextCursor }.
+   243→        // Fall back to bare array if shape changes.
+   244→        const list: ChatMessage[] = Array.isArray(res)
+   245→          ? res
+   246→          : Array.isArray(res?.messages)
+   247→            ? res.messages
+   248→            : Array.isArray(res?.items)
+   249→              ? res.items
+   250→              : []
+   251→        setHasMore(!!res?.hasMore)
+   252→        setCursor(res?.nextCursor || null)
+   253→        if (cur) {
+   254→          // Prepend older messages
+   255→          setMessages((prev) => [...list, ...prev])
+   256→        } else {
+   257→          setMessages(list)
+   258→          // After initial load, mark all received messages as seen
+   259→          markReceivedAsSeen(list)
+   260→        }
+   261→      } catch (e: any) {
+   262→        toast({ title: e.message || 'Failed to load messages', variant: 'destructive' })
+   263→      } finally {
+   264→        setLoading(false)
+   265→      }
+   266→    },
+   267→    [conversationId, toast]
+   268→  )
+   269→
+   270→  // Mark all received (not-mine, not-deleted) messages as seen.
+   271→  const markReceivedAsSeen = React.useCallback(
+   272→    async (list: ChatMessage[]) => {
+   273→      if (!user?.id) return
+   274→      const toMark = list.filter(
+   275→        (m) => m.senderId !== user.id && !m.deletedAt
+   276→      )
+   277→      // Fire-and-forget; batched sequentially to be easy on the server.
+   278→      for (const m of toMark.slice(0, 25)) {
+   279→        try {
+   280→          await apiFetch(`/api/messages/${m.id}/read`, { method: 'POST' })
+   281→        } catch {}
+   282→      }
+   283→    },
+   284→    [user?.id]
+   285→  )
+   286→
+   287→  // ----- Initial mount: load conversation + messages -----
+   288→  React.useEffect(() => {
+   289→    setLoading(true)
+   290→    setMessages([])
+   291→    setCursor(null)
+   292→    setHasMore(true)
+   293→    loadConversation()
+   294→    loadMessages(null)
+   295→  }, [loadConversation, loadMessages])
+   296→
+   297→  // ----- Auto-scroll on new messages if near bottom -----
+   298→  React.useEffect(() => {
+   299→    const el = scrollRef.current
+   300→    if (!el) return
+   301→    // After initial load, jump to bottom
+   302→    if (loading) return
+   303→    if (wasNearBottomRef.current) {
+   304→      el.scrollTop = el.scrollHeight
+   305→    }
+   306→  }, [messages, loading])
+   307→
+   308→  // Track scroll position to know whether to auto-scroll
+   309→  const handleScroll = React.useCallback(() => {
+   310→    const el = scrollRef.current
+   311→    if (!el) return
+   312→    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+   313→    wasNearBottomRef.current = distanceFromBottom < 150
+   314→
+   315→    // Pagination: load more when scrolled near top
+   316→    if (el.scrollTop < 60 && hasMore && !loading) {
+   317→      const prevHeight = el.scrollHeight
+   318→      const prevTop = el.scrollTop
+   319→      loadMessages(cursor).then(() => {
+   320→        // Restore scroll position after prepend
+   321→        requestAnimationFrame(() => {
+   322→          if (scrollRef.current) {
+   323→            const newHeight = scrollRef.current.scrollHeight
+   324→            scrollRef.current.scrollTop = prevTop + (newHeight - prevHeight)
+   325→          }
+   326→        })
+   327→      })
+   328→    }
+   329→  }, [cursor, hasMore, loading, loadMessages])
+   330→
+   331→  // ----- Realtime: socket events -----
+   332→  const onNewMessage = React.useCallback(
+   333→    (payload: any) => {
+   334→      if (!payload || payload.conversationId !== conversationId) return
+   335→      const msg: ChatMessage = payload.message || payload
+   336→      if (!msg || !msg.id) return
+   337→      setMessages((prev) => {
+   338→        if (prev.some((m) => m.id === msg.id)) return prev
+   339→        return [...prev, msg]
+   340→      })
+   341→      // Auto-mark as seen if message is from other user
+   342→      if (user?.id && msg.senderId !== user.id && !msg.deletedAt) {
+   343→        apiFetch(`/api/messages/${msg.id}/read`, { method: 'POST' }).catch(() => {})
+   344→        // Also emit message:status seen over socket so the sender's UI updates
+   345→        const s = getSocket()
+   346→        s?.emit('message:status', {
+   347→          conversationId,
+   348→          messageId: msg.id,
+   349→          seen: true,
+   350→          userId: user.id,
+   351→        })
+   352→      }
+   353→    },
+   354→    [conversationId, user?.id]
+   355→  )
+   356→
+   357→  const onReaction = React.useCallback(
+   358→    (payload: any) => {
+   359→      if (!payload || payload.conversationId !== conversationId) return
+   360→      const { messageId, reactions, emoji, userId } = payload
+   361→      setMessages((prev) =>
+   362→        prev.map((m) => {
+   363→          if (m.id !== messageId) return m
+   364→          // If full reactions array provided, replace
+   365→          if (Array.isArray(reactions)) {
+   366→            return { ...m, reactions }
+   367→          }
+   368→          // Otherwise apply a delta: toggle emoji by userId
+   369→          const list = m.reactions ? [...m.reactions] : []
+   370→          const existingIdx = list.findIndex((r) => r.userId === userId)
+   371→          if (existingIdx >= 0) {
+   372→            if (list[existingIdx].emoji === emoji) {
+   373→              list.splice(existingIdx, 1) // toggle off
+   374→            } else {
+   375→              list[existingIdx] = { ...list[existingIdx], emoji }
+   376→            }
+   377→          } else {
+   378→            list.push({
+   379→              id: `${messageId}-${userId}`,
+   380→              messageId,
+   381→              userId,
+   382→              emoji,
+   383→              user: null,
+   384→              createdAt: new Date().toISOString(),
+   385→            })
+   386→          }
+   387→          return { ...m, reactions: list }
+   388→        })
+   389→      )
+   390→    },
+   391→    [conversationId]
+   392→  )
+   393→
+   394→  const onMessageEdit = React.useCallback(
+   395→    (payload: any) => {
+   396→      if (!payload || payload.conversationId !== conversationId) return
+   397→      const msg: ChatMessage = payload.message || payload
+   398→      if (!msg?.id) return
+   399→      setMessages((prev) =>
+   400→        prev.map((m) => (m.id === msg.id ? { ...m, ...msg } : m))
+   401→      )
+   402→    },
+   403→    [conversationId]
+   404→  )
+   405→
+   406→  const onMessageDelete = React.useCallback(
+   407→    (payload: any) => {
+   408→      if (!payload || payload.conversationId !== conversationId) return
+   409→      const { messageId, deletedAt } = payload
+   410→      if (!messageId) return
+   411→      setMessages((prev) =>
+   412→        prev.map((m) =>
+   413→          m.id === messageId ? { ...m, deletedAt: deletedAt || new Date().toISOString() } : m
+   414→        )
+   415→      )
+   416→    },
+   417→    [conversationId]
+   418→  )
+   419→
+   420→  const onMessageStatus = React.useCallback(
+   421→    (payload: any) => {
+   422→      if (!payload || payload.conversationId !== conversationId) return
+   423→      const { messageId, seen, userId } = payload
+   424→      if (!messageId || !seen) return
+   425→      setMessages((prev) =>
+   426→        prev.map((m) => {
+   427→          if (m.id !== messageId) return m
+   428→          if (!userId) return m
+   429→          const seenBy = (m.seenBy || '').split(',').map((s) => s.trim()).filter(Boolean)
+   430→          if (!seenBy.includes(userId)) seenBy.push(userId)
+   431→          return { ...m, seenBy: seenBy.join(',') }
+   432→        })
+   433→      )
+   434→    },
+   435→    [conversationId]
+   436→  )
+   437→
+   438→  const onTyping = React.useCallback(
+   439→    (payload: any) => {
+   440→      if (!payload || payload.conversationId !== conversationId) return
+   441→      if (payload.userId === user?.id) return // ignore my own
+   442→      setOtherTyping(!!payload.isTyping)
+   443→    },
+   444→    [conversationId, user?.id]
+   445→  )
+   446→
+   447→  const { connected } = useSocket({
+   448→    'message:new': onNewMessage,
+   449→    'reaction': onReaction,
+   450→    'message:edit': onMessageEdit,
+   451→    'message:delete': onMessageDelete,
+   452→    'message:status': onMessageStatus,
+   453→    'typing': onTyping,
+   454→  })
+   455→
+   456→  // Emit join / leave on connect
+   457→  React.useEffect(() => {
+   458→    if (!connected) return
+   459→    const s = getSocket()
+   460→    if (!s) return
+   461→    s.emit('join:conversation', { conversationId })
+   462→    return () => {
+   463→      const s2 = getSocket()
+   464→      s2?.emit('leave:conversation', { conversationId })
+   465→    }
+   466→  }, [connected, conversationId])
+   467→
+   468→  // ----- Ad system -----
+   469→  const fetchAd = React.useCallback(async () => {
+   470→    try {
+   471→      const res: any = await apiFetch('/api/ads?placement=in-chat')
+   472→      // Defensive: API returns { ad: {...} | null } for in-chat placement.
+   473→      const adObj = res?.ad ?? res?.item ?? null
+   474→      if (adObj) {
+   475→        setAd(adObj)
+   476→        setAdVisible(true)
+   477→      } else {
+   478→        setAd(null)
+   479→        setAdVisible(false)
+   480→      }
+   481→    } catch {
+   482→      // Silent fail
+   483→    }
+   484→  }, [])
+   485→
+   486→  const scheduleNextAd = React.useCallback(() => {
+   487→    if (adTimerRef.current) clearTimeout(adTimerRef.current)
+   488→    const delay = isGroup ? AD_DELAY_GROUP : AD_DELAY_PRIVATE
+   489→    adTimerRef.current = setTimeout(() => {
+   490→      fetchAd()
+   491→    }, delay)
+   492→  }, [fetchAd, isGroup])
+   493→
+   494→  // Start the ad loop on mount and re-schedule on close.
+   495→  React.useEffect(() => {
+   496→    scheduleNextAd()
+   497→    return () => {
+   498→      if (adTimerRef.current) clearTimeout(adTimerRef.current)
+   499→    }
+   500→  }, [scheduleNextAd])
+   501→
+   502→  const handleCloseAd = () => {
+   503→    setAdVisible(false)
+   504→    setAd(null)
+   505→    scheduleNextAd()
+   506→  }
+   507→
+   508→  const handleAdCtaClick = async (clickedAd: ChatAd) => {
+   509→    try {
+   510→      await apiFetch(`/api/ads/${clickedAd.id}/click`, { method: 'POST' })
+   511→    } catch {}
+   512→  }
+   513→
+   514→  // ----- Send message -----
+   515→  const handleSend = async () => {
+   516→    if (sending) return
+   517→    const content = text.trim()
+   518→    if (!content && !editingMessage) return
+   519→
+   520→    if (editingMessage) {
+   521→      // Edit mode
+   522→      setSending(true)
+   523→      try {
+   524→        const res: any = await apiFetch(`/api/messages/${editingMessage.id}`, {
+   525→          method: 'PUT',
+   526→          body: JSON.stringify({ content }),
+   527→        })
+   528→        // Defensive: API returns { message: {...} }, fall back to bare object.
+   529→        const updated: ChatMessage = res?.message || (res?.id ? res : null)
+   530→        if (updated) {
+   531→          setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)))
+   532→          // Emit edit over socket
+   533→          getSocket()?.emit('message:edit', {
+   534→            conversationId,
+   535→            messageId: updated.id,
+   536→            message: updated,
+   537→          })
+   538→        }
+   539→        setEditingMessage(null)
+   540→        setText('')
+   541→      } catch (e: any) {
+   542→        toast({ title: e.message || 'Failed to edit', variant: 'destructive' })
+   543→      } finally {
+   544→        setSending(false)
+   545→      }
+   546→      return
+   547→    }
+   548→
+   549→    setSending(true)
+   550→    try {
+   551→      const body: any = {
+   552→        conversationId,
+   553→        content,
+   554→        type: 'text',
+   555→      }
+   556→      if (replyingTo) body.replyToId = replyingTo.id
+   557→      const res: any = await apiFetch('/api/messages', {
+   558→        method: 'POST',
+   559→        body: JSON.stringify(body),
+   560→      })
+   561→      // Defensive: API returns { message: {...} } (201), fall back to bare object.
+   562→      const sent: ChatMessage = res?.message || (res?.id ? res : null)
+   563→      if (sent) {
+   564→        setMessages((prev) => {
+   565→          if (prev.some((m) => m.id === sent.id)) return prev
+   566→          return [...prev, sent]
+   567→        })
+   568→        wasNearBottomRef.current = true
+   569→        getSocket()?.emit('message:send', { conversationId, message: sent })
+   570→      }
+   571→      setReplyingTo(null)
+   572→      setText('')
+   573→      // Reset textarea height
+   574→      if (textareaRef.current) {
+   575→        textareaRef.current.style.height = 'auto'
+   576→      }
+   577→    } catch (e: any) {
+   578→      toast({ title: e.message || 'Failed to send', variant: 'destructive' })
+   579→    } finally {
+   580→      setSending(false)
+   581→    }
+   582→  }
+   583→
+   584→  const handleSendSticker = async (sticker: string) => {
+   585→    try {
+   586→      const res: any = await apiFetch('/api/messages', {
+   587→        method: 'POST',
+   588→        body: JSON.stringify({
+   589→          conversationId,
+   590→          content: sticker,
+   591→          type: 'sticker',
+   592→          stickerId: sticker,
+   593→        }),
+   594→      })
+   595→      // Defensive: API returns { message: {...} } (201), fall back to bare object.
+   596→      const sent: ChatMessage = res?.message || (res?.id ? res : null)
+   597→      if (sent) {
+   598→        setMessages((prev) => [...prev, sent])
+   599→        wasNearBottomRef.current = true
+   600→        getSocket()?.emit('message:send', { conversationId, message: sent })
+   601→      }
+   602→    } catch (e: any) {
+   603→      toast({ title: e.message || 'Failed to send sticker', variant: 'destructive' })
+   604→    }
+   605→  }
+   606→
+   607→  const handleImageUpload = async (file: File) => {
+   608→    try {
+   609→      const up: any = await apiUpload('/api/upload', file)
+   610→      const mediaUrl = up?.url
+   611→      if (!mediaUrl) throw new Error('Upload failed')
+   612→      const res: any = await apiFetch('/api/messages', {
+   613→        method: 'POST',
+   614→        body: JSON.stringify({
+   615→          conversationId,
+   616→          type: 'image',
+   617→          mediaUrl,
+   618→          content: '',
+   619→        }),
+   620→      })
+   621→      // Defensive: API returns { message: {...} } (201), fall back to bare object.
+   622→      const sent: ChatMessage = res?.message || (res?.id ? res : null)
+   623→      if (sent) {
+   624→        setMessages((prev) => [...prev, sent])
+   625→        wasNearBottomRef.current = true
+   626→        getSocket()?.emit('message:send', { conversationId, message: sent })
+   627→      }
+   628→    } catch (e: any) {
+   629→      toast({ title: e.message || 'Image upload failed', variant: 'destructive' })
+   630→    }
+   631→  }
+   632→
+   633→  // ----- Reactions -----
+   634→  const handleReact = async (m: ChatMessage, emoji: string) => {
+   635→    try {
+   636→      const res: any = await apiFetch(`/api/messages/${m.id}/reaction`, {
+   637→        method: 'POST',
+   638→        body: JSON.stringify({ emoji }),
+   639→      })
+   640→      // Defensive: API returns { reactions: [...] }, fall back to bare array.
+   641→      const reactionsList: any[] = Array.isArray(res)
+   642→        ? res
+   643→        : Array.isArray(res?.reactions)
+   644→          ? res.reactions
+   645→          : Array.isArray(res?.items)
+   646→            ? res.items
+   647→            : []
+   648→      if (reactionsList.length > 0 || Array.isArray(res?.reactions)) {
+   649→        setMessages((prev) =>
+   650→          prev.map((mm) => (mm.id === m.id ? { ...mm, reactions: reactionsList } : mm))
+   651→        )
+   652→        getSocket()?.emit('reaction', {
+   653→          conversationId,
+   654→          messageId: m.id,
+   655→          reactions: reactionsList,
+   656→          emoji,
+   657→          userId: user?.id,
+   658→        })
+   659→      }
+   660→    } catch (e: any) {
+   661→      toast({ title: e.message || 'Failed to react', variant: 'destructive' })
+   662→    }
+   663→  }
+   664→
+   665→  // ----- Edit / Delete / Pin -----
+   666→  const handleEdit = (m: ChatMessage) => {
+   667→    setEditingMessage(m)
+   668→    setText(m.content || '')
+   669→    setReplyingTo(null)
+   670→    setTimeout(() => textareaRef.current?.focus(), 50)
+   671→  }
+   672→
+   673→  const handleDelete = async (m: ChatMessage) => {
+   674→    try {
+   675→      await apiFetch(`/api/messages/${m.id}`, { method: 'DELETE' })
+   676→      setMessages((prev) =>
+   677→        prev.map((mm) =>
+   678→          mm.id === m.id ? { ...mm, deletedAt: new Date().toISOString() } : mm
+   679→        )
+   680→      )
+   681→      getSocket()?.emit('message:delete', {
+   682→        conversationId,
+   683→        messageId: m.id,
+   684→        deletedAt: new Date().toISOString(),
+   685→      })
+   686→      toast({ title: 'Message deleted' })
+   687→    } catch (e: any) {
+   688→      toast({ title: e.message || 'Failed to delete', variant: 'destructive' })
+   689→    }
+   690→  }
+   691→
+   692→  const handlePin = async (m: ChatMessage) => {
+   693→    try {
+   694→      // Pinning individual messages is server-side TBD; here we just
+   695→      // emit + optimistically update locally. (Backend may store pinnedAt.)
+   696→      setMessages((prev) =>
+   697→        prev.map((mm) =>
+   698→          mm.id === m.id
+   699→            ? { ...mm, pinnedAt: mm.pinnedAt ? null : new Date().toISOString() }
+   700→            : mm
+   701→        )
+   702→      )
+   703→      toast({ title: m.pinnedAt ? 'Unpinned' : 'Pinned' })
+   704→    } catch (e: any) {
+   705→      toast({ title: e.message || 'Failed', variant: 'destructive' })
+   706→    }
+   707→  }
+   708→
+   709→  const handleForward = (m: ChatMessage) => {
+   710→    // PRD says forward is "toast only" for now.
+   711→    toast({ title: 'Forwarding is coming soon' })
+   712→  }
+   713→
+   714→  const handleCopy = (text: string) => {
+   715→    if (!text) {
+   716→      toast({ title: 'Nothing to copy' })
+   717→      return
+   718→    }
+   719→    try {
+   720→      navigator.clipboard?.writeText(text)
+   721→      toast({ title: 'Copied' })
+   722→    } catch {
+   723→      toast({ title: 'Copy failed', variant: 'destructive' })
+   724→    }
+   725→  }
+   726→
+   727→  const handleReplyTo = (m: ChatMessage) => {
+   728→    setReplyingTo(m)
+   729→    setEditingMessage(null)
+   730→    setTimeout(() => textareaRef.current?.focus(), 50)
+   731→  }
+   732→
+   733→  const cancelReply = () => {
+   734→    setReplyingTo(null)
+   735→    if (editingMessage) {
+   736→      setEditingMessage(null)
+   737→      setText('')
+   738→    }
+   739→  }
+   740→
+   741→  // ----- Voice recording -----
+   742→  const stopRecording = React.useCallback(
+   743→    (opts: { send: boolean }) => {
+   744→      const recorder = mediaRecorderRef.current
+   745→      if (recordTimerRef.current) {
+   746→        clearInterval(recordTimerRef.current)
+   747→        recordTimerRef.current = null
+   748→      }
+   749→      if (recorder && recorder.state !== 'inactive') {
+   750→        // We attach a one-time onstop handler that creates the Blob.
+   751→        const handleStop = async () => {
+   752→          try {
+   753→            const chunks = recordChunksRef.current
+   754→            if (chunks.length === 0) return
+   755→            const mime = recordMimeRef.current || 'audio/webm'
+   756→            const blob = new Blob(chunks, { type: mime })
+   757→            if (!opts.send) return
+   758→            const ext = mime.includes('mp3')
+   759→              ? 'mp3'
+   760→              : mime.includes('wav')
+   761→              ? 'wav'
+   762→              : 'webm'
+   763→            const file = new File([blob], `voice-${Date.now()}.${ext}`, { type: mime })
+   764→            const up: any = await apiUpload('/api/upload', file)
+   765→            const mediaUrl = up?.url
+   766→            const duration = recordSecondsRef.current
+   767→            if (!mediaUrl) throw new Error('Upload failed')
+   768→            const res: any = await apiFetch('/api/messages', {
+   769→              method: 'POST',
+   770→              body: JSON.stringify({
+   771→                conversationId,
+   772→                type: 'voice',
+   773→                mediaUrl,
+   774→                voiceDuration: duration,
+   775→                content: '',
+   776→              }),
+   777→            })
+   778→            // Defensive: API returns { message: {...} } (201), fall back to bare object.
+   779→            const sent: ChatMessage = res?.message || (res?.id ? res : null)
+   780→            if (sent) {
+   781→              setMessages((prev) => [...prev, sent])
+   782→              wasNearBottomRef.current = true
+   783→              getSocket()?.emit('message:send', { conversationId, message: sent })
+   784→            }
+   785→          } catch (e: any) {
+   786→            toast({ title: e.message || 'Voice upload failed', variant: 'destructive' })
+   787→          } finally {
+   788→            // Reset state
+   789→            setIsRecording(false)
+   790→            setRecordSeconds(0)
+   791→            recordChunksRef.current = []
+   792→            recordSecondsRef.current = 0
+   793→            // Stop the audio stream
+   794→            if (recordStreamRef.current) {
+   795→              for (const t of recordStreamRef.current.getTracks()) t.stop()
+   796→              recordStreamRef.current = null
+   797→            }
+   798→            recorder.removeEventListener('stop', handleStop)
+   799→          }
+   800→        }
+   801→        recorder.addEventListener('stop', handleStop)
+   802→        recorder.stop()
+   803→      } else {
+   804→        // No active recorder — just reset UI
+   805→        setIsRecording(false)
+   806→        setRecordSeconds(0)
+   807→        recordChunksRef.current = []
+   808→        recordSecondsRef.current = 0
+   809→        if (recordStreamRef.current) {
+   810→          for (const t of recordStreamRef.current.getTracks()) t.stop()
+   811→          recordStreamRef.current = null
+   812→        }
+   813→      }
+   814→    },
+   815→    [conversationId, toast]
+   816→  )
+   817→
+   818→  const recordSecondsRef = React.useRef(0)
+   819→
+   820→  const startRecording = async () => {
+   821→    try {
+   822→      if (!navigator.mediaDevices?.getUserMedia) {
+   823→        toast({ title: 'Voice recording not supported', variant: 'destructive' })
+   824→        return
+   825→      }
+   826→      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+   827→      recordStreamRef.current = stream
+   828→      // Pick a supported mime type
+   829→      const candidates = ['audio/webm', 'audio/ogg', 'audio/mp3']
+   830→      let mime = ''
+   831→      for (const c of candidates) {
+   832→        if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported?.(c)) {
+   833→          mime = c
+   834→          break
+   835→        }
+   836→      }
+   837→      recordMimeRef.current = mime
+   838→      const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+   839→      mediaRecorderRef.current = recorder
+   840→      recordChunksRef.current = []
+   841→      recordSecondsRef.current = 0
+   842→      setRecordSeconds(0)
+   843→      recorder.ondataavailable = (e) => {
+   844→        if (e.data.size > 0) recordChunksRef.current.push(e.data)
+   845→      }
+   846→      recorder.start(250)
+   847→      setIsRecording(true)
+   848→      recordTimerRef.current = setInterval(() => {
+   849→        recordSecondsRef.current += 1
+   850→        setRecordSeconds(recordSecondsRef.current)
+   851→        if (recordSecondsRef.current >= MAX_RECORD_SECONDS) {
+   852→          stopRecording({ send: true })
+   853→        }
+   854→      }, 1000)
+   855→    } catch (e: any) {
+   856→      toast({ title: e.message || 'Mic permission denied', variant: 'destructive' })
+   857→      setIsRecording(false)
+   858→      if (recordStreamRef.current) {
+   859→        for (const t of recordStreamRef.current.getTracks()) t.stop()
+   860→        recordStreamRef.current = null
+   861→      }
+   862→    }
+   863→  }
+   864→
+   865→  // Cleanup on unmount
+   866→  React.useEffect(() => {
+   867→    return () => {
+   868→      if (recordTimerRef.current) clearInterval(recordTimerRef.current)
+   869→      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+   870→        try {
+   871→          mediaRecorderRef.current.stop()
+   872→        } catch {}
+   873→      }
+   874→      if (recordStreamRef.current) {
+   875→        for (const t of recordStreamRef.current.getTracks()) t.stop()
+   876→      }
+   877→      if (typingStartTimerRef.current) clearTimeout(typingStartTimerRef.current)
+   878→      if (typingStopTimerRef.current) clearTimeout(typingStopTimerRef.current)
+   879→    }
+   880→  }, [])
+   881→
+   882→  // ----- Typing emit -----
+   883→  const emitTyping = (isTyping: boolean) => {
+   884→    const s = getSocket()
+   885→    if (!s || !user?.id) return
+   886→    s.emit('typing', { conversationId, isTyping, userId: user.id })
+   887→  }
+   888→
+   889→  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+   890→    const v = e.target.value
+   891→    setText(v)
+   892→
+   893→    // Auto-grow
+   894→    const ta = textareaRef.current
+   895→    if (ta) {
+   896→      ta.style.height = 'auto'
+   897→      const lineHeight = 20
+   898→      const maxHeight = lineHeight * TEXTAREA_MAX_LINES
+   899→      ta.style.height = `${Math.min(ta.scrollHeight, maxHeight)}px`
+   900→    }
+   901→
+   902→    // Typing emit (debounced)
+   903→    if (v.trim()) {
+   904→      if (!hasEmittedTypingRef.current) {
+   905→        if (typingStartTimerRef.current) clearTimeout(typingStartTimerRef.current)
+   906→        typingStartTimerRef.current = setTimeout(() => {
+   907→          emitTyping(true)
+   908→          hasEmittedTypingRef.current = true
+   909→        }, TYPING_DEBOUNCE)
+   910→      }
+   911→      if (typingStopTimerRef.current) clearTimeout(typingStopTimerRef.current)
+   912→      typingStopTimerRef.current = setTimeout(() => {
+   913→        emitTyping(false)
+   914→        hasEmittedTypingRef.current = false
+   915→      }, TYPING_STOP_DEBOUNCE)
+   916→    } else {
+   917→      if (hasEmittedTypingRef.current) {
+   918→        emitTyping(false)
+   919→        hasEmittedTypingRef.current = false
+   920→      }
+   921→      if (typingStopTimerRef.current) clearTimeout(typingStopTimerRef.current)
+   922→      if (typingStartTimerRef.current) clearTimeout(typingStartTimerRef.current)
+   923→    }
+   924→  }
+   925→
+   926→  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+   927→    if (e.key === 'Enter' && !e.shiftKey) {
+   928→      e.preventDefault()
+   929→      handleSend()
+   930→    }
+   931→    if (e.key === 'Escape' && (replyingTo || editingMessage)) {
+   932→      cancelReply()
+   933→    }
+   934→  }
+   935→
+   936→  // ----- Three-dot menu actions -----
+   937→  const patchConversation = async (patch: Record<string, any>) => {
+   938→    try {
+   939→      const res: any = await apiFetch(`/api/conversations/${conversationId}`, {
+   940→        method: 'PATCH',
+   941→        body: JSON.stringify(patch),
+   942→      })
+   943→      // Defensive: API returns { conversation: {...} }, fall back to bare object.
+   944→      const updated = res?.conversation || (res?.id ? res : null) || patch
+   945→      setConversation((c) => ({ ...(c as any), ...updated }))
+   946→      return updated
+   947→    } catch (e: any) {
+   948→      toast({ title: e.message || 'Failed', variant: 'destructive' })
+   949→    }
+   950→  }
+   951→
+   952→  const toggleMute = async () => {
+   953→    const next = !conversation?.muted
+   954→    await patchConversation({ muted: next })
+   955→    toast({ title: next ? 'Muted' : 'Unmuted' })
+   956→  }
+   957→
+   958→  const togglePin = async () => {
+   959→    const next = !conversation?.pinned
+   960→    await patchConversation({ pinned: next })
+   961→    toast({ title: next ? 'Pinned' : 'Unpinned' })
+   962→  }
+   963→
+   964→  const handleClearNow = async () => {
+   965→    setConfirmClear(false)
+   966→    // Hide all messages locally (per task spec; backend bulk delete is TBD)
+   967→    setMessages([])
+   968→    // Also send DELETE for each message — best-effort
+   969→    // (Skip to avoid N requests; the server doesn't yet have a bulk endpoint.)
+   970→    toast({ title: 'Chat cleared' })
+   971→  }
+   972→
+   973→  const setAutoDelete = async (seconds: number | null) => {
+   974→    await patchConversation({ autoDeleteAfter: seconds })
+   975→    if (seconds === null) {
+   976→      toast({ title: 'Auto-delete cancelled' })
+   977→    } else {
+   978→      toast({ title: `Messages will auto-delete after ${autoDeleteLabel(seconds)}` })
+   979→    }
+   980→  }
+   981→
+   982→  const handleLeaveGroup = async () => {
+   983→    setConfirmLeave(false)
+   984→    try {
+   985→      await apiFetch(`/api/conversations/${conversationId}`, { method: 'DELETE' })
+   986→      toast({ title: 'You left the group' })
+   987→      onBack()
+   988→    } catch (e: any) {
+   989→      toast({ title: e.message || 'Failed to leave group', variant: 'destructive' })
+   990→    }
+   991→  }
+   992→
+   993→  const handleBlock = async () => {
+   994→    setConfirmBlock(false)
+   995→    const otherId = conversation?.otherUser?.id
+   996→    if (!otherId) {
+   997→      toast({ title: 'No user to block', variant: 'destructive' })
+   998→      return
+   999→    }
+  1000→    try {
+  1001→      await apiFetch('/api/blocks', {
+  1002→        method: 'POST',
+  1003→        body: JSON.stringify({ blockedId: otherId }),
+  1004→      })
+  1005→      toast({ title: 'User blocked' })
+  1006→      onBack()
+  1007→    } catch (e: any) {
+  1008→      toast({ title: e.message || 'Failed to block', variant: 'destructive' })
+  1009→    }
+  1010→  }
+  1011→
+  1012→  // Helper for auto-delete label
+  1013→  const autoDeleteLabel = (seconds: number | null): string => {
+  1014→    if (seconds === null) return 'never'
+  1015→    if (seconds <= 3600) return '1 hour'
+  1016→    if (seconds <= 86400) return '1 day'
+  1017→    if (seconds <= 604800) return '1 week'
+  1018→    if (seconds <= 2592000) return '1 month'
+  1019→    return `${Math.round(seconds / 86400)} days`
+  1020→  }
+  1021→
+  1022→  // ----- Derived render data -----
+  1023→  // Messages: API returns newest-first. Render oldest-first visually.
+  1024→  const sortedMessages = React.useMemo(
+  1025→    () => [...messages].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
+  1026→    [messages]
+  1027→  )
+  1028→
+  1029→  const filteredMessages = React.useMemo(() => {
+  1030→    if (!searchQuery.trim()) return sortedMessages
+  1031→    const q = searchQuery.trim().toLowerCase()
+  1032→    return sortedMessages.filter(
+  1033→      (m) =>
+  1034→        (m.content || '').toLowerCase().includes(q) ||
+  1035→        (m.sender?.name || '').toLowerCase().includes(q) ||
+  1036→        (m.sender?.username || '').toLowerCase().includes(q)
+  1037→    )
+  1038→  }, [sortedMessages, searchQuery])
+  1039→
+  1040→  // Group consecutive messages from the same sender within same day.
+  1041→  const messageRenderData = React.useMemo(() => {
+  1042→    const items: Array<{
+  1043→      type: 'date' | 'message'
+  1044→      message?: ChatMessage
+  1045→      label?: string
+  1046→      isFirstInGroup?: boolean
+  1047→      isLastInGroup?: boolean
+  1048→    }> = []
+  1049→    let lastDate: Date | null = null
+  1050→    let lastSenderId: string | null = null
+  1051→
+  1052→    for (let i = 0; i < filteredMessages.length; i++) {
+  1053→      const m = filteredMessages[i]
+  1054→      const createdAt = new Date(m.createdAt)
+  1055→      if (!lastDate || !isSameDay(lastDate, createdAt)) {
+  1056→        items.push({ type: 'date', label: dateSeparatorLabel(createdAt) })
+  1057→        lastDate = createdAt
+  1058→        lastSenderId = null
+  1059→      }
+  1060→      const isFirstInGroup = lastSenderId !== m.senderId
+  1061→      // Determine isLastInGroup by peeking at next message.
+  1062→      const next = filteredMessages[i + 1]
+  1063→      const isLastInGroup =
+  1064→        !next ||
+  1065→        new Date(next.createdAt).getTime() - createdAt.getTime() > 5 * 60 * 1000 ||
+  1066→        next.senderId !== m.senderId ||
+  1067→        !isSameDay(new Date(next.createdAt), createdAt)
+  1068→      items.push({ type: 'message', message: m, isFirstInGroup, isLastInGroup })
+  1069→      lastSenderId = m.senderId
+  1070→    }
+  1071→    return items
+  1072→  }, [filteredMessages])
+  1073→
+  1074→  const wallpaperStyle = getWallpaperStyle(customizer.wallpaper)
+  1075→  const fontFamilyClass = customizer.fontFamily?.className || ''
+  1076→  const fontSizePx = customizer.fontSize || 14
+  1077→  const messageStyle = customizer.messageStyle || 'bubble'
+  1078→
+  1079→  const otherUserId = conversation?.otherUser?.id
+  1080→
+  1081→  // ----- Render -----
+  1082→  return (
+  1083→    <div className="flex min-h-[100dvh] flex-col bg-background text-foreground">
+  1084→      {/* =========================== HEADER =========================== */}
+  1085→      <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+  1086→        <button
+  1087→          type="button"
+  1088→          onClick={onBack}
+  1089→          aria-label="Back"
+  1090→          className="flex h-10 w-10 min-h-[44px] min-w-[44px] items-center justify-center rounded-full hover:bg-accent"
+  1091→        >
+  1092→          <ArrowLeft className="h-5 w-5" />
+  1093→        </button>
+  1094→
+  1095→        <Avatar className="h-9 w-9 shrink-0">
+  1096→          {avatar && <AvatarImage src={avatar} alt={name} />}
+  1097→          <AvatarFallback>{(name || '?').charAt(0).toUpperCase()}</AvatarFallback>
+  1098→        </Avatar>
+  1099→
+  1100→        <div className="min-w-0 flex-1 overflow-hidden">
+  1101→          <div className="truncate text-sm font-semibold">
+  1102→            {name}
+  1103→            {isGroup && conversation?.group?.isPublic === false && (
+  1104→              <ShieldCheck className="ml-1 inline h-3.5 w-3.5 text-muted-foreground" />
+  1105→            )}
+  1106→          </div>
+  1107→          <div className="truncate text-xs text-muted-foreground">
+  1108→            {otherTyping ? (
+  1109→              <span className="text-primary">typing…</span>
+  1110→            ) : statusText ? (
+  1111→              statusText
+  1112→            ) : (
+  1113→              <Loader2 className="inline h-3 w-3 animate-spin" />
+  1114→            )}
+  1115→          </div>
+  1116→        </div>
+  1117→
+  1118→        <button
+  1119→          type="button"
+  1120→          onClick={() => setSearchOpen((v) => !v)}
+  1121→          aria-label="Search messages"
+  1122→          aria-pressed={searchOpen}
+  1123→          className="flex h-10 w-10 min-h-[44px] min-w-[44px] items-center justify-center rounded-full hover:bg-accent"
+  1124→        >
+  1125→          <SearchIcon className="h-5 w-5" />
+  1126→        </button>
+  1127→
+  1128→        {/* Three-dot menu */}
+  1129→        <DropdownMenu>
+  1130→          <DropdownMenuTrigger asChild>
+  1131→            <button
+  1132→              type="button"
+  1133→              aria-label="More options"
+  1134→              className="flex h-10 w-10 min-h-[44px] min-w-[44px] items-center justify-center rounded-full hover:bg-accent"
+  1135→            >
+  1136→              <MoreVertical className="h-5 w-5" />
+  1137→            </button>
+  1138→          </DropdownMenuTrigger>
+  1139→          <DropdownMenuContent align="end" className="w-60">
+  1140→            {isGroup ? (
+  1141→              <>
+  1142→                <DropdownMenuItem onClick={() => setAddMemberOpen(true)}>
+  1143→                  <UserPlus className="h-4 w-4" /> Add member
+  1144→                </DropdownMenuItem>
+  1145→                <DropdownMenuItem onClick={() => setSearchOpen(true)}>
+  1146→                  <SearchIcon className="h-4 w-4" /> Search
+  1147→                </DropdownMenuItem>
+  1148→                <DropdownMenuItem onClick={() => toast({ title: 'Members list coming soon' })}>
+  1149→                  <Users className="h-4 w-4" /> Members
+  1150→                </DropdownMenuItem>
+  1151→                <DropdownMenuItem onClick={() => toast({ title: 'Shared media coming soon' })}>
+  1152→                  <ImageIcon className="h-4 w-4" /> Shared Media
+  1153→                </DropdownMenuItem>
+  1154→                <DropdownMenuItem onClick={toggleMute}>
+  1155→                  {conversation?.muted ? (
+  1156→                    <>
+  1157→                      <BellOff className="h-4 w-4" /> Unmute
+  1158→                    </>
+  1159→                  ) : (
+  1160→                    <>
+  1161→                      <Bell className="h-4 w-4" /> Mute
+  1162→                    </>
+  1163→                  )}
+  1164→                </DropdownMenuItem>
+  1165→                <DropdownMenuItem onClick={() => toast({ title: 'Privacy info coming soon' })}>
+  1166→                  <ShieldCheck className="h-4 w-4" /> Privacy
+  1167→                </DropdownMenuItem>
+  1168→                <DropdownMenuItem onClick={() => setCustomizeOpen(true)}>
+  1169→                  <Palette className="h-4 w-4" /> Customize
+  1170→                </DropdownMenuItem>
+  1171→                <DropdownMenuItem onClick={togglePin}>
+  1172→                  {conversation?.pinned ? (
+  1173→                    <>
+  1174→                      <PinOff className="h-4 w-4" /> Unpin Group
+  1175→                    </>
+  1176→                  ) : (
+  1177→                    <>
+  1178→                      <PinIcon className="h-4 w-4" /> Pin Group
+  1179→                    </>
+  1180→                  )}
+  1181→                </DropdownMenuItem>
+  1182→                <DropdownMenuItem onClick={() => setConfirmClear(true)}>
+  1183→                  <Trash2 className="h-4 w-4" /> Clear Chat
+  1184→                </DropdownMenuItem>
+  1185→                <DropdownMenuSub>
+  1186→                  <DropdownMenuSubTrigger>
+  1187→                    <Clock className="h-4 w-4" /> Clear after…
+  1188→                  </DropdownMenuSubTrigger>
+  1189→                  <DropdownMenuSubContent>
+  1190→                    <DropdownMenuItem onClick={() => setAutoDelete(3600)}>1 hour</DropdownMenuItem>
+  1191→                    <DropdownMenuItem onClick={() => setAutoDelete(86400)}>1 day</DropdownMenuItem>
+  1192→                    <DropdownMenuItem onClick={() => setAutoDelete(604800)}>1 week</DropdownMenuItem>
+  1193→                    <DropdownMenuItem onClick={() => setAutoDelete(2592000)}>1 month</DropdownMenuItem>
+  1194→                    <DropdownMenuSeparator />
+  1195→                    <DropdownMenuItem onClick={() => setAutoDelete(null)}>Cancel</DropdownMenuItem>
+  1196→                  </DropdownMenuSubContent>
+  1197→                </DropdownMenuSub>
+  1198→                <DropdownMenuItem onClick={() => setConfirmLeave(true)} className="text-destructive">
+  1199→                  <LogOut className="h-4 w-4" /> Leave Group
+  1200→                </DropdownMenuItem>
+  1201→                <DropdownMenuItem onClick={() => setReportOpen(true)} className="text-destructive">
+  1202→                  <Flag className="h-4 w-4" /> Report
+  1203→                </DropdownMenuItem>
+  1204→              </>
+  1205→            ) : (
+  1206→              <>
+  1207→                <DropdownMenuItem onClick={() => setSearchOpen(true)}>
+  1208→                  <SearchIcon className="h-4 w-4" /> Search messages
+  1209→                </DropdownMenuItem>
+  1210→                <DropdownMenuItem onClick={toggleMute}>
+  1211→                  {conversation?.muted ? (
+  1212→                    <>
+  1213→                      <BellOff className="h-4 w-4" /> Unmute
+  1214→                    </>
+  1215→                  ) : (
+  1216→                    <>
+  1217→                      <Bell className="h-4 w-4" /> Mute
+  1218→                    </>
+  1219→                  )}
+  1220→                </DropdownMenuItem>
+  1221→                <DropdownMenuItem onClick={() => toast({ title: 'Shared media coming soon' })}>
+  1222→                  <ImageIcon className="h-4 w-4" /> Shared Media
+  1223→                </DropdownMenuItem>
+  1224→                <DropdownMenuItem onClick={() => toast({ title: 'Privacy info coming soon' })}>
+  1225→                  <ShieldCheck className="h-4 w-4" /> Privacy
+  1226→                </DropdownMenuItem>
+  1227→                <DropdownMenuItem onClick={() => setCustomizeOpen(true)}>
+  1228→                  <Palette className="h-4 w-4" /> Customize chat
+  1229→                </DropdownMenuItem>
+  1230→                <DropdownMenuItem onClick={togglePin}>
+  1231→                  {conversation?.pinned ? (
+  1232→                    <>
+  1233→                      <PinOff className="h-4 w-4" /> Unpin Chat
+  1234→                    </>
+  1235→                  ) : (
+  1236→                    <>
+  1237→                      <PinIcon className="h-4 w-4" /> Pin Chat
+  1238→                    </>
+  1239→                  )}
+  1240→                </DropdownMenuItem>
+  1241→                <DropdownMenuItem onClick={() => setConfirmClear(true)}>
+  1242→                  <Trash2 className="h-4 w-4" /> Clear chat now
+  1243→                </DropdownMenuItem>
+  1244→                <DropdownMenuSub>
+  1245→                  <DropdownMenuSubTrigger>
+  1246→                    <Clock className="h-4 w-4" /> Clear chat after…
+  1247→                  </DropdownMenuSubTrigger>
+  1248→                  <DropdownMenuSubContent>
+  1249→                    <DropdownMenuItem onClick={() => setAutoDelete(3600)}>1 hour</DropdownMenuItem>
+  1250→                    <DropdownMenuItem onClick={() => setAutoDelete(86400)}>1 day</DropdownMenuItem>
+  1251→                    <DropdownMenuItem onClick={() => setAutoDelete(604800)}>1 week</DropdownMenuItem>
+  1252→                    <DropdownMenuItem onClick={() => setAutoDelete(2592000)}>1 month</DropdownMenuItem>
+  1253→                    <DropdownMenuSeparator />
+  1254→                    <DropdownMenuItem onClick={() => setAutoDelete(null)}>Cancel</DropdownMenuItem>
+  1255→                  </DropdownMenuSubContent>
+  1256→                </DropdownMenuSub>
+  1257→                <DropdownMenuItem onClick={() => setConfirmBlock(true)} className="text-destructive">
+  1258→                  <Ban className="h-4 w-4" /> Block user
+  1259→                </DropdownMenuItem>
+  1260→                <DropdownMenuItem onClick={() => setReportOpen(true)} className="text-destructive">
+  1261→                  <Flag className="h-4 w-4" /> Report
+  1262→                </DropdownMenuItem>
+  1263→              </>
+  1264→            )}
+  1265→          </DropdownMenuContent>
+  1266→        </DropdownMenu>
+  1267→      </header>
+  1268→
+  1269→      {/* Search bar (toggle) */}
+  1270→      {searchOpen && (
+  1271→        <div className="flex items-center gap-2 border-b bg-background/95 px-3 py-2">
+  1272→          <SearchIcon className="h-4 w-4 text-muted-foreground" />
+  1273→          <Input
+  1274→            value={searchQuery}
+  1275→            onChange={(e) => setSearchQuery(e.target.value)}
+  1276→            placeholder="Search this chat…"
+  1277→            className="h-8 flex-1"
+  1278→            autoFocus
+  1279→          />
+  1280→          <button
+  1281→            type="button"
+  1282→            onClick={() => {
+  1283→              setSearchOpen(false)
+  1284→              setSearchQuery('')
+  1285→            }}
+  1286→            aria-label="Close search"
+  1287→            className="flex h-8 w-8 min-h-[44px] min-w-[44px] items-center justify-center rounded-full hover:bg-accent"
+  1288→          >
+  1289→            <X className="h-4 w-4" />
+  1290→          </button>
+  1291→        </div>
+  1292→      )}
+  1293→
+  1294→      {/* =========================== MESSAGES =========================== */}
+  1295→      <div
+  1296→        ref={scrollRef}
+  1297→        onScroll={handleScroll}
+  1298→        className="scroll-pan-y relative flex-1 overflow-y-auto"
+  1299→        style={wallpaperStyle}
+  1300→      >
+  1301→        {/* Top loader */}
+  1302→        {hasMore && (
+  1303→          <div className="flex items-center justify-center py-3 text-xs text-muted-foreground">
+  1304→            <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Loading older messages…
+  1305→          </div>
+  1306→        )}
+  1307→
+  1308→        <div className="mx-auto flex max-w-2xl flex-col px-3 py-3">
+  1309→          {loading ? (
+  1310→            <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">
+  1311→              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading…
+  1312→            </div>
+  1313→          ) : sortedMessages.length === 0 ? (
+  1314→            <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">
+  1315→              {searchQuery ? 'No matches found.' : 'No messages yet.'}
+  1316→            </div>
+  1317→          ) : (
+  1318→            messageRenderData.map((item, idx) => {
+  1319→              if (item.type === 'date') {
+  1320→                return (
+  1321→                  <div
+  1322→                    key={`d-${idx}`}
+  1323→                    className="my-3 flex items-center justify-center"
+  1324→                  >
+  1325→                    <span className="rounded-full bg-black/30 px-3 py-1 text-[11px] font-medium text-white backdrop-blur-sm">
+  1326→                      {item.label}
+  1327→                    </span>
+  1328→                  </div>
+  1329→                )
+  1330→              }
+  1331→              const m = item.message!
+  1332→              const isMine = m.senderId === user?.id
+  1333→              return (
+  1334→                <MessageBubble
+  1335→                  key={m.id}
+  1336→                  message={m}
+  1337→                  isMine={isMine}
+  1338→                  isGroup={isGroup}
+  1339→                  currentUserId={user?.id || ''}
+  1340→                  messageStyle={messageStyle}
+  1341→                  fontFamilyClass={fontFamilyClass}
+  1342→                  fontSizePx={fontSizePx}
+  1343→                  isFirstInGroup={item.isFirstInGroup}
+  1344→                  isLastInGroup={item.isLastInGroup}
+  1345→                  showDateSeparator={false}
+  1346→                  dateSeparatorLabel={item.label}
+  1347→                  onReply={handleReplyTo}
+  1348→                  onReact={handleReact}
+  1349→                  onEdit={handleEdit}
+  1350→                  onDelete={handleDelete}
+  1351→                  onPin={handlePin}
+  1352→                  onForward={handleForward}
+  1353→                  onCopy={handleCopy}
+  1354→                  registerActionAnchor={(el, msg) => {
+  1355→                    if (el && msg) {
+  1356→                      setActionMenu({ message: msg, anchorRect: el.getBoundingClientRect() })
+  1357→                    } else {
+  1358→                      setActionMenu(null)
+  1359→                    }
+  1360→                  }}
+  1361→                />
+  1362→              )
+  1363→            })
+  1364→          )}
+  1365→
+  1366→          {/* Ad box (after last message) */}
+  1367→          {adVisible && ad && (
+  1368→            <ChatAdBox
+  1369→              ad={ad}
+  1370→              onClose={handleCloseAd}
+  1371→              onCtaClick={handleAdCtaClick}
+  1372→            />
+  1373→          )}
+  1374→        </div>
+  1375→      </div>
+  1376→
+  1377→      {/* =========================== COMPOSER =========================== */}
+  1378→      <div className="sticky bottom-0 z-20 shrink-0 border-t bg-background/95 px-2 pt-2 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/80">
+  1379→        {/* Reply / Edit preview */}
+  1380→        {(replyingTo || editingMessage) && (
+  1381→          <div className="mb-2 flex items-start gap-2 rounded-md border bg-accent/30 px-2 py-1.5">
+  1382→            <div className="min-w-0 flex-1">
+  1383→              <div className="text-xs font-semibold text-primary">
+  1384→                {editingMessage ? 'Editing message' : `Reply to @${replyingTo?.sender?.username || replyingTo?.sender?.name || 'user'}`}
+  1385→              </div>
+  1386→              <div className="truncate text-xs text-muted-foreground">
+  1387→                {editingMessage
+  1388→                  ? editingMessage.content
+  1389→                  : replyingTo
+  1390→                  ? messagePreview({
+  1391→                      type: replyingTo.type,
+  1392→                      content: replyingTo.content,
+  1393→                      mediaUrl: replyingTo.mediaUrl,
+  1394→                      deletedAt: replyingTo.deletedAt,
+  1395→                    })
+  1396→                  : ''}
+  1397→              </div>
+  1398→            </div>
+  1399→            <button
+  1400→              type="button"
+  1401→              onClick={cancelReply}
+  1402→              aria-label="Cancel"
+  1403→              className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-accent"
+  1404→            >
+  1405→              <X className="h-4 w-4" />
+  1406→            </button>
+  1407→          </div>
+  1408→        )}
+  1409→
+  1410→        {/* Recording UI */}
+  1411→        {isRecording ? (
+  1412→          <div className="flex items-center gap-3 px-2 py-2">
+  1413→            <button
+  1414→              type="button"
+  1415→              onClick={() => stopRecording({ send: false })}
+  1416→              aria-label="Cancel recording"
+  1417→              className="flex h-10 w-10 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-destructive/15 text-destructive hover:bg-destructive/25"
+  1418→            >
+  1419→              <X className="h-5 w-5" />
+  1420→            </button>
+  1421→            <div className="flex flex-1 items-center gap-2">
+  1422→              <span className="h-2 w-2 animate-pulse rounded-full bg-destructive" />
+  1423→              <span className="text-sm tabular-nums">
+  1424→                {Math.floor(recordSeconds / 60)}:{String(recordSeconds % 60).padStart(2, '0')}{' '}
+  1425→                / 2:00
+  1426→              </span>
+  1427→            </div>
+  1428→            <button
+  1429→              type="button"
+  1430→              onClick={() => stopRecording({ send: true })}
+  1431→              aria-label="Send voice"
+  1432→              className="btn-brand flex h-10 w-10 min-h-[44px] min-w-[44px] items-center justify-center rounded-full"
+  1433→            >
+  1434→              <Send className="h-5 w-5" />
+  1435→            </button>
+  1436→          </div>
+  1437→        ) : (
+  1438→          <div className="flex items-end gap-1">
+  1439→            {/* Emoji button */}
+  1440→            <EmojiPicker onPick={(emoji) => setText((t) => t + emoji)} align="start" side="top">
+  1441→              <button
+  1442→                type="button"
+  1443→                aria-label="Insert emoji"
+  1444→                className="flex h-10 w-10 min-h-[44px] min-w-[44px] items-center justify-center rounded-full hover:bg-accent"
+  1445→              >
+  1446→                <Smile className="h-5 w-5 text-muted-foreground" />
+  1447→              </button>
+  1448→            </EmojiPicker>
+  1449→
+  1450→            {/* Attachment menu */}
+  1451→            <Popover open={attachmentOpen} onOpenChange={setAttachmentOpen}>
+  1452→              <PopoverTrigger asChild>
+  1453→                <button
+  1454→                  type="button"
+  1455→                  aria-label="Attach"
+  1456→                  className="flex h-10 w-10 min-h-[44px] min-w-[44px] items-center justify-center rounded-full hover:bg-accent"
+  1457→                >
+  1458→                  <Paperclip className="h-5 w-5 text-muted-foreground" />
+  1459→                </button>
+  1460→              </PopoverTrigger>
+  1461→              <PopoverContent align="start" side="top" sideOffset={6} className="w-56 p-1">
+  1462→                <div className="flex flex-col gap-0.5">
+  1463→                  <button
+  1464→                    type="button"
+  1465→                    onClick={() => {
+  1466→                      setAttachmentOpen(false)
+  1467→                      fileInputRef.current?.click()
+  1468→                    }}
+  1469→                    className="flex min-h-[44px] items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+  1470→                  >
+  1471→                    <ImageIcon className="h-4 w-4" /> Image
+  1472→                  </button>
+  1473→                  <div className="my-1 h-px bg-border" />
+  1474→                  <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
+  1475→                    Stickers
+  1476→                  </div>
+  1477→                  <div className="grid grid-cols-3 gap-1 p-1">
+  1478→                    {STICKER_SET.map((s) => (
+  1479→                      <button
+  1480→                        key={s}
+  1481→                        type="button"
+  1482→                        onClick={() => {
+  1483→                          setAttachmentOpen(false)
+  1484→                          handleSendSticker(s)
+  1485→                        }}
+  1486→                        className="flex h-12 min-h-[44px] items-center justify-center rounded-md text-3xl hover:bg-accent"
+  1487→                        aria-label={`Sticker ${s}`}
+  1488→                      >
+  1489→                        {s}
+  1490→                      </button>
+  1491→                    ))}
+  1492→                  </div>
+  1493→                </div>
+  1494→              </PopoverContent>
+  1495→            </Popover>
+  1496→
+  1497→            {/* Hidden file input for image upload */}
+  1498→            <input
+  1499→              ref={fileInputRef}
+  1500→              type="file"
+  1501→              accept="image/*"
+  1502→              className="hidden"
+  1503→              onChange={(e) => {
+  1504→                const f = e.target.files?.[0]
+  1505→                if (f) {
+  1506→                  handleImageUpload(f)
+  1507→                }
+  1508→                e.target.value = ''
+  1509→              }}
+  1510→            />
+  1511→
+  1512→            {/* Text input (auto-grow textarea) */}
+  1513→            <textarea
+  1514→              ref={textareaRef}
+  1515→              value={text}
+  1516→              onChange={handleTextChange}
+  1517→              onKeyDown={handleKeyDown}
+  1518→              rows={1}
+  1519→              placeholder={editingMessage ? 'Edit message…' : 'Message…'}
+  1520→              className="max-h-[88px] min-h-[40px] flex-1 resize-none rounded-2xl border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+  1521→              style={{
+  1522→                fontSize: `${fontSizePx}px`,
+  1523→              }}
+  1524→            />
+  1525→
+  1526→            {/* Voice / Send button */}
+  1527→            {text.trim() ? (
+  1528→              <button
+  1529→                type="button"
+  1530→                onClick={handleSend}
+  1531→                disabled={sending}
+  1532→                aria-label="Send"
+  1533→                className="btn-brand flex h-10 w-10 min-h-[44px] min-w-[44px] items-center justify-center rounded-full"
+  1534→              >
+  1535→                {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+  1536→              </button>
+  1537→            ) : (
+  1538→              <button
+  1539→                type="button"
+  1540→                onClick={startRecording}
+  1541→                aria-label="Record voice"
+  1542→                className="flex h-10 w-10 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-primary/15 text-primary hover:bg-primary/25"
+  1543→              >
+  1544→                <Mic className="h-5 w-5" />
+  1545→              </button>
+  1546→            )}
+  1547→          </div>
+  1548→        )}
+  1549→      </div>
+  1550→
+  1551→      {/* =========================== DIALOGS / OVERLAYS =========================== */}
+  1552→      {/* Message action menu (long-press / right-click) */}
+  1553→      <MessageActionMenu
+  1554→        open={!!actionMenu}
+  1555→        message={actionMenu?.message || null}
+  1556→        isMine={actionMenu?.message?.senderId === user?.id}
+  1557→        anchorRect={actionMenu?.anchorRect || null}
+  1558→        onClose={() => setActionMenu(null)}
+  1559→        onReply={() => actionMenu?.message && handleReplyTo(actionMenu.message)}
+  1560→        onCopy={() => {
+  1561→          const m = actionMenu?.message
+  1562→          if (m) handleCopy(m.content || messagePreview(m))
+  1563→        }}
+  1564→        onForward={() => actionMenu?.message && handleForward(actionMenu.message)}
+  1565→        onEdit={() => actionMenu?.message && handleEdit(actionMenu.message)}
+  1566→        onDelete={() => actionMenu?.message && handleDelete(actionMenu.message)}
+  1567→        onPin={() => actionMenu?.message && handlePin(actionMenu.message)}
+  1568→        onReact={(emoji) => actionMenu?.message && handleReact(actionMenu.message, emoji)}
+  1569→      />
+  1570→
+  1571→      {/* Report dialog */}
+  1572→      <ReportDialog
+  1573→        open={reportOpen}
+  1574→        onOpenChange={setReportOpen}
+  1575→        reportedUserId={isGroup ? null : otherUserId}
+  1576→        reportedGroupId={isGroup ? conversation?.groupId : null}
+  1577→        targetName={name}
+  1578→      />
+  1579→
+  1580→      {/* Add member dialog (groups) */}
+  1581→      {isGroup && conversation?.groupId && (
+  1582→        <AddMemberDialog
+  1583→          open={addMemberOpen}
+  1584→          onOpenChange={setAddMemberOpen}
+  1585→          groupId={conversation.groupId}
+  1586→          groupName={name}
+  1587→        />
+  1588→      )}
+  1589→
+  1590→      {/* Customize dialog */}
+  1591→      <CustomizeDialog
+  1592→        open={customizeOpen}
+  1593→        onOpenChange={setCustomizeOpen}
+  1594→        conversationId={conversationId}
+  1595→        isGroup={isGroup}
+  1596→      />
+  1597→
+  1598→      {/* Confirm dialogs */}
+  1599→      <Dialog open={confirmClear} onOpenChange={setConfirmClear}>
+  1600→        <DialogContent className="sm:max-w-sm">
+  1601→          <DialogHeader>
+  1602→            <DialogTitle>Clear chat?</DialogTitle>
+  1603→            <DialogDescription>
+  1604→              This will hide all messages in this conversation on this device. Other
+  1605→              members will still see them.
+  1606→            </DialogDescription>
+  1607→          </DialogHeader>
+  1608→          <DialogFooter>
+  1609→            <Button variant="ghost" onClick={() => setConfirmClear(false)}>
+  1610→              Cancel
+  1611→            </Button>
+  1612→            <Button variant="destructive" onClick={handleClearNow}>
+  1613→              <Trash2 className="h-4 w-4" /> Clear
+  1614→            </Button>
+  1615→          </DialogFooter>
+  1616→        </DialogContent>
+  1617→      </Dialog>
+  1618→
+  1619→      <Dialog open={confirmLeave} onOpenChange={setConfirmLeave}>
+  1620→        <DialogContent className="sm:max-w-sm">
+  1621→          <DialogHeader>
+  1622→            <DialogTitle>Leave group?</DialogTitle>
+  1623→            <DialogDescription>
+  1624→              You will no longer be able to send or receive messages in this group. You
+  1625→              can rejoin if you have an invite link.
+  1626→            </DialogDescription>
+  1627→          </DialogHeader>
+  1628→          <DialogFooter>
+  1629→            <Button variant="ghost" onClick={() => setConfirmLeave(false)}>
+  1630→              Cancel
+  1631→            </Button>
+  1632→            <Button variant="destructive" onClick={handleLeaveGroup}>
+  1633→              <LogOut className="h-4 w-4" /> Leave
+  1634→            </Button>
+  1635→          </DialogFooter>
+  1636→        </DialogContent>
+  1637→      </Dialog>
+  1638→
+  1639→      <Dialog open={confirmBlock} onOpenChange={setConfirmBlock}>
+  1640→        <DialogContent className="sm:max-w-sm">
+  1641→          <DialogHeader>
+  1642→            <DialogTitle>Block {conversation?.otherUser?.name || 'user'}?</DialogTitle>
+  1643→            <DialogDescription>
+  1644→              They won&apos;t be able to message you, find you in search, or see your
+  1645→              profile. You can unblock later from Settings.
+  1646→            </DialogDescription>
+  1647→          </DialogHeader>
+  1648→          <DialogFooter>
+  1649→            <Button variant="ghost" onClick={() => setConfirmBlock(false)}>
+  1650→              Cancel
+  1651→            </Button>
+  1652→            <Button variant="destructive" onClick={handleBlock}>
+  1653→              <Ban className="h-4 w-4" /> Block
+  1654→            </Button>
+  1655→          </DialogFooter>
+  1656→        </DialogContent>
+  1657→      </Dialog>
+  1658→    </div>
+  1659→  )
+  1660→}
+  1661→

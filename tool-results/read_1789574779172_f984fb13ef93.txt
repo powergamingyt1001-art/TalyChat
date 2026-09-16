@@ -1,0 +1,982 @@
+     1→'use client'
+     2→
+     3→import * as React from 'react'
+     4→import {
+     5→  Settings,
+     6→  Image as ImageIcon,
+     7→  KeyRound,
+     8→  CreditCard,
+     9→  Bot,
+    10→  LogOut,
+    11→  Plus,
+    12→  Save,
+    13→  Trash2,
+    14→  Pencil,
+    15→  CheckCircle2,
+    16→  XCircle,
+    17→  Loader2,
+    18→  Eye,
+    19→} from 'lucide-react'
+    20→import { apiFetch } from '@/lib/api'
+    21→import { useAuth } from '@/lib/auth-store'
+    22→import { useToast } from '@/hooks/use-toast'
+    23→import { Button } from '@/components/ui/button'
+    24→import { Input } from '@/components/ui/input'
+    25→import { Textarea } from '@/components/ui/textarea'
+    26→import { Label } from '@/components/ui/label'
+    27→import { Switch } from '@/components/ui/switch'
+    28→import { Separator } from '@/components/ui/separator'
+    29→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    30→import { Badge } from '@/components/ui/badge'
+    31→import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+    32→import {
+    33→  Dialog,
+    34→  DialogContent,
+    35→  DialogDescription,
+    36→  DialogFooter,
+    37→  DialogHeader,
+    38→  DialogTitle,
+    39→} from '@/components/ui/dialog'
+    40→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    41→import { Skeleton } from '@/components/ui/skeleton'
+    42→import {
+    43→  Table,
+    44→  TableBody,
+    45→  TableCell,
+    46→  TableHead,
+    47→  TableHeader,
+    48→  TableRow,
+    49→} from '@/components/ui/table'
+    50→import {
+    51→  type AdminAd,
+    52→  type AdminPayment,
+    53→  type AdminTalyRequest,
+    54→  EmptyState,
+    55→  StatusBadge,
+    56→  formatDate,
+    57→  formatDateTime,
+    58→  formatINR,
+    59→  initials,
+    60→  truncate,
+    61→} from './admin-shared'
+    62→import { useIsMobile } from '@/hooks/use-mobile'
+    63→import { cn } from '@/lib/utils'
+    64→
+    65→// ============================================================
+    66→// Main settings tab — composes all sections
+    67→// ============================================================
+    68→
+    69→export function AdminSettings({ onLogout }: { onLogout: () => void }) {
+    70→  return (
+    71→    <div className="flex flex-col gap-6">
+    72→      <div>
+    73→        <h2 className="text-xl font-bold">Settings</h2>
+    74→        <p className="text-sm text-muted-foreground">App configuration, ads, payments & support</p>
+    75→      </div>
+    76→
+    77→      <AppSettingsSection />
+    78→      <Separator />
+    79→      <AdsSection />
+    80→      <Separator />
+    81→      <PasswordSection />
+    82→      <Separator />
+    83→      <PaymentsSection />
+    84→      <Separator />
+    85→      <TalyRequestsSection />
+    86→      <Separator />
+    87→
+    88→      <div className="flex justify-center pb-4">
+    89→        <Button variant="destructive" className="h-11" onClick={onLogout}>
+    90→          <LogOut className="size-4" /> Logout
+    91→        </Button>
+    92→      </div>
+    93→    </div>
+    94→  )
+    95→}
+    96→
+    97→// ============================================================
+    98→// Section 1 — App settings editor
+    99→// ============================================================
+   100→
+   101→const AD_RELATED_KEYS = new Set([
+   102→  'ads_enabled',
+   103→  'ads_private_interval',
+   104→  'ads_group_interval',
+   105→])
+   106→
+   107→function AppSettingsSection() {
+   108→  const { toast } = useToast()
+   109→  const [map, setMap] = React.useState<Record<string, string>>({})
+   110→  const [draft, setDraft] = React.useState<Record<string, string>>({})
+   111→  const [loading, setLoading] = React.useState(true)
+   112→  const [saving, setSaving] = React.useState(false)
+   113→
+   114→  const load = React.useCallback(async () => {
+   115→    setLoading(true)
+   116→    try {
+   117→      const res: any = await apiFetch('/api/admin/settings')
+   118→      setMap(res?.settings || {})
+   119→      setDraft(res?.settings || {})
+   120→    } catch (e: any) {
+   121→      toast({ title: 'Failed to load settings', description: e?.message, variant: 'destructive' })
+   122→    } finally {
+   123→      setLoading(false)
+   124→    }
+   125→  }, [toast])
+   126→
+   127→  React.useEffect(() => {
+   128→    load()
+   129→  }, [load])
+   130→
+   131→  const saveAll = async () => {
+   132→    const changed = Object.fromEntries(
+   133→      Object.entries(draft).filter(([k, v]) => map[k] !== v)
+   134→    )
+   135→    if (Object.keys(changed).length === 0) {
+   136→      toast({ title: 'No changes to save' })
+   137→      return
+   138→    }
+   139→    setSaving(true)
+   140→    try {
+   141→      await apiFetch('/api/admin/settings', {
+   142→        method: 'PUT',
+   143→        body: JSON.stringify(changed),
+   144→      })
+   145→      toast({ title: 'Settings saved', description: `${Object.keys(changed).length} updated` })
+   146→      load()
+   147→    } catch (e: any) {
+   148→      toast({ title: 'Failed to save', description: e?.message, variant: 'destructive' })
+   149→    } finally {
+   150→      setSaving(false)
+   151→    }
+   152→  }
+   153→
+   154→  const addNew = () => {
+   155→    const key = prompt('New setting key:')
+   156→    if (!key) return
+   157→    if (draft[key] !== undefined) {
+   158→      toast({ title: 'Key already exists' })
+   159→      return
+   160→    }
+   161→    setDraft((d) => ({ ...d, [key]: '' }))
+   162→  }
+   163→
+   164→  const setVal = (k: string, v: string) => setDraft((d) => ({ ...d, [k]: v }))
+   165→
+   166→  const adEntries = Object.entries(draft).filter(([k]) => AD_RELATED_KEYS.has(k))
+   167→  const otherEntries = Object.entries(draft).filter(([k]) => !AD_RELATED_KEYS.has(k))
+   168→
+   169→  return (
+   170→    <section className="flex flex-col gap-4">
+   171→      <div className="flex items-center justify-between gap-3">
+   172→        <div>
+   173→          <h3 className="flex items-center gap-2 text-base font-semibold">
+   174→            <Settings className="size-4 text-primary" /> App settings
+   175→          </h3>
+   176→          <p className="text-xs text-muted-foreground">Key/value pairs from <code className="font-mono">AppSetting</code></p>
+   177→        </div>
+   178→        <div className="flex gap-2">
+   179→          <Button variant="outline" size="sm" className="h-9" onClick={addNew}>
+   180→            <Plus className="size-4" /> New
+   181→          </Button>
+   182→          <Button className="btn-brand h-9" onClick={saveAll} disabled={saving}>
+   183→            {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+   184→            Save All
+   185→          </Button>
+   186→        </div>
+   187→      </div>
+   188→
+   189→      {/* Ad-specific quick controls */}
+   190→      {adEntries.length > 0 && (
+   191→        <Card>
+   192→          <CardHeader className="pb-2">
+   193→            <CardTitle className="text-sm">Ad controls</CardTitle>
+   194→          </CardHeader>
+   195→          <CardContent className="flex flex-col gap-3">
+   196→            {adEntries.map(([k, v]) => (
+   197→              <div key={k} className="flex items-center justify-between gap-3">
+   198→                <div>
+   199→                  <Label className="text-sm font-medium">{humanizeKey(k)}</Label>
+   200→                  <p className="text-xs text-muted-foreground">{k}</p>
+   201→                </div>
+   202→                {k === 'ads_enabled' ? (
+   203→                  <Switch
+   204→                    checked={v === 'true' || v === '1'}
+   205→                    onCheckedChange={(c) => setVal(k, c ? 'true' : 'false')}
+   206→                  />
+   207→                ) : (
+   208→                  <Input
+   209→                    type="number"
+   210→                    value={v}
+   211→                    onChange={(e) => setVal(k, e.target.value)}
+   212→                    className="h-9 w-32"
+   213→                  />
+   214→                )}
+   215→              </div>
+   216→            ))}
+   217→          </CardContent>
+   218→        </Card>
+   219→      )}
+   220→
+   221→      {/* All settings */}
+   222→      <Card>
+   223→        <CardContent>
+   224→          {loading ? (
+   225→            <div className="space-y-2">
+   226→              {Array.from({ length: 6 }).map((_, i) => (
+   227→                <Skeleton key={i} className="h-12 w-full rounded-lg" />
+   228→              ))}
+   229→            </div>
+   230→          ) : otherEntries.length === 0 && adEntries.length === 0 ? (
+   231→            <EmptyState title="No settings yet" hint="Add one with the New button" icon={Settings} />
+   232→          ) : (
+   233→            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+   234→              {otherEntries.map(([k, v]) => (
+   235→                <div key={k} className="flex flex-col gap-1">
+   236→                  <Label className="text-xs font-medium">{k}</Label>
+   237→                  <Input
+   238→                    value={v}
+   239→                    onChange={(e) => setVal(k, e.target.value)}
+   240→                    className="h-10"
+   241→                  />
+   242→                </div>
+   243→              ))}
+   244→            </div>
+   245→          )}
+   246→        </CardContent>
+   247→      </Card>
+   248→    </section>
+   249→  )
+   250→}
+   251→
+   252→function humanizeKey(k: string): string {
+   253→  return k
+   254→    .replace(/_/g, ' ')
+   255→    .replace(/\b\w/g, (c) => c.toUpperCase())
+   256→}
+   257→
+   258→// ============================================================
+   259→// Section 2 — Ad management
+   260→// ============================================================
+   261→
+   262→const AD_PLACEMENTS = ['in-chat', 'home', 'discover'] as const
+   263→
+   264→function AdsSection() {
+   265→  const { toast } = useToast()
+   266→  const isMobile = useIsMobile()
+   267→  const [ads, setAds] = React.useState<AdminAd[]>([])
+   268→  const [loading, setLoading] = React.useState(true)
+   269→  const [editing, setEditing] = React.useState<AdminAd | null>(null)
+   270→  const [creating, setCreating] = React.useState(false)
+   271→
+   272→  const load = React.useCallback(async () => {
+   273→    setLoading(true)
+   274→    try {
+   275→      const res: any = await apiFetch('/api/admin/ads')
+   276→      setAds(res?.ads || [])
+   277→    } catch (e: any) {
+   278→      toast({ title: 'Failed to load ads', description: e?.message, variant: 'destructive' })
+   279→    } finally {
+   280→      setLoading(false)
+   281→    }
+   282→  }, [toast])
+   283→
+   284→  React.useEffect(() => {
+   285→    load()
+   286→  }, [load])
+   287→
+   288→  const remove = async (id: string) => {
+   289→    if (!confirm('Delete this ad permanently?')) return
+   290→    try {
+   291→      await apiFetch('/api/admin/ads', {
+   292→        method: 'DELETE',
+   293→        body: JSON.stringify({ id }),
+   294→      })
+   295→      toast({ title: 'Ad deleted' })
+   296→      load()
+   297→    } catch (e: any) {
+   298→      toast({ title: 'Delete failed', description: e?.message, variant: 'destructive' })
+   299→    }
+   300→  }
+   301→
+   302→  const toggleActive = async (ad: AdminAd) => {
+   303→    try {
+   304→      await apiFetch('/api/admin/ads', {
+   305→        method: 'PATCH',
+   306→        body: JSON.stringify({ id: ad.id, isActive: !ad.isActive }),
+   307→      })
+   308→      toast({ title: `Ad ${!ad.isActive ? 'enabled' : 'disabled'}` })
+   309→      load()
+   310→    } catch (e: any) {
+   311→      toast({ title: 'Update failed', description: e?.message, variant: 'destructive' })
+   312→    }
+   313→  }
+   314→
+   315→  return (
+   316→    <section className="flex flex-col gap-4">
+   317→      <div className="flex items-center justify-between gap-3">
+   318→        <div>
+   319→          <h3 className="flex items-center gap-2 text-base font-semibold">
+   320→            <ImageIcon className="size-4 text-primary" /> Ad management
+   321→          </h3>
+   322→          <p className="text-xs text-muted-foreground">Create, edit and toggle ad units</p>
+   323→        </div>
+   324→        <Button className="btn-brand h-9" onClick={() => setCreating(true)}>
+   325→          <Plus className="size-4" /> New Ad
+   326→        </Button>
+   327→      </div>
+   328→
+   329→      <Card>
+   330→        <CardContent className="p-0">
+   331→          {loading ? (
+   332→            <div className="space-y-2 p-4">
+   333→              {Array.from({ length: 4 }).map((_, i) => (
+   334→                <Skeleton key={i} className="h-16 w-full rounded-lg" />
+   335→              ))}
+   336→            </div>
+   337→          ) : ads.length === 0 ? (
+   338→            <EmptyState title="No ads yet" hint="Create one to start serving ads" icon={ImageIcon} />
+   339→          ) : isMobile ? (
+   340→            <div className="divide-y">
+   341→              {ads.map((ad) => (
+   342→                <AdCard key={ad.id} ad={ad} onEdit={() => setEditing(ad)} onToggle={() => toggleActive(ad)} onDelete={() => remove(ad.id)} />
+   343→              ))}
+   344→            </div>
+   345→          ) : (
+   346→            <Table>
+   347→              <TableHeader>
+   348→                <TableRow>
+   349→                  <TableHead>Brand</TableHead>
+   350→                  <TableHead>Headline</TableHead>
+   351→                  <TableHead>Placement</TableHead>
+   352→                  <TableHead>Stats</TableHead>
+   353→                  <TableHead>Status</TableHead>
+   354→                  <TableHead className="text-right">Actions</TableHead>
+   355→                </TableRow>
+   356→              </TableHeader>
+   357→              <TableBody>
+   358→                {ads.map((ad) => (
+   359→                  <TableRow key={ad.id}>
+   360→                    <TableCell className="font-medium">{ad.brandName}</TableCell>
+   361→                    <TableCell className="max-w-[200px] truncate text-sm text-muted-foreground">
+   362→                      {ad.headline}
+   363→                    </TableCell>
+   364→                    <TableCell>
+   365→                      <Badge variant="secondary" className="capitalize">{ad.placement}</Badge>
+   366→                    </TableCell>
+   367→                    <TableCell className="text-xs text-muted-foreground">
+   368→                      {ad.impressions.toLocaleString('en-IN')} imp · {ad.clicks.toLocaleString('en-IN')} clicks
+   369→                    </TableCell>
+   370→                    <TableCell>
+   371→                      <div className="flex items-center gap-2">
+   372→                        <Switch checked={ad.isActive} onCheckedChange={() => toggleActive(ad)} />
+   373→                        <span className="text-xs">{ad.isActive ? 'Active' : 'Off'}</span>
+   374→                      </div>
+   375→                    </TableCell>
+   376→                    <TableCell className="text-right">
+   377→                      <div className="flex justify-end gap-1">
+   378→                        <Button size="icon" variant="ghost" className="size-9" onClick={() => setEditing(ad)} aria-label="Edit ad">
+   379→                          <Pencil className="size-4" />
+   380→                        </Button>
+   381→                        <Button size="icon" variant="ghost" className="size-9 text-destructive" onClick={() => remove(ad.id)} aria-label="Delete ad">
+   382→                          <Trash2 className="size-4" />
+   383→                        </Button>
+   384→                      </div>
+   385→                    </TableCell>
+   386→                  </TableRow>
+   387→                ))}
+   388→              </TableBody>
+   389→            </Table>
+   390→          )}
+   391→        </CardContent>
+   392→      </Card>
+   393→
+   394→      <AdEditor
+   395→        open={creating || !!editing}
+   396→        ad={editing}
+   397→        onClose={() => {
+   398→          setCreating(false)
+   399→          setEditing(null)
+   400→        }}
+   401→        onSaved={() => {
+   402→          setCreating(false)
+   403→          setEditing(null)
+   404→          load()
+   405→        }}
+   406→      />
+   407→    </section>
+   408→  )
+   409→}
+   410→
+   411→function AdCard({
+   412→  ad,
+   413→  onEdit,
+   414→  onToggle,
+   415→  onDelete,
+   416→}: {
+   417→  ad: AdminAd
+   418→  onEdit: () => void
+   419→  onToggle: () => void
+   420→  onDelete: () => void
+   421→}) {
+   422→  return (
+   423→    <div className="flex flex-col gap-2 p-4">
+   424→      <div className="flex items-start gap-3">
+   425→        {ad.imageUrl ? (
+   426→          <img src={ad.imageUrl} alt={ad.brandName} className="size-12 rounded-md object-cover" />
+   427→        ) : (
+   428→          <div className="flex size-12 items-center justify-center rounded-md bg-muted">
+   429→            <ImageIcon className="size-5 text-muted-foreground" />
+   430→          </div>
+   431→        )}
+   432→        <div className="min-w-0 flex-1">
+   433→          <p className="truncate text-sm font-semibold">{ad.brandName}</p>
+   434→          <p className="truncate text-xs text-muted-foreground">{ad.headline}</p>
+   435→          <div className="mt-1 flex items-center gap-1.5">
+   436→            <Badge variant="secondary" className="capitalize">{ad.placement}</Badge>
+   437→            <span className="text-xs text-muted-foreground">
+   438→              {ad.impressions.toLocaleString('en-IN')} imp · {ad.clicks.toLocaleString('en-IN')} clicks
+   439→            </span>
+   440→          </div>
+   441→        </div>
+   442→      </div>
+   443→      <div className="flex items-center justify-between gap-2">
+   444→        <div className="flex items-center gap-2">
+   445→          <Switch checked={ad.isActive} onCheckedChange={onToggle} />
+   446→          <span className="text-xs">{ad.isActive ? 'Active' : 'Off'}</span>
+   447→        </div>
+   448→        <div className="flex gap-1">
+   449→          <Button size="sm" variant="outline" className="h-9" onClick={onEdit}>
+   450→            <Pencil className="size-4" /> Edit
+   451→          </Button>
+   452→          <Button size="icon" variant="ghost" className="size-9 text-destructive" onClick={onDelete}>
+   453→            <Trash2 className="size-4" />
+   454→          </Button>
+   455→        </div>
+   456→      </div>
+   457→    </div>
+   458→  )
+   459→}
+   460→
+   461→function AdEditor({
+   462→  open,
+   463→  ad,
+   464→  onClose,
+   465→  onSaved,
+   466→}: {
+   467→  open: boolean
+   468→  ad: AdminAd | null
+   469→  onClose: () => void
+   470→  onSaved: () => void
+   471→}) {
+   472→  const { toast } = useToast()
+   473→  const [saving, setSaving] = React.useState(false)
+   474→  const [form, setForm] = React.useState<any>({})
+   475→
+   476→  React.useEffect(() => {
+   477→    if (!open) return
+   478→    if (ad) {
+   479→      setForm({
+   480→        brandName: ad.brandName,
+   481→        headline: ad.headline,
+   482→        description: ad.description || '',
+   483→        imageUrl: ad.imageUrl || '',
+   484→        ctaText: ad.ctaText || 'Learn More',
+   485→        ctaUrl: ad.ctaUrl || '',
+   486→        placement: ad.placement,
+   487→        category: ad.category || '',
+   488→        startDate: ad.startDate ? ad.startDate.slice(0, 10) : '',
+   489→        endDate: ad.endDate ? ad.endDate.slice(0, 10) : '',
+   490→        isActive: ad.isActive,
+   491→      })
+   492→    } else {
+   493→      setForm({
+   494→        brandName: '',
+   495→        headline: '',
+   496→        description: '',
+   497→        imageUrl: '',
+   498→        ctaText: 'Learn More',
+   499→        ctaUrl: '',
+   500→        placement: 'in-chat',
+   501→        category: '',
+   502→        startDate: new Date().toISOString().slice(0, 10),
+   503→        endDate: '',
+   504→        isActive: true,
+   505→      })
+   506→    }
+   507→  }, [ad, open])
+   508→
+   509→  const submit = async () => {
+   510→    if (!form.brandName || !form.headline) {
+   511→      toast({ title: 'brandName and headline are required', variant: 'destructive' })
+   512→      return
+   513→    }
+   514→    setSaving(true)
+   515→    try {
+   516→      const payload = {
+   517→        ...form,
+   518→        category: form.category || null,
+   519→        endDate: form.endDate || null,
+   520→        startDate: form.startDate || new Date().toISOString(),
+   521→      }
+   522→      if (ad) {
+   523→        await apiFetch('/api/admin/ads', {
+   524→          method: 'PATCH',
+   525→          body: JSON.stringify({ id: ad.id, ...payload }),
+   526→        })
+   527→      } else {
+   528→        await apiFetch('/api/admin/ads', {
+   529→          method: 'POST',
+   530→          body: JSON.stringify(payload),
+   531→        })
+   532→      }
+   533→      toast({ title: ad ? 'Ad updated' : 'Ad created' })
+   534→      onSaved()
+   535→    } catch (e: any) {
+   536→      toast({ title: 'Save failed', description: e?.message, variant: 'destructive' })
+   537→    } finally {
+   538→      setSaving(false)
+   539→    }
+   540→  }
+   541→
+   542→  return (
+   543→    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+   544→      <DialogContent className="sm:max-w-lg">
+   545→        <DialogHeader>
+   546→          <DialogTitle>{ad ? 'Edit ad' : 'Create ad'}</DialogTitle>
+   547→          <DialogDescription>Configure creative, placement and schedule</DialogDescription>
+   548→        </DialogHeader>
+   549→
+   550→        <div className="grid max-h-[60vh] gap-3 overflow-y-auto pr-1">
+   551→          <LabeledInput label="Brand name" value={form.brandName} onChange={(v) => setForm((f: any) => ({ ...f, brandName: v }))} placeholder="Acme" />
+   552→          <LabeledInput label="Headline" value={form.headline} onChange={(v) => setForm((f: any) => ({ ...f, headline: v }))} placeholder="Check out our deal" />
+   553→          <LabeledTextarea label="Description" value={form.description} onChange={(v) => setForm((f: any) => ({ ...f, description: v }))} placeholder="Optional body copy" />
+   554→          <LabeledInput label="Image URL" value={form.imageUrl} onChange={(v) => setForm((f: any) => ({ ...f, imageUrl: v }))} placeholder="/uploads/…" />
+   555→          <div className="grid grid-cols-2 gap-3">
+   556→            <LabeledInput label="CTA text" value={form.ctaText} onChange={(v) => setForm((f: any) => ({ ...f, ctaText: v }))} />
+   557→            <LabeledInput label="CTA URL" value={form.ctaUrl} onChange={(v) => setForm((f: any) => ({ ...f, ctaUrl: v }))} />
+   558→          </div>
+   559→          <div className="grid grid-cols-2 gap-3">
+   560→            <Field label="Placement">
+   561→              <Select value={form.placement} onValueChange={(v) => setForm((f: any) => ({ ...f, placement: v }))}>
+   562→                <SelectTrigger className="h-10 w-full">
+   563→                  <SelectValue />
+   564→                </SelectTrigger>
+   565→                <SelectContent>
+   566→                  {AD_PLACEMENTS.map((p) => (
+   567→                    <SelectItem key={p} value={p}>{p}</SelectItem>
+   568→                  ))}
+   569→                </SelectContent>
+   570→              </Select>
+   571→            </Field>
+   572→            <LabeledInput label="Category (optional)" value={form.category} onChange={(v) => setForm((f: any) => ({ ...f, category: v }))} />
+   573→          </div>
+   574→          <div className="grid grid-cols-2 gap-3">
+   575→            <LabeledInput label="Start date" type="date" value={form.startDate} onChange={(v) => setForm((f: any) => ({ ...f, startDate: v }))} />
+   576→            <LabeledInput label="End date (optional)" type="date" value={form.endDate} onChange={(v) => setForm((f: any) => ({ ...f, endDate: v }))} />
+   577→          </div>
+   578→          <div className="flex items-center justify-between rounded-md border p-3">
+   579→            <div>
+   580→              <Label className="text-sm font-medium">Active</Label>
+   581→              <p className="text-xs text-muted-foreground">Show this ad to users</p>
+   582→            </div>
+   583→            <Switch checked={!!form.isActive} onCheckedChange={(c) => setForm((f: any) => ({ ...f, isActive: c }))} />
+   584→          </div>
+   585→        </div>
+   586→
+   587→        <DialogFooter>
+   588→          <Button variant="outline" onClick={onClose} disabled={saving}>
+   589→            Cancel
+   590→          </Button>
+   591→          <Button className="btn-brand" onClick={submit} disabled={saving}>
+   592→            {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+   593→            {ad ? 'Save changes' : 'Create ad'}
+   594→          </Button>
+   595→        </DialogFooter>
+   596→      </DialogContent>
+   597→    </Dialog>
+   598→  )
+   599→}
+   600→
+   601→// ============================================================
+   602→// Section 3 — Change admin password
+   603→// ============================================================
+   604→
+   605→function PasswordSection() {
+   606→  const { toast } = useToast()
+   607→  const [current, setCurrent] = React.useState('')
+   608→  const [next, setNext] = React.useState('')
+   609→  const [confirm, setConfirm] = React.useState('')
+   610→  const [saving, setSaving] = React.useState(false)
+   611→
+   612→  const submit = async () => {
+   613→    if (!current || !next || !confirm) {
+   614→      toast({ title: 'All fields required', variant: 'destructive' })
+   615→      return
+   616→    }
+   617→    if (next !== confirm) {
+   618→      toast({ title: 'New passwords do not match', variant: 'destructive' })
+   619→      return
+   620→    }
+   621→    if (next.length < 6) {
+   622→      toast({ title: 'New password must be at least 6 characters', variant: 'destructive' })
+   623→      return
+   624→    }
+   625→    setSaving(true)
+   626→    try {
+   627→      await apiFetch('/api/admin/password', {
+   628→        method: 'POST',
+   629→        body: JSON.stringify({ currentPassword: current, newPassword: next }),
+   630→      })
+   631→      toast({ title: 'Password updated' })
+   632→      setCurrent('')
+   633→      setNext('')
+   634→      setConfirm('')
+   635→    } catch (e: any) {
+   636→      toast({ title: 'Failed to update', description: e?.message, variant: 'destructive' })
+   637→    } finally {
+   638→      setSaving(false)
+   639→    }
+   640→  }
+   641→
+   642→  return (
+   643→    <section className="flex flex-col gap-3">
+   644→      <h3 className="flex items-center gap-2 text-base font-semibold">
+   645→        <KeyRound className="size-4 text-primary" /> Change admin password
+   646→      </h3>
+   647→      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+   648→        <LabeledInput label="Current password" type="password" value={current} onChange={setCurrent} />
+   649→        <LabeledInput label="New password" type="password" value={next} onChange={setNext} />
+   650→        <LabeledInput label="Confirm new" type="password" value={confirm} onChange={setConfirm} />
+   651→      </div>
+   652→      <div className="flex justify-end">
+   653→        <Button className="btn-brand h-10" onClick={submit} disabled={saving}>
+   654→          {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Update password
+   655→        </Button>
+   656→      </div>
+   657→    </section>
+   658→  )
+   659→}
+   660→
+   661→// ============================================================
+   662→// Section 4 — Payment proofs
+   663→// ============================================================
+   664→
+   665→function PaymentsSection() {
+   666→  const { toast } = useToast()
+   667→  const [payments, setPayments] = React.useState<AdminPayment[]>([])
+   668→  const [loading, setLoading] = React.useState(true)
+   669→  const [actingId, setActingId] = React.useState<string | null>(null)
+   670→  const [statusFilter, setStatusFilter] = React.useState<'pending' | 'approved' | 'rejected'>('pending')
+   671→
+   672→  const load = React.useCallback(async (s: 'pending' | 'approved' | 'rejected') => {
+   673→    setLoading(true)
+   674→    try {
+   675→      const res: any = await apiFetch(`/api/admin/payments?status=${s}`)
+   676→      setPayments(res?.payments || [])
+   677→    } catch (e: any) {
+   678→      toast({ title: 'Failed to load payments', description: e?.message, variant: 'destructive' })
+   679→    } finally {
+   680→      setLoading(false)
+   681→    }
+   682→  }, [toast])
+   683→
+   684→  React.useEffect(() => {
+   685→    load(statusFilter)
+   686→  }, [statusFilter, load])
+   687→
+   688→  const act = async (id: string, action: 'approve' | 'reject') => {
+   689→    setActingId(id)
+   690→    try {
+   691→      await apiFetch('/api/admin/payments', {
+   692→        method: 'POST',
+   693→        body: JSON.stringify({ id, action }),
+   694→      })
+   695→      toast({ title: action === 'approve' ? 'Payment approved — premium granted' : 'Payment rejected' })
+   696→      // remove from current list if filter is pending
+   697→      if (statusFilter === 'pending') {
+   698→        setPayments((prev) => prev.filter((p) => p.id !== id))
+   699→      } else {
+   700→        load(statusFilter)
+   701→      }
+   702→    } catch (e: any) {
+   703→      toast({ title: 'Action failed', description: e?.message, variant: 'destructive' })
+   704→    } finally {
+   705→      setActingId(null)
+   706→    }
+   707→  }
+   708→
+   709→  return (
+   710→    <section className="flex flex-col gap-4">
+   711→      <div className="flex items-center justify-between gap-3">
+   712→        <h3 className="flex items-center gap-2 text-base font-semibold">
+   713→          <CreditCard className="size-4 text-primary" /> Payment proofs
+   714→        </h3>
+   715→        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
+   716→          <SelectTrigger className="h-9 w-[150px]">
+   717→            <SelectValue />
+   718→          </SelectTrigger>
+   719→          <SelectContent>
+   720→            <SelectItem value="pending">Pending</SelectItem>
+   721→            <SelectItem value="approved">Approved</SelectItem>
+   722→            <SelectItem value="rejected">Rejected</SelectItem>
+   723→          </SelectContent>
+   724→        </Select>
+   725→      </div>
+   726→
+   727→      {loading ? (
+   728→        <div className="space-y-2">
+   729→          {Array.from({ length: 3 }).map((_, i) => (
+   730→            <Skeleton key={i} className="h-24 w-full rounded-lg" />
+   731→          ))}
+   732→        </div>
+   733→      ) : payments.length === 0 ? (
+   734→        <EmptyState title="No payments" hint={`No ${statusFilter} payment proofs`} icon={CreditCard} />
+   735→      ) : (
+   736→        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+   737→          {payments.map((p) => (
+   738→            <PaymentCard key={p.id} payment={p} acting={actingId === p.id} onAct={act} />
+   739→          ))}
+   740→        </div>
+   741→      )}
+   742→    </section>
+   743→  )
+   744→}
+   745→
+   746→function PaymentCard({
+   747→  payment,
+   748→  acting,
+   749→  onAct,
+   750→}: {
+   751→  payment: AdminPayment
+   752→  acting: boolean
+   753→  onAct: (id: string, action: 'approve' | 'reject') => void
+   754→}) {
+   755→  return (
+   756→    <Card>
+   757→      <CardContent className="flex flex-col gap-3 p-4">
+   758→        <div className="flex items-start gap-3">
+   759→          <Avatar className="size-10">
+   760→            {payment.user.avatar ? <AvatarImage src={payment.user.avatar} alt={payment.user.name} /> : null}
+   761→            <AvatarFallback>{initials(payment.user.name)}</AvatarFallback>
+   762→          </Avatar>
+   763→          <div className="min-w-0 flex-1">
+   764→            <p className="truncate text-sm font-semibold">{payment.user.name}</p>
+   765→            <p className="truncate text-xs text-muted-foreground">@{payment.user.username}</p>
+   766→            <p className="truncate text-xs text-muted-foreground">{payment.user.email}</p>
+   767→          </div>
+   768→          <StatusBadge status={payment.status} />
+   769→        </div>
+   770→
+   771→        <div className="grid grid-cols-2 gap-2 text-xs">
+   772→          <Cell label="Plan" value={payment.plan} />
+   773→          <Cell label="Amount" value={formatINR(payment.amount)} />
+   774→          <Cell label="Txn ID" value={payment.transactionId} />
+   775→          <Cell label="UTR" value={payment.utrNumber || '—'} />
+   776→        </div>
+   777→
+   778→        {payment.screenshotUrl && (
+   779→          <a
+   780→            href={payment.screenshotUrl}
+   781→            target="_blank"
+   782→            rel="noreferrer"
+   783→            className="block"
+   784→          >
+   785→            <img
+   786→              src={payment.screenshotUrl}
+   787→              alt="Payment proof"
+   788→              className="h-32 w-full rounded-md border object-cover"
+   789→            />
+   790→            <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+   791→              <Eye className="size-3" /> Tap to view full screenshot
+   792→            </p>
+   793→          </a>
+   794→        )}
+   795→
+   796→        {payment.notes && (
+   797→          <p className="rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
+   798→            {truncate(payment.notes, 200)}
+   799→          </p>
+   800→        )}
+   801→
+   802→        <p className="text-xs text-muted-foreground">Submitted {formatDateTime(payment.createdAt)}</p>
+   803→
+   804→        {payment.status === 'pending' && (
+   805→          <div className="flex gap-2">
+   806→            <Button size="sm" className="btn-brand h-11 flex-1" disabled={acting} onClick={() => onAct(payment.id, 'approve')}>
+   807→              {acting ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+   808→              Approve
+   809→            </Button>
+   810→            <Button size="sm" variant="outline" className="h-11 flex-1" disabled={acting} onClick={() => onAct(payment.id, 'reject')}>
+   811→              {acting ? <Loader2 className="size-4 animate-spin" /> : <XCircle className="size-4" />}
+   812→              Reject
+   813→            </Button>
+   814→          </div>
+   815→        )}
+   816→      </CardContent>
+   817→    </Card>
+   818→  )
+   819→}
+   820→
+   821→// ============================================================
+   822→// Section 5 — Taly Support requests
+   823→// ============================================================
+   824→
+   825→function TalyRequestsSection() {
+   826→  const { toast } = useToast()
+   827→  const [requests, setRequests] = React.useState<AdminTalyRequest[]>([])
+   828→  const [loading, setLoading] = React.useState(true)
+   829→  const [actingId, setActingId] = React.useState<string | null>(null)
+   830→
+   831→  const load = React.useCallback(async () => {
+   832→    setLoading(true)
+   833→    try {
+   834→      const res: any = await apiFetch('/api/admin/taly-requests?status=pending')
+   835→      setRequests(res?.requests || [])
+   836→    } catch (e: any) {
+   837→      toast({ title: 'Failed to load requests', description: e?.message, variant: 'destructive' })
+   838→    } finally {
+   839→      setLoading(false)
+   840→    }
+   841→  }, [toast])
+   842→
+   843→  React.useEffect(() => {
+   844→    load()
+   845→  }, [load])
+   846→
+   847→  const act = async (id: string, action: 'approve' | 'reject') => {
+   848→    setActingId(id)
+   849→    try {
+   850→      await apiFetch('/api/admin/taly-requests', {
+   851→        method: 'POST',
+   852→        body: JSON.stringify({ id, action }),
+   853→      })
+   854→      toast({ title: action === 'approve' ? 'Request approved' : 'Request rejected' })
+   855→      setRequests((prev) => prev.filter((r) => r.id !== id))
+   856→    } catch (e: any) {
+   857→      toast({ title: 'Action failed', description: e?.message, variant: 'destructive' })
+   858→    } finally {
+   859→      setActingId(null)
+   860→    }
+   861→  }
+   862→
+   863→  return (
+   864→    <section className="flex flex-col gap-4">
+   865→      <h3 className="flex items-center gap-2 text-base font-semibold">
+   866→        <Bot className="size-4 text-primary" /> Taly Support requests
+   867→      </h3>
+   868→      <p className="text-xs text-muted-foreground">
+   869→        Pending escalation requests from users (e.g., account unlocks).
+   870→      </p>
+   871→
+   872→      {loading ? (
+   873→        <div className="space-y-2">
+   874→          {Array.from({ length: 3 }).map((_, i) => (
+   875→            <Skeleton key={i} className="h-24 w-full rounded-lg" />
+   876→          ))}
+   877→        </div>
+   878→      ) : requests.length === 0 ? (
+   879→        <EmptyState title="No pending requests" hint="All caught up" icon={Bot} />
+   880→      ) : (
+   881→        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+   882→          {requests.map((r) => (
+   883→            <Card key={r.id}>
+   884→              <CardContent className="flex flex-col gap-3 p-4">
+   885→                <div className="flex items-start gap-3">
+   886→                  <Avatar className="size-10">
+   887→                    {r.user.avatar ? <AvatarImage src={r.user.avatar} alt={r.user.name} /> : null}
+   888→                    <AvatarFallback>{initials(r.user.name)}</AvatarFallback>
+   889→                  </Avatar>
+   890→                  <div className="min-w-0 flex-1">
+   891→                    <p className="truncate text-sm font-semibold">{r.user.name}</p>
+   892→                    <p className="truncate text-xs text-muted-foreground">@{r.user.username}</p>
+   893→                    <p className="truncate text-xs text-muted-foreground">{r.user.email}</p>
+   894→                  </div>
+   895→                </div>
+   896→                <p className="rounded-md bg-muted/50 p-2 text-sm">{r.message}</p>
+   897→                <p className="text-xs text-muted-foreground">{formatDateTime(r.createdAt)}</p>
+   898→                <div className="flex gap-2">
+   899→                  <Button size="sm" className="btn-brand h-11 flex-1" disabled={actingId === r.id} onClick={() => act(r.id, 'approve')}>
+   900→                    {actingId === r.id ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+   901→                    Approve
+   902→                  </Button>
+   903→                  <Button size="sm" variant="outline" className="h-11 flex-1" disabled={actingId === r.id} onClick={() => act(r.id, 'reject')}>
+   904→                    {actingId === r.id ? <Loader2 className="size-4 animate-spin" /> : <XCircle className="size-4" />}
+   905→                    Reject
+   906→                  </Button>
+   907→                </div>
+   908→              </CardContent>
+   909→            </Card>
+   910→          ))}
+   911→        </div>
+   912→      )}
+   913→    </section>
+   914→  )
+   915→}
+   916→
+   917→// ============================================================
+   918→// Small reusable form bits
+   919→// ============================================================
+   920→
+   921→function LabeledInput({
+   922→  label,
+   923→  value,
+   924→  onChange,
+   925→  placeholder,
+   926→  type = 'text',
+   927→}: {
+   928→  label: string
+   929→  value: string
+   930→  onChange: (v: string) => void
+   931→  placeholder?: string
+   932→  type?: string
+   933→}) {
+   934→  return (
+   935→    <Field label={label}>
+   936→      <Input
+   937→        type={type}
+   938→        value={value}
+   939→        onChange={(e) => onChange(e.target.value)}
+   940→        placeholder={placeholder}
+   941→        className="h-10"
+   942→      />
+   943→    </Field>
+   944→  )
+   945→}
+   946→
+   947→function LabeledTextarea({
+   948→  label,
+   949→  value,
+   950→  onChange,
+   951→  placeholder,
+   952→}: {
+   953→  label: string
+   954→  value: string
+   955→  onChange: (v: string) => void
+   956→  placeholder?: string
+   957→}) {
+   958→  return (
+   959→    <Field label={label}>
+   960→      <Textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="min-h-[80px]" />
+   961→    </Field>
+   962→  )
+   963→}
+   964→
+   965→function Field({ label, children }: { label: string; children: React.ReactNode }) {
+   966→  return (
+   967→    <label className="flex flex-col gap-1">
+   968→      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+   969→      {children}
+   970→    </label>
+   971→  )
+   972→}
+   973→
+   974→function Cell({ label, value }: { label: string; value: string }) {
+   975→  return (
+   976→    <div>
+   977→      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
+   978→      <p className="truncate text-sm font-medium">{value}</p>
+   979→    </div>
+   980→  )
+   981→}
+   982→

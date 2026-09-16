@@ -26,6 +26,8 @@ export async function GET(req: NextRequest) {
                 avatar: true,
                 isOnline: true,
                 lastSeen: true,
+                isPremium: true,
+                premiumTier: true,
               },
             },
           },

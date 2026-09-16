@@ -30,6 +30,7 @@ export async function GET(
                 isOnline: true,
                 lastSeen: true,
                 isPremium: true,
+                premiumTier: true,
               },
             },
           },

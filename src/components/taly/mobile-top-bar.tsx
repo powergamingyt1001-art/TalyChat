@@ -39,11 +39,34 @@ export function MobileTopBar({ title, user, onDailyReward, onOpenTaly }: Props) 
     } catch {}
   }
 
+  const isPremium = !!user?.isPremium
+
   return (
     <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
       <div className="flex items-center gap-2">
-        <img src="/logo.png" alt="TalyChat" className="h-7 w-7 rounded-lg" />
-        <span className="text-base font-bold text-primary">TalyChat</span>
+        <img
+          src="/logo.png"
+          alt="TalyChat"
+          className={
+            isPremium
+              ? 'h-7 w-7 rounded-lg ring-2 ring-amber-400/60'
+              : 'h-7 w-7 rounded-lg'
+          }
+          style={
+            isPremium
+              ? { filter: 'drop-shadow(0 0 4px rgba(255, 215, 0, 0.5))' }
+              : undefined
+          }
+        />
+        <span
+          className={
+            isPremium
+              ? 'text-base font-bold text-amber-600 dark:text-amber-400'
+              : 'text-base font-bold text-primary'
+          }
+        >
+          TalyChat
+        </span>
       </div>
 
       <div className="flex items-center gap-1">

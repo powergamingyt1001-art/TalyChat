@@ -1,7 +1,7 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { PremiumAvatar } from '@/components/premium-avatar'
 import { NAV_ITEMS } from '@/components/taly/bottom-nav'
 import { Gift, Bot, LogOut, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -30,13 +30,35 @@ export function DesktopSidebar({
 }: Props) {
   const { logout } = useAuth()
   const { toast } = useToast()
+  const isPremium = !!user?.isPremium
 
   return (
     <aside className="flex w-72 shrink-0 flex-col border-r bg-sidebar/50">
       <div className="flex items-center gap-2 border-b px-4 py-4">
-        <img src="/logo.png" alt="TalyChat" className="h-9 w-9 rounded-lg" />
+        <img
+          src="/logo.png"
+          alt="TalyChat"
+          className={
+            isPremium
+              ? 'h-9 w-9 rounded-lg ring-2 ring-amber-400/60'
+              : 'h-9 w-9 rounded-lg'
+          }
+          style={
+            isPremium
+              ? { filter: 'drop-shadow(0 0 4px rgba(255, 215, 0, 0.5))' }
+              : undefined
+          }
+        />
         <div>
-          <h1 className="text-lg font-bold text-primary">TalyChat</h1>
+          <h1
+            className={
+              isPremium
+                ? 'text-lg font-bold text-amber-600 dark:text-amber-400'
+                : 'text-lg font-bold text-primary'
+            }
+          >
+            TalyChat
+          </h1>
           <p className="text-[10px] text-muted-foreground">Chat. Connect. Mingle.</p>
         </div>
       </div>
@@ -86,12 +108,16 @@ export function DesktopSidebar({
 
       <div className="border-t p-3">
         <div className="flex items-center gap-2 rounded-lg p-2 hover:bg-sidebar-accent/50">
-          <Avatar>
-            <AvatarImage src={user?.avatar || undefined} />
-            <AvatarFallback className="bg-primary text-primary-foreground">
-              {user?.name?.[0]?.toUpperCase() || 'U'}
-            </AvatarFallback>
-          </Avatar>
+          <PremiumAvatar
+            user={{
+              isPremium: user?.isPremium,
+              premiumTier: user?.premiumTier,
+              avatar: user?.avatar || undefined,
+              name: user?.name || 'U',
+            }}
+            size={36}
+            showAura
+          />
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-medium">{user?.name}</div>
             <div className="truncate text-xs text-muted-foreground">@{user?.username}</div>

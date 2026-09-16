@@ -25,6 +25,63 @@ export interface AdminStats {
   userGrowth: { label: string; value: number }[]
   activeInactive: { active: number; inactive: number }
   period: string
+  // V2 fields
+  bannedCount?: number
+  registerData?: { label: string; count: number }[]
+  activeVsInactive?: { active: number; inactive: number }
+  userStatus?: {
+    active: number
+    inactive: number
+    banned: number
+    deactivated: number
+  }
+  subscriptions?: {
+    paid: number
+    free: number
+    expired: number
+  }
+}
+
+// V2 — AdminSubscription (from GET /api/admin/subscriptions)
+export interface AdminSubscription {
+  id: string
+  userId: string
+  plan: string
+  amount: number
+  startAt: string
+  expireAt: string
+  isActive: boolean
+  source: string
+  createdAt: string
+  currentlyActive: boolean
+  user: {
+    id: string
+    name: string
+    username: string
+    email: string
+    avatar?: string | null
+    isPremium: boolean
+    premiumUntil?: string | null
+    role: string
+    isBlocked: boolean
+  }
+}
+
+// V2 — AdminBan (from GET /api/admin/bans)
+export interface AdminBan {
+  id: string
+  name: string
+  username: string
+  email: string
+  avatar?: string | null
+  role: string
+  isBlocked: boolean
+  blockedUntil: string | null
+  banReason: string | null
+  lastSeen: string | null
+  createdAt: string
+  banActive: boolean
+  permanent: boolean
 }
 
 export interface AdminUserListItem {
@@ -382,6 +439,102 @@ export function ReportReasonBadge({ reason }: { reason: string }) {
       )}
     >
       {reason}
+    </span>
+  )
+}
+
+// ============================================================
+// V2 helpers — subscriptions, bans, plans
+// ============================================================
+
+const PLAN_LABELS: Record<string, string> = {
+  '2mo': '2 Months',
+  '6mo': '6 Months',
+  '1yr': '1 Year',
+}
+
+const SOURCE_LABELS: Record<string, string> = {
+  payment: 'Payment',
+  redeem: 'Redeem Code',
+  referral: 'Referral',
+  daily: 'Daily Reward',
+  admin: 'Admin Grant',
+}
+
+export function formatPlan(plan: string): string {
+  return PLAN_LABELS[plan] || plan || '—'
+}
+
+export function formatSource(source: string): string {
+  return SOURCE_LABELS[source] || source || '—'
+}
+
+// Format ban duration — given blockedUntil ISO string vs now, returns
+// humanized remaining time ("3h 12m", "2d 5h", "Permanent", "Expired")
+export function formatBanRemaining(blockedUntil: string | null): string {
+  if (!blockedUntil) return 'Permanent'
+  const end = new Date(blockedUntil).getTime()
+  const now = Date.now()
+  if (end <= now) return 'Expired'
+  const diff = end - now
+  const days = Math.floor(diff / (24 * 60 * 60 * 1000))
+  const hours = Math.floor((diff % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000))
+  const mins = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000))
+  if (days > 0) return `${days}d ${hours}h`
+  if (hours > 0) return `${hours}h ${mins}m`
+  return `${mins}m`
+}
+
+// Map BanDurationPicker hours → label
+export const BAN_DURATIONS: { value: number | 'permanent'; label: string }[] = [
+  { value: 5, label: '5 hours' },
+  { value: 24, label: '24 hours' },
+  { value: 24 * 7, label: '7 days' },
+  { value: 24 * 30, label: '30 days' },
+  { value: 'permanent', label: 'Permanent' },
+]
+
+// Subscriptions status badge (Active/Expired) derived from `currentlyActive`
+export function SubStatusBadge({ active }: { active: boolean }) {
+  return active ? (
+    <span
+      className={cn(
+        'inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+        'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+      )}
+    >
+      Active
+    </span>
+  ) : (
+    <span
+      className={cn(
+        'inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+        'bg-zinc-500/15 text-zinc-700 dark:text-zinc-300 border-zinc-500/30'
+      )}
+    >
+      Expired
+    </span>
+  )
+}
+
+// Source badge for subscriptions
+export function SourceBadge({ source }: { source: string }) {
+  const palette: Record<string, string> = {
+    payment: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
+    redeem: 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30',
+    referral: 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30',
+    daily: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
+    admin: 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30',
+  }
+  const cls = palette[source] || 'bg-muted text-muted-foreground border-border'
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+        cls
+      )}
+    >
+      {formatSource(source)}
     </span>
   )
 }
