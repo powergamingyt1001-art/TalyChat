@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
+import { motion } from 'framer-motion'
 import {
   Loader2,
   RefreshCw,
@@ -9,13 +10,13 @@ import {
   X,
   Check,
   Bell,
+  MessageSquare,
 } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
 import { PremiumAvatar } from '@/components/premium-avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Dialog,
   DialogContent,
@@ -79,6 +80,12 @@ function messagePreview(last: any): string {
   if (last.type === 'sticker') return '😊 Sticker'
   return last.content || 'Say hi 👋'
 }
+
+const FILTERS: { id: FilterTab; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'unread', label: 'Unread' },
+  { id: 'requests', label: 'Requests' },
+]
 
 export function ChatsScreen({ conversations, onOpenChat, onRefresh }: ChatsProps) {
   const { toast } = useToast()
@@ -213,65 +220,79 @@ export function ChatsScreen({ conversations, onOpenChat, onRefresh }: ChatsProps
   }
 
   return (
-    <div className="mx-auto max-w-2xl p-4 pb-20 lg:pb-6">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="text-2xl font-bold">Chats</h1>
+    <div className="mx-auto max-w-2xl px-4 pb-24 pt-6 lg:pb-6 lg:pt-8">
+      {/* Header — section header style + actions */}
+      <motion.div
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="flex items-center justify-between gap-2"
+      >
+        <h1 className="section-header">Chats</h1>
         <div className="flex items-center gap-1">
           <Button
             size="icon"
             variant="ghost"
             onClick={handleRefresh}
             aria-label="Refresh"
-            className="h-9 w-9"
+            className="h-10 w-10 rounded-full hover:bg-accent"
           >
             <RefreshCw className={refreshing ? 'h-5 w-5 animate-spin' : 'h-5 w-5'} />
           </Button>
-          <Button onClick={() => setNewChatOpen(true)} className="btn-brand min-h-[44px]">
+          <button
+            onClick={() => setNewChatOpen(true)}
+            className="action-btn !px-4 !py-2 !text-sm lg:hidden"
+            aria-label="New chat"
+          >
             <UserPlus className="h-4 w-4" /> New
-          </Button>
+          </button>
         </div>
-      </div>
+      </motion.div>
 
-      <Tabs
-        value={filter}
-        onValueChange={(v) => setFilter(v as FilterTab)}
+      {/* Filter tabs — segmented control */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.05 }}
         className="mt-3"
       >
-        <TabsList className="w-full">
-          <TabsTrigger value="all" className="flex-1">
-            All
-          </TabsTrigger>
-          <TabsTrigger value="unread" className="flex-1">
-            Unread
-          </TabsTrigger>
-          <TabsTrigger value="requests" className="relative flex-1">
-            <span className="inline-flex items-center gap-1.5">
-              <Bell className="h-3.5 w-3.5" />
-              Requests
-            </span>
-            {requests.length > 0 && (
-              <span className="absolute -top-1 -right-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                {requests.length > 9 ? '9+' : requests.length}
-              </span>
-            )}
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
+        <div className="segmented-control w-full">
+          {FILTERS.map((f) => {
+            const active = filter === f.id
+            const showBadge = f.id === 'requests' && requests.length > 0
+            return (
+              <button
+                key={f.id}
+                onClick={() => setFilter(f.id)}
+                className={`flex flex-1 items-center justify-center gap-1.5 ${active ? 'active' : ''}`}
+              >
+                {f.id === 'requests' && <Bell className="h-3.5 w-3.5" />}
+                {f.label}
+                {showBadge && (
+                  <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                    {requests.length > 9 ? '9+' : requests.length}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </motion.div>
 
-      {/* Search bar — only relevant on All / Unread tabs */}
+      {/* Search bar — rounded-full with bg-muted + icon */}
       {filter !== 'requests' && (
-        <div className="relative mt-3">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <div className="relative mt-3 animate-fade-in-up">
+          <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search by name…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="pl-9"
+            className="h-11 rounded-full border-border bg-muted/60 pl-10 pr-10 text-sm focus-visible:bg-card focus-visible:ring-2 focus-visible:ring-primary/40"
           />
           {query && (
             <button
               onClick={() => setQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:bg-accent"
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground transition-colors hover:bg-accent"
               aria-label="Clear search"
             >
               <X className="h-4 w-4" />
@@ -282,21 +303,27 @@ export function ChatsScreen({ conversations, onOpenChat, onRefresh }: ChatsProps
 
       {/* Requests tab content */}
       {filter === 'requests' ? (
-        <div className="mt-3 space-y-1.5">
+        <div className="mt-3 space-y-2">
           {requestsLoading && requests.length === 0 ? (
             <div className="flex items-center justify-center py-8 text-muted-foreground">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading requests…
             </div>
           ) : requests.length === 0 ? (
-            <div className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
-              No pending chat requests. 🎉
+            <div className="dotted-bg flex flex-col items-center justify-center rounded-2xl border border-border bg-card p-10 text-center">
+              <Bell className="h-10 w-10 text-muted-foreground/60" />
+              <p className="mt-3 text-sm font-medium text-foreground">
+                No pending chat requests
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                When someone wants to chat with you, they&apos;ll show up here.
+              </p>
             </div>
           ) : (
-            <ul className="space-y-1.5">
+            <ul className="space-y-2">
               {requests.map((req) => (
                 <li
                   key={req.id}
-                  className="rounded-xl border border-border bg-card p-3"
+                  className="taly-card animate-fade-in-up p-3"
                 >
                   <div className="flex items-center gap-3">
                     <PremiumAvatar
@@ -308,13 +335,14 @@ export function ChatsScreen({ conversations, onOpenChat, onRefresh }: ChatsProps
                       }}
                       size={44}
                       showAura
+                      isOnline={!!req.sender?.isOnline}
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline justify-between gap-2">
                         <span className="truncate text-sm font-semibold">
                           {req.sender?.name || req.sender?.username || 'User'}
                         </span>
-                        <span className="shrink-0 text-[10px] text-muted-foreground">
+                        <span className="shrink-0 text-[10px] font-light text-muted-foreground">
                           {relativeTime(req.createdAt)}
                         </span>
                       </div>
@@ -328,21 +356,21 @@ export function ChatsScreen({ conversations, onOpenChat, onRefresh }: ChatsProps
                       )}
                     </div>
                   </div>
-                  <div className="mt-2 flex gap-2">
+                  <div className="mt-2.5 flex gap-2">
                     <Button
                       size="sm"
                       onClick={() => handleAccept(req)}
-                      className="btn-brand min-h-[36px] flex-1"
+                      className="action-btn !min-h-[38px] !px-4 !py-2 flex-1 !text-xs shadow-none"
                     >
-                      <Check className="h-4 w-4" /> Accept
+                      <Check className="h-3.5 w-3.5" /> Accept
                     </Button>
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => handleReject(req)}
-                      className="min-h-[36px] flex-1"
+                      className="ghost-btn !min-h-[38px] !px-4 !py-2 flex-1 !text-xs"
                     >
-                      <X className="h-4 w-4" /> Reject
+                      <X className="h-3.5 w-3.5" /> Reject
                     </Button>
                   </div>
                 </li>
@@ -353,22 +381,33 @@ export function ChatsScreen({ conversations, onOpenChat, onRefresh }: ChatsProps
       ) : (
         <div className="mt-3 space-y-1.5">
           {filtered.length === 0 ? (
-            <div className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
-              {filter === 'unread'
-                ? 'No unread chats 🎉'
-                : query.trim()
-                  ? 'No conversations match your search.'
-                  : 'No conversations yet. Tap “New” to start chatting.'}
+            <div className="dotted-bg flex flex-col items-center justify-center rounded-2xl border border-border bg-card p-10 text-center">
+              <MessageSquare className="h-10 w-10 text-muted-foreground/60" />
+              <p className="mt-3 text-sm font-medium text-foreground">
+                {filter === 'unread'
+                  ? 'No unread chats 🎉'
+                  : query.trim()
+                    ? 'No conversations match your search.'
+                    : 'No conversations yet'}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {filter === 'unread'
+                  ? 'You&apos;re all caught up. Time to relax.'
+                  : query.trim()
+                    ? 'Try a different name.'
+                    : 'Tap “New” to start chatting with someone.'}
+              </p>
             </div>
           ) : (
-            <ul className="space-y-1.5">
+            <ul className="space-y-1">
               {filtered.map((c) => {
                 const last = c.lastMessage
+                const isOnline = !!(c.otherUser as any)?.isOnline
                 return (
-                  <li key={c.id}>
+                  <li key={c.id} className="animate-fade-in-up">
                     <button
                       onClick={() => onOpenChat(c)}
-                      className="flex w-full min-h-[64px] items-center gap-3 rounded-xl border border-border bg-card p-3 text-left transition-colors hover:bg-accent/50"
+                      className="chat-list-item taly-card taly-card-hover w-full border-none !p-2.5 text-left"
                     >
                       <PremiumAvatar
                         user={{
@@ -379,25 +418,30 @@ export function ChatsScreen({ conversations, onOpenChat, onRefresh }: ChatsProps
                         }}
                         size={44}
                         showAura
+                        isOnline={isOnline}
                       />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline justify-between gap-2">
-                          <span className="truncate text-sm font-semibold">{c.name}</span>
-                          <span className="shrink-0 text-[10px] text-muted-foreground">
+                          <span
+                            className={`truncate text-sm ${c.unread ? 'font-bold' : 'font-semibold'}`}
+                          >
+                            {c.name || c.otherUser?.name || c.otherUser?.username || 'Unnamed'}
+                          </span>
+                          <span className="shrink-0 text-[10px] font-light text-muted-foreground">
                             {relativeTime(last?.createdAt || c.updatedAt)}
                           </span>
                         </div>
-                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                          {messagePreview(last)}
-                        </p>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                            {messagePreview(last)}
+                          </p>
+                          {c.unread ? (
+                            <span className="unread-badge shrink-0">
+                              {c.unread > 99 ? '99+' : c.unread}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
-                      {c.unread === 1 ? (
-                        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-red-500" />
-                      ) : c.unread && c.unread > 1 ? (
-                        <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
-                          {c.unread > 99 ? '99+' : c.unread}
-                        </span>
-                      ) : null}
                     </button>
                   </li>
                 )
@@ -406,6 +450,15 @@ export function ChatsScreen({ conversations, onOpenChat, onRefresh }: ChatsProps
           )}
         </div>
       )}
+
+      {/* Floating new-chat button — mobile only */}
+      <button
+        onClick={() => setNewChatOpen(true)}
+        aria-label="New chat"
+        className="action-btn fixed bottom-24 right-5 z-30 h-14 w-14 !rounded-full !p-0 shadow-xl lg:hidden"
+      >
+        <UserPlus className="h-6 w-6" />
+      </button>
 
       <NewChatDialog
         open={newChatOpen}
@@ -506,7 +559,7 @@ function NewChatDialog({
                   <button
                     onClick={() => handlePick(u)}
                     disabled={starting === u.id}
-                    className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-accent disabled:opacity-50"
+                    className="chat-list-item w-full border-none !p-2 text-left hover:bg-accent disabled:opacity-50"
                   >
                     <PremiumAvatar
                       user={{
@@ -517,6 +570,7 @@ function NewChatDialog({
                       }}
                       size={40}
                       showAura={false}
+                      isOnline={!!u.isOnline}
                     />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{u.name}</p>

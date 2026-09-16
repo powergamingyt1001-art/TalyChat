@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { apiFetch } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { SoundTogglePopover } from '@/components/taly/sound-toggle'
 
 interface Props {
   title?: string
@@ -77,6 +78,8 @@ export function MobileTopBar({ title, user, onDailyReward, onOpenTaly }: Props) 
         <Button size="icon" variant="ghost" onClick={onOpenTaly} aria-label="Ask Taly" className="h-9 w-9">
           <Bot className="h-5 w-5" />
         </Button>
+
+        <SoundTogglePopover />
 
         <Popover open={openNotif} onOpenChange={setOpenNotif}>
           <PopoverTrigger asChild>

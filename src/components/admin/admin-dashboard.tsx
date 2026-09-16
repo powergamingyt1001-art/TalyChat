@@ -2,12 +2,12 @@
 
 import * as React from 'react'
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
-  Line,
-  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -42,8 +42,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
-  StatCard,
   type AdminStats,
+  StatCard,
   formatINR,
 } from './admin-shared'
 import { AdminMembers } from './admin-members'
@@ -64,38 +64,68 @@ const PERIODS: { id: Period; label: string }[] = [
 
 // V2 chart palette — emerald brand colors + neutrals
 const BRAND = 'oklch(0.72 0.18 152)'
-const BRAND_SOFT = 'oklch(0.85 0.05 152)'
-const BRAND_DEEP = 'oklch(0.55 0.18 152)'
 const NEUTRAL = 'oklch(0.85 0.02 152)'
 const AMBER = 'oklch(0.78 0.16 70)'
-const SKY = 'oklch(0.72 0.13 220)'
 const ROSE = 'oklch(0.65 0.18 18)'
+
+// V3 — semantic accent colors for KPI cards (--kpi-accent CSS var)
+const ACCENT_EMERALD = 'oklch(0.72 0.18 152)'
+const ACCENT_AMBER = 'oklch(0.75 0.18 70)'
+const ACCENT_RED = 'oklch(0.65 0.22 25)'
+const ACCENT_BLUE = 'oklch(0.62 0.15 220)'
+const ACCENT_PURPLE = 'oklch(0.62 0.18 300)'
+
+// V3 — semantic text colors for KPI numbers
+const TEXT_EMERALD = 'text-emerald-600 dark:text-emerald-400'
+const TEXT_AMBER = 'text-amber-600 dark:text-amber-400'
+const TEXT_RED = 'text-red-600 dark:text-red-400'
+const TEXT_BLUE = 'text-sky-600 dark:text-sky-400'
+const TEXT_PURPLE = 'text-purple-600 dark:text-purple-400'
+
+type AccentColor = 'emerald' | 'amber' | 'red' | 'blue' | 'purple'
+
+const ACCENT_VAR: Record<AccentColor, string> = {
+  emerald: ACCENT_EMERALD,
+  amber: ACCENT_AMBER,
+  red: ACCENT_RED,
+  blue: ACCENT_BLUE,
+  purple: ACCENT_PURPLE,
+}
+const TEXT_COLOR: Record<AccentColor, string> = {
+  emerald: TEXT_EMERALD,
+  amber: TEXT_AMBER,
+  red: TEXT_RED,
+  blue: TEXT_BLUE,
+  purple: TEXT_PURPLE,
+}
 
 interface MetricDef {
   key: keyof AdminStats | 'userStatus' | 'subscriptions'
   label: string
   icon: LucideIcon
-  tone: 'default' | 'primary' | 'warning' | 'danger' | 'info'
+  accent: AccentColor
   value: (s: AdminStats) => string
   // chart to render in drilldown dialog
   chart?: 'registerData' | 'userGrowth' | 'salesData' | 'piePremium' | 'pieActiveInactive' | 'pieSubs' | 'none'
   hint?: (s: AdminStats) => string
+  // V3 — flag for "primary"/featured metrics (rendered larger in first row)
+  featured?: boolean
 }
 
 // The 12 metric cards (unchanged labels from V1)
 const METRICS: MetricDef[] = [
-  { key: 'totalUsers', label: 'Total Users', icon: Users, tone: 'primary', value: (s) => s.totalUsers.toLocaleString('en-IN'), chart: 'userGrowth' },
-  { key: 'activeUsers', label: 'Active Now', icon: Zap, tone: 'info', value: (s) => s.activeUsers.toLocaleString('en-IN'), chart: 'registerData' },
-  { key: 'newToday', label: 'New Today', icon: UserPlus, tone: 'primary', value: (s) => s.newToday.toLocaleString('en-IN'), chart: 'registerData' },
-  { key: 'totalGroups', label: 'Total Groups', icon: Group, tone: 'default', value: (s) => s.totalGroups.toLocaleString('en-IN'), chart: 'none' },
-  { key: 'reports', label: 'Pending Reports', icon: Flag, tone: 'warning', value: (s) => s.reports.toLocaleString('en-IN'), chart: 'none' },
-  { key: 'restricted', label: 'Restricted Users', icon: Ban, tone: 'danger', value: (s) => s.restricted.toLocaleString('en-IN'), chart: 'none' },
-  { key: 'premium', label: 'Premium Users', icon: Crown, tone: 'warning', value: (s) => s.premium.toLocaleString('en-IN'), chart: 'piePremium' },
-  { key: 'expiredPlans', label: 'Expired Plans', icon: CalendarX, tone: 'danger', value: (s) => s.expiredPlans.toLocaleString('en-IN'), chart: 'piePremium' },
-  { key: 'revenue', label: 'Revenue', icon: IndianRupee, tone: 'primary', value: (s) => formatINR(s.revenue), chart: 'salesData' },
-  { key: 'adImpressions', label: 'Ad Impressions', icon: Eye, tone: 'default', value: (s) => s.adImpressions.toLocaleString('en-IN'), chart: 'none' },
-  { key: 'adClicks', label: 'Ad Clicks', icon: MousePointerClick, tone: 'default', value: (s) => s.adClicks.toLocaleString('en-IN'), chart: 'none' },
-  { key: 'rewardClaims', label: 'Reward Claims', icon: Gift, tone: 'info', value: (s) => s.rewardClaims.toLocaleString('en-IN'), chart: 'none' },
+  { key: 'totalUsers', label: 'Total Users', icon: Users, accent: 'emerald', value: (s) => s.totalUsers.toLocaleString('en-IN'), chart: 'userGrowth', featured: true },
+  { key: 'activeUsers', label: 'Active Now', icon: Zap, accent: 'emerald', value: (s) => s.activeUsers.toLocaleString('en-IN'), chart: 'registerData', featured: true },
+  { key: 'newToday', label: 'New Today', icon: UserPlus, accent: 'emerald', value: (s) => s.newToday.toLocaleString('en-IN'), chart: 'registerData', featured: true },
+  { key: 'premium', label: 'Premium Users', icon: Crown, accent: 'emerald', value: (s) => s.premium.toLocaleString('en-IN'), chart: 'piePremium', featured: true },
+  { key: 'totalGroups', label: 'Total Groups', icon: Group, accent: 'purple', value: (s) => s.totalGroups.toLocaleString('en-IN'), chart: 'none' },
+  { key: 'reports', label: 'Pending Reports', icon: Flag, accent: 'amber', value: (s) => s.reports.toLocaleString('en-IN'), chart: 'none' },
+  { key: 'restricted', label: 'Restricted Users', icon: Ban, accent: 'amber', value: (s) => s.restricted.toLocaleString('en-IN'), chart: 'none' },
+  { key: 'expiredPlans', label: 'Expired Plans', icon: CalendarX, accent: 'red', value: (s) => s.expiredPlans.toLocaleString('en-IN'), chart: 'piePremium' },
+  { key: 'revenue', label: 'Revenue', icon: IndianRupee, accent: 'blue', value: (s) => formatINR(s.revenue), chart: 'salesData' },
+  { key: 'adImpressions', label: 'Ad Impressions', icon: Eye, accent: 'blue', value: (s) => s.adImpressions.toLocaleString('en-IN'), chart: 'none' },
+  { key: 'adClicks', label: 'Ad Clicks', icon: MousePointerClick, accent: 'blue', value: (s) => s.adClicks.toLocaleString('en-IN'), chart: 'none' },
+  { key: 'rewardClaims', label: 'Reward Claims', icon: Gift, accent: 'purple', value: (s) => s.rewardClaims.toLocaleString('en-IN'), chart: 'none' },
 ]
 
 // V2 — User Status cards (Active / Inactive / Banned / Deactivated)
@@ -103,14 +133,14 @@ interface UserStatusDef {
   key: 'active' | 'inactive' | 'banned' | 'deactivated'
   label: string
   icon: LucideIcon
-  tone: 'primary' | 'default' | 'danger' | 'warning'
+  accent: AccentColor
   value: (s: AdminStats) => number
 }
 const USER_STATUS_METRICS: UserStatusDef[] = [
-  { key: 'active', label: 'Active (online)', icon: UserCheck, tone: 'primary', value: (s) => s.userStatus?.active ?? 0 },
-  { key: 'inactive', label: 'Inactive', icon: UserX, tone: 'default', value: (s) => s.userStatus?.inactive ?? 0 },
-  { key: 'banned', label: 'Banned', icon: ShieldAlert, tone: 'danger', value: (s) => s.userStatus?.banned ?? 0 },
-  { key: 'deactivated', label: 'Deactivated', icon: UserMinus, tone: 'warning', value: (s) => s.userStatus?.deactivated ?? 0 },
+  { key: 'active', label: 'Active (online)', icon: UserCheck, accent: 'emerald', value: (s) => s.userStatus?.active ?? 0 },
+  { key: 'inactive', label: 'Inactive', icon: UserX, accent: 'blue', value: (s) => s.userStatus?.inactive ?? 0 },
+  { key: 'banned', label: 'Banned', icon: ShieldAlert, accent: 'red', value: (s) => s.userStatus?.banned ?? 0 },
+  { key: 'deactivated', label: 'Deactivated', icon: UserMinus, accent: 'amber', value: (s) => s.userStatus?.deactivated ?? 0 },
 ]
 
 // V2 — Subscriptions cards (Paid / Free / Expired)
@@ -118,13 +148,13 @@ interface SubsDef {
   key: 'paid' | 'free' | 'expired'
   label: string
   icon: LucideIcon
-  tone: 'primary' | 'default' | 'danger'
+  accent: AccentColor
   value: (s: AdminStats) => number
 }
 const SUBS_METRICS: SubsDef[] = [
-  { key: 'paid', label: 'Paid Subscriptions', icon: CreditCard, tone: 'primary', value: (s) => s.subscriptions?.paid ?? 0 },
-  { key: 'free', label: 'Free Users', icon: Users, tone: 'default', value: (s) => s.subscriptions?.free ?? 0 },
-  { key: 'expired', label: 'Expired Subscriptions', icon: CalendarX, tone: 'danger', value: (s) => s.subscriptions?.expired ?? 0 },
+  { key: 'paid', label: 'Paid Subscriptions', icon: CreditCard, accent: 'emerald', value: (s) => s.subscriptions?.paid ?? 0 },
+  { key: 'free', label: 'Free Users', icon: Users, accent: 'blue', value: (s) => s.subscriptions?.free ?? 0 },
+  { key: 'expired', label: 'Expired Subscriptions', icon: CalendarX, accent: 'red', value: (s) => s.subscriptions?.expired ?? 0 },
 ]
 
 export function AdminDashboard() {
@@ -152,13 +182,13 @@ export function AdminDashboard() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Period toggle */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* Period toggle — V3 segmented-control pill */}
+      <div className="flex flex-wrap items-center justify-between gap-3 animate-fade-in-up">
         <div>
-          <h2 className="text-xl font-bold">Dashboard</h2>
-          <p className="text-sm text-muted-foreground">TalyChat admin overview & analytics</p>
+          <h2 className="text-xl font-bold tracking-tight">Dashboard</h2>
+          <p className="text-sm text-muted-foreground/80">TalyChat admin overview &amp; analytics</p>
         </div>
-        <div className="inline-flex rounded-lg border bg-card p-1 shadow-sm" role="group" aria-label="Period selector">
+        <div className="segmented-control" role="group" aria-label="Period selector">
           {PERIODS.map((p) => {
             const active = period === p.id
             return (
@@ -166,12 +196,7 @@ export function AdminDashboard() {
                 key={p.id}
                 onClick={() => setPeriod(p.id)}
                 aria-pressed={active}
-                className={cn(
-                  'min-h-[40px] rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                  active
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                )}
+                className={cn(active ? 'active' : '')}
               >
                 {p.label}
               </button>
@@ -180,93 +205,97 @@ export function AdminDashboard() {
         </div>
       </div>
 
-      {/* 12 metric cards (kept from V1) */}
-      <section>
-        <h3 className="mb-3 text-sm font-semibold text-muted-foreground">Overview metrics</h3>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
-          {METRICS.map((m) => {
+      {/* Overview metrics — V3 grouped section with light grey container + section-header */}
+      <section
+        className="animate-fade-in-up rounded-xl bg-muted/30 p-4"
+        style={{ animationDelay: '60ms' }}
+      >
+        <div className="section-header mb-4">
+          Overview metrics
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {METRICS.map((m, i) => {
             if (loading || !stats) {
-              return <Skeleton key={m.label} className="h-[88px] rounded-xl" />
+              return (
+                <Skeleton
+                  key={m.label}
+                  className={cn(
+                    'h-[110px] rounded-xl',
+                    m.featured && 'sm:col-span-2 sm:h-[120px]'
+                  )}
+                />
+              )
             }
             return (
-              <button
+              <KpiCard
                 key={m.label}
+                metric={m}
+                value={m.value(stats)}
+                hint={m.hint ? m.hint(stats) : undefined}
                 onClick={() => setDrilldown(m)}
-                className="text-left transition-transform active:scale-[0.98]"
-                aria-label={`${m.label} — tap for details`}
-              >
-                <StatCard
-                  label={m.label}
-                  value={m.value(stats)}
-                  icon={m.icon}
-                  tone={m.tone}
-                  hint={m.hint ? m.hint(stats) : undefined}
-                />
-              </button>
+                featured={!!m.featured}
+                style={{ animationDelay: `${60 + i * 30}ms` }}
+              />
             )
           })}
         </div>
       </section>
 
       {/* V2 — User Status cards (4 cards) */}
-      <section>
-        <h3 className="mb-3 text-sm font-semibold text-muted-foreground">User status</h3>
+      <section
+        className="animate-fade-in-up rounded-xl bg-muted/30 p-4"
+        style={{ animationDelay: '120ms' }}
+      >
+        <div className="section-header mb-4">
+          User status
+        </div>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {USER_STATUS_METRICS.map((m) => {
             if (loading || !stats) {
-              return <Skeleton key={m.label} className="h-[88px] rounded-xl" />
+              return <Skeleton key={m.label} className="h-[110px] rounded-xl" />
             }
             return (
-              <button
+              <KpiCard
                 key={m.label}
+                metric={m}
+                value={m.value(stats).toLocaleString('en-IN')}
                 onClick={() => setDrilldown(m)}
-                className="text-left transition-transform active:scale-[0.98]"
-                aria-label={`${m.label} — tap for details`}
-              >
-                <StatCard
-                  label={m.label}
-                  value={m.value(stats).toLocaleString('en-IN')}
-                  icon={m.icon}
-                  tone={m.tone}
-                />
-              </button>
+              />
             )
           })}
         </div>
       </section>
 
       {/* V2 — Subscriptions cards (3 cards) */}
-      <section>
-        <h3 className="mb-3 text-sm font-semibold text-muted-foreground">Subscriptions</h3>
+      <section
+        className="animate-fade-in-up rounded-xl bg-muted/30 p-4"
+        style={{ animationDelay: '180ms' }}
+      >
+        <div className="section-header mb-4">
+          Subscriptions
+        </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {SUBS_METRICS.map((m) => {
             if (loading || !stats) {
-              return <Skeleton key={m.label} className="h-[88px] rounded-xl" />
+              return <Skeleton key={m.label} className="h-[110px] rounded-xl" />
             }
             return (
-              <button
+              <KpiCard
                 key={m.label}
+                metric={m}
+                value={m.value(stats).toLocaleString('en-IN')}
                 onClick={() => setDrilldown(m)}
-                className="text-left transition-transform active:scale-[0.98]"
-                aria-label={`${m.label} — tap for details`}
-              >
-                <StatCard
-                  label={m.label}
-                  value={m.value(stats).toLocaleString('en-IN')}
-                  icon={m.icon}
-                  tone={m.tone}
-                />
-              </button>
+              />
             )
           })}
         </div>
       </section>
 
       {/* Chart 1: Candle/Bar — new user registrations */}
-      <Card>
+      <Card className="animate-fade-in-up" style={{ animationDelay: '240ms' }}>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">New user registrations</CardTitle>
-          <p className="text-xs text-muted-foreground">
+          <CardTitle className="text-base font-bold">New user registrations</CardTitle>
+          <p className="text-xs text-muted-foreground/80">
             {period === '7days'
               ? 'Daily new sign-ups (last 7 days)'
               : period === '1month'
@@ -306,11 +335,11 @@ export function AdminDashboard() {
       </Card>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {/* Chart 2: Pie — Active vs Inactive members */}
-        <Card>
+        {/* Chart 2: Donut — Active vs Inactive members */}
+        <Card className="animate-fade-in-up" style={{ animationDelay: '300ms' }}>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Active vs Inactive</CardTitle>
-            <p className="text-xs text-muted-foreground">Members active (last 24h) vs dormant</p>
+            <CardTitle className="text-base font-bold">Active vs Inactive</CardTitle>
+            <p className="text-xs text-muted-foreground/80">Members active (last 24h) vs dormant</p>
           </CardHeader>
           <CardContent>
             <div className="h-[300px] w-full">
@@ -331,9 +360,15 @@ export function AdminDashboard() {
                       dataKey="value"
                       nameKey="name"
                       innerRadius={60}
-                      outerRadius={100}
+                      outerRadius={90}
                       paddingAngle={2}
-                      label={(e: any) => e.value}
+                      label={(e: any) => {
+                        const total =
+                          (stats?.activeVsInactive?.active ?? stats?.activeInactive.active ?? 0) +
+                          (stats?.activeVsInactive?.inactive ?? stats?.activeInactive.inactive ?? 0)
+                        const pct = total ? Math.round((e.value / total) * 100) : 0
+                        return `${pct}%`
+                      }}
                     >
                       <Cell fill={BRAND} />
                       <Cell fill={NEUTRAL} />
@@ -355,11 +390,11 @@ export function AdminDashboard() {
           </CardContent>
         </Card>
 
-        {/* Chart 3: Column — User growth (cumulative) */}
-        <Card>
+        {/* Chart 3: Area chart — User growth (cumulative) with gradient fill */}
+        <Card className="animate-fade-in-up" style={{ animationDelay: '360ms' }}>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">User growth (cumulative)</CardTitle>
-            <p className="text-xs text-muted-foreground">Cumulative total users over period</p>
+            <CardTitle className="text-base font-bold">User growth (cumulative)</CardTitle>
+            <p className="text-xs text-muted-foreground/80">Cumulative total users over period</p>
           </CardHeader>
           <CardContent>
             <div className="h-[300px] w-full">
@@ -367,10 +402,16 @@ export function AdminDashboard() {
                 <Skeleton className="h-full w-full" />
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
+                  <AreaChart
                     data={stats.userGrowth ?? []}
                     margin={{ top: 8, right: 8, left: -10, bottom: 0 }}
                   >
+                    <defs>
+                      <linearGradient id="userGrowthFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={BRAND} stopOpacity={0.35} />
+                        <stop offset="100%" stopColor={BRAND} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
                     <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
                     <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" width={36} allowDecimals={false} />
@@ -378,13 +419,16 @@ export function AdminDashboard() {
                       contentStyle={{ fontSize: 12, borderRadius: 8 }}
                       formatter={(v: number) => [v, 'Total users']}
                     />
-                    <Bar
+                    <Area
+                      type="monotone"
                       dataKey="value"
-                      fill={BRAND_DEEP}
-                      radius={[4, 4, 0, 0]}
-                      barSize={period === 'alltime' ? 24 : 32}
+                      stroke={BRAND}
+                      strokeWidth={3}
+                      dot={{ r: 3, fill: BRAND, strokeWidth: 0 }}
+                      activeDot={{ r: 5, fill: BRAND, stroke: 'var(--card)', strokeWidth: 2 }}
+                      fill="url(#userGrowthFill)"
                     />
-                  </BarChart>
+                  </AreaChart>
                 </ResponsiveContainer>
               )}
             </div>
@@ -392,11 +436,11 @@ export function AdminDashboard() {
         </Card>
       </div>
 
-      {/* Chart 4: Pie — Subscriptions: Paid / Free / Expired */}
-      <Card>
+      {/* Chart 4: Donut — Subscriptions: Paid / Free / Expired */}
+      <Card className="animate-fade-in-up" style={{ animationDelay: '420ms' }}>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Subscriptions breakdown</CardTitle>
-          <p className="text-xs text-muted-foreground">Paid vs free vs expired subscriptions</p>
+          <CardTitle className="text-base font-bold">Subscriptions breakdown</CardTitle>
+          <p className="text-xs text-muted-foreground/80">Paid vs free vs expired subscriptions</p>
         </CardHeader>
         <CardContent>
           <div className="h-[300px] w-full">
@@ -418,7 +462,7 @@ export function AdminDashboard() {
                     dataKey="value"
                     nameKey="name"
                     innerRadius={60}
-                    outerRadius={100}
+                    outerRadius={90}
                     paddingAngle={2}
                     label={(e: any) => `${e.name}: ${e.value}`}
                   >
@@ -467,8 +511,56 @@ export function AdminDashboard() {
 }
 
 // ============================================================
+// V3 — KpiCard — vertical layout: icon top-left, big number center,
+// label below. Uses --kpi-accent CSS var for the left accent bar.
+// ============================================================
+function KpiCard({
+  metric,
+  value,
+  hint,
+  onClick,
+  style,
+  featured,
+}: {
+  metric: MetricDef | UserStatusDef | SubsDef
+  value: string
+  hint?: string
+  onClick: () => void
+  style?: React.CSSProperties
+  featured?: boolean
+}) {
+  const Icon = metric.icon
+  const accent = metric.accent
+  const accentVar = ACCENT_VAR[accent]
+  const textColor = TEXT_COLOR[accent]
+
+  return (
+    <button
+      onClick={onClick}
+      className="kpi-card taly-card-hover animate-fade-in-up flex flex-col items-start gap-1.5 text-left"
+      style={{ ...(style || {}), ['--kpi-accent' as any]: accentVar }}
+      aria-label={`${metric.label} — tap for details`}
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className="flex h-9 w-9 items-center justify-center rounded-lg"
+          style={{ background: `color-mix(in oklch, ${accentVar} 12%, transparent)`, color: accentVar }}
+        >
+          <Icon className="h-4 w-4" />
+        </span>
+      </div>
+      <p className={`mt-1 font-bold tabular-nums ${featured ? 'text-3xl' : 'text-2xl'} ${textColor}`}>
+        {value}
+      </p>
+      <p className="text-xs font-medium text-muted-foreground/80">{metric.label}</p>
+      {hint && <p className="text-[10px] text-muted-foreground/70">{hint}</p>}
+    </button>
+  )
+}
+
+// ============================================================
 // Drilldown dialog — opens when any metric card is clicked.
-// Renders a mini chart for that metric.
+// Renders a mini chart for that metric + small stats summary.
 // ============================================================
 function DrilldownDialog({
   metric,
@@ -486,7 +578,7 @@ function DrilldownDialog({
   // Resolve common fields
   const Icon = metric.icon
   const label = metric.label
-  const tone = metric.tone
+  const accent = metric.accent
   const rawValue = metric.value(stats as AdminStats)
   const valueStr = typeof rawValue === 'string' ? rawValue : rawValue.toLocaleString('en-IN')
 
@@ -494,25 +586,56 @@ function DrilldownDialog({
   const periodLabel =
     period === '7days' ? '7 Days' : period === '1month' ? '1 Month' : 'All Time'
 
+  // V3 — small stats summary (current + period + breakdown for pie metrics)
+  const summary: Array<{ label: string; value: string }> = [
+    { label: 'Current value', value: stats ? valueStr : '—' },
+    { label: 'Period', value: periodLabel },
+  ]
+  if (chart === 'piePremium' && stats) {
+    summary.push(
+      { label: 'Premium', value: stats.premium.toLocaleString('en-IN') },
+      { label: 'Expired', value: stats.expiredPlans.toLocaleString('en-IN') },
+      {
+        label: 'Free',
+        value: Math.max(0, stats.totalUsers - stats.premium).toLocaleString('en-IN'),
+      },
+    )
+  } else if (chart === 'pieActiveInactive' && stats) {
+    summary.push(
+      { label: 'Active', value: (stats.activeVsInactive?.active ?? stats.activeInactive.active).toLocaleString('en-IN') },
+      { label: 'Inactive', value: (stats.activeVsInactive?.inactive ?? stats.activeInactive.inactive).toLocaleString('en-IN') },
+    )
+  } else if (chart === 'pieSubs' && stats) {
+    summary.push(
+      { label: 'Paid', value: (stats.subscriptions?.paid ?? 0).toLocaleString('en-IN') },
+      { label: 'Free', value: (stats.subscriptions?.free ?? 0).toLocaleString('en-IN') },
+      { label: 'Expired', value: (stats.subscriptions?.expired ?? 0).toLocaleString('en-IN') },
+    )
+  }
+
   return (
     <Dialog open={!!metric} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Icon className="h-5 w-5 text-primary" />
+            <span
+              className="flex h-8 w-8 items-center justify-center rounded-lg"
+              style={{ background: `color-mix(in oklch, ${ACCENT_VAR[accent]} 12%, transparent)`, color: ACCENT_VAR[accent] }}
+            >
+              <Icon className="h-4 w-4" />
+            </span>
             {label}
           </DialogTitle>
           <DialogDescription>
-            Period: <span className="font-medium">{periodLabel}</span> · current value:{' '}
-            <span className="font-semibold text-foreground">{stats ? valueStr : '—'}</span>
+            Tap-to-see detail · <span className="font-medium">{periodLabel}</span>
           </DialogDescription>
         </DialogHeader>
 
-        <div className="h-[280px] w-full">
+        <div className="h-[320px] w-full">
           {!stats ? (
             <Skeleton className="h-full w-full" />
           ) : chart === 'none' ? (
-            <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
+            <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground/80">
               <Icon className="h-12 w-12 opacity-30" />
               <p className="text-sm">No time-series breakdown for this metric.</p>
               <p className="text-xs">
@@ -521,40 +644,61 @@ function DrilldownDialog({
             </div>
           ) : chart === 'salesData' ? (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={stats.salesData ?? []} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+              <AreaChart data={stats.salesData ?? []} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="drillRevFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={BRAND} stopOpacity={0.35} />
+                    <stop offset="100%" stopColor={BRAND} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} width={48} />
+                <XAxis dataKey="label" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+                <YAxis tick={{ fontSize: 10 }} width={48} stroke="var(--muted-foreground)" />
                 <Tooltip
                   contentStyle={{ fontSize: 12, borderRadius: 8 }}
                   formatter={(v: number) => [formatINR(v), 'Revenue']}
                 />
-                <Bar dataKey="value" fill={BRAND} radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : chart === 'userGrowth' ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={stats.userGrowth ?? []} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} width={48} />
-                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                <Line
+                <Area
                   type="monotone"
                   dataKey="value"
                   stroke={BRAND}
-                  strokeWidth={2.5}
-                  dot={false}
-                  activeDot={{ r: 5 }}
+                  strokeWidth={3}
+                  dot={{ r: 3, fill: BRAND, strokeWidth: 0 }}
+                  activeDot={{ r: 5, fill: BRAND, stroke: 'var(--card)', strokeWidth: 2 }}
+                  fill="url(#drillRevFill)"
                 />
-              </LineChart>
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : chart === 'userGrowth' ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={stats.userGrowth ?? []} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="drillGrowthFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={BRAND} stopOpacity={0.35} />
+                    <stop offset="100%" stopColor={BRAND} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+                <YAxis tick={{ fontSize: 10 }} width={48} stroke="var(--muted-foreground)" />
+                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                <Area
+                  type="monotone"
+                  dataKey="value"
+                  stroke={BRAND}
+                  strokeWidth={3}
+                  dot={{ r: 3, fill: BRAND, strokeWidth: 0 }}
+                  activeDot={{ r: 5, fill: BRAND, stroke: 'var(--card)', strokeWidth: 2 }}
+                  fill="url(#drillGrowthFill)"
+                />
+              </AreaChart>
             </ResponsiveContainer>
           ) : chart === 'registerData' ? (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={stats.registerData ?? []} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} width={36} allowDecimals={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+                <YAxis tick={{ fontSize: 10 }} width={36} allowDecimals={false} stroke="var(--muted-foreground)" />
                 <Tooltip
                   contentStyle={{ fontSize: 12, borderRadius: 8 }}
                   formatter={(v: number) => [v, 'New users']}
@@ -573,7 +717,9 @@ function DrilldownDialog({
                   ]}
                   dataKey="value"
                   nameKey="name"
-                  outerRadius={100}
+                  innerRadius={60}
+                  outerRadius={90}
+                  paddingAngle={2}
                   label={(e: any) => `${e.name}: ${e.value}`}
                 >
                   <Cell fill={BRAND} />
@@ -596,7 +742,9 @@ function DrilldownDialog({
                   ]}
                   dataKey="value"
                   nameKey="name"
-                  outerRadius={100}
+                  innerRadius={60}
+                  outerRadius={90}
+                  paddingAngle={2}
                   label={(e: any) => `${e.name}: ${e.value}`}
                 >
                   <Cell fill={AMBER} />
@@ -617,7 +765,9 @@ function DrilldownDialog({
                   ]}
                   dataKey="value"
                   nameKey="name"
-                  outerRadius={100}
+                  innerRadius={60}
+                  outerRadius={90}
+                  paddingAngle={2}
                   label={(e: any) => `${e.name}: ${e.value}`}
                 >
                   <Cell fill={BRAND} />
@@ -629,8 +779,19 @@ function DrilldownDialog({
           ) : null}
         </div>
 
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>Tone: <span className="font-medium capitalize">{tone}</span></span>
+        {/* V3 — small stats summary */}
+        {stats && (
+          <div className="grid grid-cols-2 gap-2 rounded-lg bg-muted/30 p-3 sm:grid-cols-3">
+            {summary.map((s) => (
+              <div key={s.label} className="text-center">
+                <p className={`text-sm font-bold ${TEXT_COLOR[accent]}`}>{s.value}</p>
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground/80">{s.label}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center justify-end">
           <Button variant="outline" size="sm" onClick={onClose}>
             Close
           </Button>

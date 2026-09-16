@@ -16,6 +16,7 @@ import { MobileTopBar } from '@/components/taly/mobile-top-bar'
 import { DesktopSidebar } from '@/components/taly/desktop-sidebar'
 import { DailyRewardDialog } from '@/components/taly/daily-reward-dialog'
 import { useMediaQuery } from '@/hooks/use-mobile'
+import { useSound } from '@/hooks/use-sound'
 import { cn } from '@/lib/utils'
 import { CustomizerProvider } from '@/components/taly/customizer-context'
 import { FloatingAIAgent } from '@/components/floating-ai-agent'
@@ -43,6 +44,7 @@ export interface ConversationSummary {
 export function TalyApp() {
   const { user } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 1024px)')
+  const { play: soundManager } = useSound()
   const [tab, setTab] = useState<TalyTab>('home')
   const [openChat, setOpenChat] = useState<null | {
     conversationId: string
@@ -104,6 +106,16 @@ export function TalyApp() {
     'message:new': (payload: any) => {
       const conv = payload?.conversationId
       if (!conv) return
+      // Play the incoming-message sound for any message that wasn't sent by
+      // us (so we don't ding on our own echoes via the socket). SoundManager
+      // already no-ops when disabled, so this is safe to call unconditionally.
+      // Read fresh user from the store so the closure isn't stale after
+      // re-mounts / re-logins.
+      const currentUserId = useAuth.getState().user?.id
+      const senderId = payload?.message?.senderId
+      if (senderId && senderId !== currentUserId) {
+        soundManager.playMessage()
+      }
       setConversations((prev) => {
         const existing = prev.find((c) => c.id === conv)
         if (!existing) {

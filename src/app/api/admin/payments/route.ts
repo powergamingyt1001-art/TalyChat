@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { ok, jsonError, requireAdmin } from '@/lib/auth'
 import { ensureSeed } from '@/lib/seed'
+import { tierFromPlan } from '@/lib/premium'
 
 export const runtime = 'nodejs'
 
@@ -84,6 +85,17 @@ export async function POST(req: NextRequest) {
     const newPremiumUntil = new Date(base)
     newPremiumUntil.setMonth(newPremiumUntil.getMonth() + months)
 
+    // V3: auto-assign premium tier based on the payment's plan slug.
+    //   '2mo' -> bronze, '6mo' -> silver, '1yr' -> gold. If the user is
+    //   already on a higher tier, keep it (no downgrades on payment approval).
+    const newTier = tierFromPlan(payment.plan)
+    const currentTier = (user?.premiumTier || 'free').toLowerCase()
+    const tierRank: Record<string, number> = { free: 0, bronze: 1, silver: 2, gold: 3 }
+    const finalTier =
+      (tierRank[currentTier] ?? 0) >= (tierRank[newTier] ?? 0)
+        ? (currentTier as string)
+        : newTier
+
     const updated = await db.paymentProof.update({
       where: { id },
       data: {
@@ -98,6 +110,7 @@ export async function POST(req: NextRequest) {
       data: {
         isPremium: true,
         premiumUntil: newPremiumUntil,
+        premiumTier: finalTier,
       },
     })
 
@@ -117,6 +130,7 @@ export async function POST(req: NextRequest) {
       payment: updated,
       premiumUntil: newPremiumUntil,
       monthsAdded: months,
+      premiumTier: finalTier,
     })
   } catch (e: any) {
     if (e.status === 401 || e.status === 403) return jsonError(e.status, e.message)

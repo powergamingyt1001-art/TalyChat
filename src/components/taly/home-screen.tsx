@@ -1,13 +1,17 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   Bell,
   Bot,
   ChevronRight,
   Compass,
+  Gift,
+  Info,
   MessageCircle,
+  MessageSquare,
+  Share2,
   Sparkles,
   TrendingUp,
   Users,
@@ -45,6 +49,62 @@ function convAvatar(c: any): string | undefined {
   if (c.type === 'private' && c.otherUser?.avatar) return c.otherUser.avatar
   if (c.type === 'group' && c.group?.logo) return c.group.logo
   return undefined
+}
+
+// Greeting based on the user's local hour
+function greeting(): string {
+  const h = new Date().getHours()
+  if (h < 12) return 'Good morning'
+  if (h < 17) return 'Good afternoon'
+  if (h < 21) return 'Good evening'
+  return 'Good night'
+}
+
+// Notification type → icon + tint
+function notifMeta(type?: string): { Icon: any; tint: string } {
+  switch ((type || '').toLowerCase()) {
+    case 'message':
+    case 'chat':
+      return { Icon: MessageSquare, tint: 'text-emerald-600 bg-emerald-500/10' }
+    case 'group':
+    case 'join':
+      return { Icon: Users, tint: 'text-blue-600 bg-blue-500/10' }
+    case 'reward':
+    case 'daily':
+      return { Icon: Gift, tint: 'text-amber-600 bg-amber-500/10' }
+    case 'referral':
+    case 'invite':
+      return { Icon: Share2, tint: 'text-purple-600 bg-purple-500/10' }
+    case 'system':
+    default:
+      return { Icon: Info, tint: 'text-muted-foreground bg-muted' }
+  }
+}
+
+// Category → ring color for trending community avatars
+function categoryColor(cat?: string | null): string {
+  switch ((cat || '').toLowerCase()) {
+    case 'gaming':
+      return 'ring-violet-400'
+    case 'technology':
+    case 'ai':
+      return 'ring-blue-400'
+    case 'cricket':
+    case 'sports':
+      return 'ring-orange-400'
+    case 'entertainment':
+    case 'movies':
+    case 'music':
+      return 'ring-pink-400'
+    case 'education':
+      return 'ring-emerald-400'
+    case 'business':
+    case 'finance':
+    case 'jobs':
+      return 'ring-yellow-400'
+    default:
+      return 'ring-emerald-400'
+  }
 }
 
 export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly }: HomeProps) {
@@ -98,44 +158,104 @@ export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly }: HomePro
 
   const firstName = (user?.name || '').split(' ')[0] || 'Friend'
 
-  const quickActions = [
-    { id: 'chats', label: 'Chats', icon: MessageCircle, color: 'from-emerald-500 to-emerald-600', onClick: () => onNavigate('chats') },
-    { id: 'groups', label: 'Groups', icon: Users, color: 'from-blue-500 to-blue-600', onClick: () => onNavigate('groups') },
-    { id: 'discover', label: 'Discover', icon: Compass, color: 'from-purple-500 to-purple-600', onClick: () => onNavigate('discover') },
-    { id: 'taly', label: 'Ask Taly', icon: Bot, color: 'from-amber-500 to-amber-600', onClick: onOpenTaly },
-  ] as const
+  const quickActions = useMemo(
+    () =>
+      [
+        {
+          id: 'chats',
+          label: 'Chats',
+          icon: MessageCircle,
+          tint: 'from-emerald-500/15 to-emerald-500/5',
+          iconColor: 'from-emerald-500 to-emerald-600',
+          ring: 'group-hover:shadow-emerald-500/20',
+          onClick: () => onNavigate('chats'),
+        },
+        {
+          id: 'groups',
+          label: 'Groups',
+          icon: Users,
+          tint: 'from-blue-500/15 to-blue-500/5',
+          iconColor: 'from-blue-500 to-blue-600',
+          ring: 'group-hover:shadow-blue-500/20',
+          onClick: () => onNavigate('groups'),
+        },
+        {
+          id: 'discover',
+          label: 'Discover',
+          icon: Compass,
+          tint: 'from-purple-500/15 to-purple-500/5',
+          iconColor: 'from-purple-500 to-purple-600',
+          ring: 'group-hover:shadow-purple-500/20',
+          onClick: () => onNavigate('discover'),
+        },
+        {
+          id: 'taly',
+          label: 'Ask Taly',
+          icon: Bot,
+          tint: 'from-amber-500/15 to-amber-500/5',
+          iconColor: 'from-amber-500 to-amber-600',
+          ring: 'group-hover:shadow-amber-500/20',
+          onClick: onOpenTaly,
+        },
+      ] as const,
+    [onNavigate, onOpenTaly],
+  )
 
   return (
-    <div className="mx-auto max-w-2xl p-4 pb-20 lg:pb-6">
+    <div className="mx-auto max-w-2xl px-4 pb-20 pt-6 lg:pb-6 lg:pt-8">
       {/* Welcome header */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        <p className="text-sm text-muted-foreground">Welcome back</p>
-        <h1 className="text-2xl font-bold">Hi, {firstName} 👋</h1>
+        <p className="text-sm font-medium text-muted-foreground">{greeting()},</p>
+        <h1 className="text-2xl font-bold tracking-tight">{firstName} 👋</h1>
       </motion.div>
 
-      {/* Welcome banner */}
+      {/* Hero banner — glassmorphism */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, delay: 0.05 }}
-        className="mt-4 overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-700 p-5 text-white shadow-lg"
+        className="glass-card relative mt-4 overflow-hidden rounded-2xl p-5"
       >
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5" />
-          <span className="text-xs font-semibold uppercase tracking-wide opacity-90">TalyChat</span>
+        {/* Subtle emerald gradient overlay */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-90"
+          style={{
+            background:
+              'linear-gradient(135deg, oklch(0.78 0.18 152 / 0.18) 0%, oklch(0.65 0.20 160 / 0.08) 50%, transparent 100%)',
+          }}
+        />
+        {/* Decorative blurred orbs */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-emerald-400/30 blur-2xl"
+        />
+        <div className="relative">
+          <div className="flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-600">
+              <Sparkles className="h-4 w-4" />
+            </span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+              TalyChat
+            </span>
+          </div>
+          <p className="mt-2 text-xl font-bold leading-tight text-foreground">
+            Chat. Connect. Mingle.
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Your AI companion is one tap away.
+          </p>
+          <button
+            onClick={onOpenTaly}
+            className="mt-4 inline-flex min-h-[44px] items-center gap-2 rounded-full bg-white px-5 py-2 text-sm font-semibold text-emerald-700 shadow-md ring-1 ring-emerald-500/10 transition-all hover:shadow-lg active:scale-[0.98]"
+          >
+            <Bot className="h-4 w-4" /> Ask Taly
+          </button>
         </div>
-        <p className="mt-2 text-xl font-bold leading-tight">Chat. Connect. Mingle.</p>
-        <p className="mt-1 text-sm opacity-90">Your AI companion is one tap away.</p>
-        <Button
-          onClick={onOpenTaly}
-          className="mt-4 min-h-[44px] gap-2 rounded-full bg-white text-emerald-700 shadow-sm hover:bg-white/90 hover:text-emerald-800"
-        >
-          <Bot className="h-4 w-4" /> Ask Taly
-        </Button>
       </motion.div>
 
       {/* Quick actions grid */}
@@ -151,34 +271,37 @@ export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly }: HomePro
             <button
               key={a.id}
               onClick={a.onClick}
-              className="flex min-h-[80px] flex-col items-center justify-center gap-2 rounded-xl border border-border bg-card p-2 text-center transition-colors hover:bg-accent"
+              className={`taly-card taly-card-hover group flex min-h-[80px] flex-col items-center justify-center gap-2 bg-gradient-to-br ${a.tint} p-2 text-center`}
             >
-              <span className={`flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br ${a.color} text-white shadow`}>
+              <span
+                className={`flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br ${a.iconColor} text-white shadow transition-transform group-hover:scale-110`}
+              >
                 <Icon className="h-5 w-5" />
               </span>
-              <span className="text-xs font-medium">{a.label}</span>
+              <span className="text-xs font-semibold">{a.label}</span>
             </button>
           )
         })}
       </motion.div>
 
       {/* Recent private chats */}
-      <section className="mt-5">
+      <section className="mt-6 animate-fade-in-up" style={{ animationDelay: '0.05s' }}>
         <div className="flex items-center justify-between">
-          <h2 className="flex items-center gap-2 text-base font-semibold">
-            <MessageCircle className="h-4 w-4 text-primary" /> Recent Chats
-          </h2>
+          <h2 className="section-header">Recent Chats</h2>
           <button
             onClick={() => onNavigate('chats')}
-            className="flex items-center text-xs text-primary hover:underline"
+            className="flex items-center gap-0.5 rounded-full px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-accent"
           >
             See all <ChevronRight className="h-3 w-3" />
           </button>
         </div>
-        <div className="mt-2 space-y-2">
+        <div className="mt-2 space-y-1.5">
           {loading ? (
             [0, 1, 2].map((i) => (
-              <div key={i} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+              <div
+                key={i}
+                className="taly-card flex items-center gap-3 p-3"
+              >
                 <div className="h-10 w-10 animate-pulse rounded-full bg-muted" />
                 <div className="flex-1 space-y-2">
                   <div className="h-3 w-1/3 animate-pulse rounded bg-muted" />
@@ -187,70 +310,102 @@ export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly }: HomePro
               </div>
             ))
           ) : chats.length === 0 ? (
-            <p className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
-              No conversations yet. Find someone to chat with in Discover.
-            </p>
+            <div className="dotted-bg rounded-xl border border-border bg-card p-6 text-center">
+              <p className="text-sm text-muted-foreground">
+                No conversations yet. Find someone to chat with in Discover.
+              </p>
+            </div>
           ) : (
-            chats.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => onOpenChat(c)}
-                className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-3 text-left transition-colors hover:bg-accent/50"
-              >
-                <PremiumAvatar
-                  user={{
-                    isPremium: (c.otherUser as any)?.isPremium,
-                    premiumTier: (c.otherUser as any)?.premiumTier,
-                    avatar: convAvatar(c),
-                    name: c.name || c.otherUser?.name || '?',
-                  }}
-                  size={40}
-                  showAura
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="truncate text-sm font-semibold">{c.name}</span>
-                    <span className="shrink-0 text-[10px] text-muted-foreground">
-                      {relativeTime(c.lastMessage?.createdAt || c.updatedAt)}
-                    </span>
+            chats.map((c) => {
+              const isOnline = !!(c.otherUser as any)?.isOnline
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => onOpenChat(c)}
+                  className="chat-list-item taly-card taly-card-hover w-full border-none !p-2.5 text-left"
+                >
+                  <PremiumAvatar
+                    user={{
+                      isPremium: (c.otherUser as any)?.isPremium,
+                      premiumTier: (c.otherUser as any)?.premiumTier,
+                      avatar: convAvatar(c),
+                      name: c.name || c.otherUser?.name || '?',
+                    }}
+                    size={44}
+                    showAura
+                    isOnline={isOnline}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span
+                        className={`truncate text-sm ${c.unread ? 'font-bold' : 'font-semibold'}`}
+                      >
+                        {c.name || c.otherUser?.name || c.otherUser?.username || 'Unnamed'}
+                      </span>
+                      <span className="shrink-0 text-[10px] font-light text-muted-foreground">
+                        {relativeTime(c.lastMessage?.createdAt || c.updatedAt)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {c.lastMessage?.content || 'Say hi 👋'}
+                      </p>
+                      {c.unread ? (
+                        <span className="unread-badge shrink-0">{c.unread}</span>
+                      ) : null}
+                    </div>
                   </div>
-                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                    {c.lastMessage?.content || 'Say hi 👋'}
-                  </p>
-                </div>
-                {c.unread ? <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" /> : null}
-              </button>
-            ))
+                </button>
+              )
+            })
           )}
         </div>
       </section>
 
       {/* Notifications */}
       {notifications.length > 0 && (
-        <section className="mt-5">
-          <h2 className="flex items-center gap-2 text-base font-semibold">
-            <Bell className="h-4 w-4 text-primary" /> Notifications
-          </h2>
-          <div className="mt-2 space-y-2">
-            {notifications.map((n) => (
-              <div key={n.id} className="rounded-xl border border-border bg-card p-3">
-                <p className="truncate text-sm font-medium">{n.title}</p>
-                {n.body && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{n.body}</p>}
-              </div>
-            ))}
+        <section
+          className="mt-6 animate-fade-in-up"
+          style={{ animationDelay: '0.1s' }}
+        >
+          <div className="flex items-center justify-between">
+            <h2 className="section-header">Notifications</h2>
+          </div>
+          <div className="mt-2 space-y-1.5">
+            {notifications.map((n) => {
+              const { Icon, tint } = notifMeta(n.type)
+              return (
+                <div key={n.id} className="taly-card flex items-start gap-3 p-3">
+                  <span
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${tint}`}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold">{n.title}</p>
+                    {n.body && (
+                      <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                        {n.body}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </section>
       )}
 
       {/* Trending communities */}
-      <section className="mt-5">
+      <section
+        className="mt-6 animate-fade-in-up"
+        style={{ animationDelay: '0.15s' }}
+      >
         <div className="flex items-center justify-between">
-          <h2 className="flex items-center gap-2 text-base font-semibold">
-            <TrendingUp className="h-4 w-4 text-primary" /> Trending Communities
-          </h2>
+          <h2 className="section-header">Trending Communities</h2>
           <button
             onClick={() => onNavigate('discover')}
-            className="flex items-center text-xs text-primary hover:underline"
+            className="flex items-center gap-0.5 rounded-full px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-accent"
           >
             See all <ChevronRight className="h-3 w-3" />
           </button>
@@ -258,7 +413,7 @@ export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly }: HomePro
         <div className="mt-2 space-y-2">
           {loading ? (
             [0, 1, 2].map((i) => (
-              <div key={i} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+              <div key={i} className="taly-card flex items-center gap-3 p-3">
                 <div className="h-10 w-10 animate-pulse rounded-lg bg-muted" />
                 <div className="flex-1">
                   <div className="h-3 w-2/3 animate-pulse rounded bg-muted" />
@@ -266,17 +421,21 @@ export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly }: HomePro
               </div>
             ))
           ) : trending.length === 0 ? (
-            <p className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
-              No trending communities yet.
-            </p>
+            <div className="dotted-bg rounded-xl border border-border bg-card p-6 text-center">
+              <p className="text-sm text-muted-foreground">
+                No trending communities yet.
+              </p>
+            </div>
           ) : (
             trending.map((g) => (
               <button
                 key={g.id}
                 onClick={() => onNavigate('discover')}
-                className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-3 text-left transition-colors hover:bg-accent/50"
+                className="group-card flex w-full items-center gap-3 p-3 text-left"
               >
-                <Avatar className="h-10 w-10 rounded-lg">
+                <Avatar
+                  className={`h-10 w-10 rounded-lg ring-2 ${categoryColor(g.category)}`}
+                >
                   <AvatarImage src={g.logo || undefined} />
                   <AvatarFallback className="rounded-lg bg-primary/10 text-primary">
                     {(g.name || '?')[0]?.toUpperCase()}
@@ -284,11 +443,14 @@ export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly }: HomePro
                 </Avatar>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold">{g.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {g.membersCount} members · {g.category || 'Group'}
-                  </p>
+                  <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                    <Users className="h-3 w-3" />
+                    <span>{g.membersCount} members</span>
+                    <span className="text-muted-foreground/50">·</span>
+                    <span className="truncate">{g.category || 'Group'}</span>
+                  </div>
                 </div>
-                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
               </button>
             ))
           )}
@@ -307,34 +469,45 @@ function SponsoredAdCard({ ad, onDismiss }: { ad: any; onDismiss: () => void }) 
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
-      className="mt-5"
+      className="mt-6"
     >
-      <div className="ad-box relative p-4">
+      <div className="taly-card relative overflow-hidden p-4">
+        {/* Sponsored badge — top-left, emerald tint */}
+        <span className="absolute left-0 top-0 inline-flex items-center rounded-br-lg bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+          Sponsored
+        </span>
         <button
           onClick={onDismiss}
           aria-label="Dismiss ad"
-          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-background/80 text-muted-foreground hover:bg-background"
+          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-background/80 text-muted-foreground transition-colors hover:bg-background"
         >
           <X className="h-4 w-4" />
         </button>
-        <span className="sponsored-label">Sponsored</span>
-        <div className="mt-2 flex gap-3">
-          {ad.imageUrl && (
+        <div className="mt-4 flex gap-3">
+          {ad.imageUrl ? (
             <img
               src={ad.imageUrl}
               alt={ad.brandName}
-              className="h-16 w-16 shrink-0 rounded-lg object-cover"
+              className="h-16 w-16 shrink-0 rounded-lg object-cover ring-1 ring-border"
             />
+          ) : (
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500/15 to-emerald-500/5 text-emerald-600">
+              <Sparkles className="h-6 w-6" />
+            </div>
           )}
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold">{ad.brandName}</p>
-            {ad.headline && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{ad.headline}</p>}
+            {ad.headline && (
+              <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                {ad.headline}
+              </p>
+            )}
             {ad.ctaText && (
               <a
                 href={ad.ctaUrl || '#'}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-2 inline-flex min-h-[36px] items-center rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+                className="action-btn mt-2 inline-flex min-h-[36px] !px-4 !py-1.5 !text-xs"
               >
                 {ad.ctaText}
               </a>

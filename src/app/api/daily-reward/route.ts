@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { ok, jsonError, requireAuth } from '@/lib/auth'
 import { ensureSeed } from '@/lib/seed'
+import { bumpTierForShortReward } from '@/lib/premium'
 
 export const runtime = 'nodejs'
 
@@ -111,6 +112,12 @@ export async function POST(req: NextRequest) {
       : new Date(now)
     const newPremiumUntil = new Date(base.getTime() + daysAwarded * 24 * 60 * 60 * 1000)
 
+    // V3: daily-reward grants are short (< 2 months of premium), so the
+    // natural tier is "bronze". But we never want to downgrade a silver/gold
+    // user who's just collecting a daily bonus — so we only bump the tier
+    // if they are currently "free" or "bronze".
+    const finalTier = bumpTierForShortReward(full.premiumTier)
+
     await db.$transaction([
       db.dailyReward.create({
         data: {
@@ -126,6 +133,7 @@ export async function POST(req: NextRequest) {
         data: {
           isPremium: true,
           premiumUntil: newPremiumUntil,
+          premiumTier: finalTier,
         },
       }),
       db.subscription.create({
@@ -145,6 +153,7 @@ export async function POST(req: NextRequest) {
       dayNumber: claimDay,
       daysAwarded,
       premiumUntil: newPremiumUntil,
+      premiumTier: finalTier,
       cycleReset: claimDay === CYCLE_LENGTH,
     })
   } catch (e: any) {

@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { apiFetch, ApiError } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
+import { useSound } from '@/hooks/use-sound'
 import {
   Dialog,
   DialogContent,
@@ -51,6 +52,7 @@ function formatCountdown(ms: number): string {
 
 export function DailyRewardDialog({ open, onClose }: Props) {
   const { toast } = useToast()
+  const { play: soundManager } = useSound()
   const [loading, setLoading] = React.useState(true)
   const [claiming, setClaiming] = React.useState(false)
   const [state, setState] = React.useState<DailyState | null>(null)
@@ -114,6 +116,9 @@ export function DailyRewardDialog({ open, onClose }: Props) {
       const day = Number(res?.dayNumber) || state.dayNumber
       const days = Number(res?.daysAwarded) || 0
       toast({ title: `Day ${day} claimed! +${days} premium days` })
+      // Celebratory arpeggio — fires inside the user's tap gesture so the
+      // AudioContext stays unlocked on Safari/Chrome.
+      soundManager.playReward()
       setJustClaimed({ day, days })
       // Refresh state
       await load()

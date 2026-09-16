@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { ok, jsonError, requireAuth } from '@/lib/auth'
 import { ensureSeed } from '@/lib/seed'
+import { tierFromMonths } from '@/lib/premium'
 
 export const runtime = 'nodejs'
 
@@ -59,6 +60,19 @@ export async function POST(req: NextRequest) {
     const newPremiumUntil = new Date(base)
     newPremiumUntil.setMonth(newPremiumUntil.getMonth() + redeemCode.premiumMonths)
 
+    // V3: auto-assign premium tier based on the code's premiumMonths. This
+    // matches the plan-to-tier mapping used everywhere else:
+    //   1-2 months -> bronze, 3-6 -> silver, 7+ -> gold.
+    // If the user already has a *higher* tier (e.g. silver/gold from a
+    // previous larger grant), keep the higher one so we never downgrade.
+    const newTier = tierFromMonths(redeemCode.premiumMonths)
+    const currentTier = (fullUser.premiumTier || 'free').toLowerCase()
+    const tierRank: Record<string, number> = { free: 0, bronze: 1, silver: 2, gold: 3 }
+    const finalTier =
+      (tierRank[currentTier] ?? 0) >= (tierRank[newTier] ?? 0)
+        ? (currentTier as string)
+        : newTier
+
     const newRedemptionCount = redemptionCount + 1
     const shouldDeactivate = redeemCode.count > 0 && redeemCode.count <= newRedemptionCount
 
@@ -72,6 +86,7 @@ export async function POST(req: NextRequest) {
         data: {
           isPremium: true,
           premiumUntil: newPremiumUntil,
+          premiumTier: finalTier,
         },
       }),
       db.subscription.create({
@@ -96,7 +111,7 @@ export async function POST(req: NextRequest) {
           }),
     ])
 
-    return ok({ ok: true, premiumUntil: newPremiumUntil })
+    return ok({ ok: true, premiumUntil: newPremiumUntil, premiumTier: finalTier })
   } catch (e: any) {
     if (e.status === 401) return jsonError(401, e.message)
     return jsonError(500, e.message)

@@ -17,6 +17,8 @@ interface PremiumAvatarProps {
   size?: number
   showAura?: boolean
   className?: string
+  /** When true, render a small pulsing green dot at the avatar's bottom-right. */
+  isOnline?: boolean
 }
 
 // Tier → ring color (hex)
@@ -76,6 +78,7 @@ export function PremiumAvatar({
   size = 40,
   showAura = true,
   className,
+  isOnline = false,
 }: PremiumAvatarProps) {
   const tier = (user?.premiumTier || 'free').toLowerCase()
   const isPremium = !!user?.isPremium || tier !== 'free'
@@ -189,6 +192,21 @@ export function PremiumAvatar({
           {initialsOf(user?.name)}
         </AvatarFallback>
       </Avatar>
+
+      {/* Online status dot — only when explicitly marked online. The dot's
+          visual style lives in globals.css (.online-dot + .online-dot::after)
+          so the pulsing aura stays consistent across all avatars in the app.
+          Scaled proportionally to the avatar size for large header avatars. */}
+      {isOnline && (
+        <span
+          className="online-dot z-30"
+          aria-hidden
+          style={{
+            width: Math.max(8, Math.round(size * 0.28)),
+            height: Math.max(8, Math.round(size * 0.28)),
+          }}
+        />
+      )}
     </div>
   )
 }

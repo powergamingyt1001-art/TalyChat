@@ -318,6 +318,7 @@ export const MessageBubble = React.forwardRef<MessageBubbleHandle, MessageBubble
               }}
               size={28}
               showAura={false}
+              isOnline={!!message.sender?.isOnline}
               className={cn(
                 'shrink-0',
                 !isLastInGroup && 'opacity-0'

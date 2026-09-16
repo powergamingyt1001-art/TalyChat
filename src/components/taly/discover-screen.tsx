@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Check, Loader2, Lock, Users } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { Check, Compass, Loader2, Lock, Users } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
 import { CATEGORIES } from '@/components/taly/customizer-context'
@@ -29,6 +30,70 @@ interface GroupItem {
 
 // Track per-group state: 'idle' (default Join), 'requested' (private, request sent)
 type JoinState = 'idle' | 'joined' | 'requested'
+
+// Category → ring color (used for avatar ring + badge tint)
+function categoryRing(cat?: string | null): string {
+  switch ((cat || '').toLowerCase()) {
+    case 'gaming':
+      return 'ring-violet-400/70'
+    case 'technology':
+    case 'ai':
+      return 'ring-blue-400/70'
+    case 'cricket':
+    case 'sports':
+      return 'ring-orange-400/70'
+    case 'entertainment':
+    case 'movies':
+    case 'music':
+      return 'ring-pink-400/70'
+    case 'education':
+      return 'ring-emerald-400/70'
+    case 'business':
+    case 'finance':
+    case 'jobs':
+      return 'ring-yellow-400/70'
+    case 'memes':
+      return 'ring-fuchsia-400/70'
+    case 'news':
+      return 'ring-cyan-400/70'
+    case 'local':
+      return 'ring-teal-400/70'
+    default:
+      return 'ring-emerald-400/70'
+  }
+}
+
+// Category → badge text/bg color
+function categoryBadge(cat?: string | null): string {
+  switch ((cat || '').toLowerCase()) {
+    case 'gaming':
+      return 'bg-violet-500/10 text-violet-600'
+    case 'technology':
+    case 'ai':
+      return 'bg-blue-500/10 text-blue-600'
+    case 'cricket':
+    case 'sports':
+      return 'bg-orange-500/10 text-orange-600'
+    case 'entertainment':
+    case 'movies':
+    case 'music':
+      return 'bg-pink-500/10 text-pink-600'
+    case 'education':
+      return 'bg-emerald-500/10 text-emerald-600'
+    case 'business':
+    case 'finance':
+    case 'jobs':
+      return 'bg-yellow-500/10 text-yellow-700'
+    case 'memes':
+      return 'bg-fuchsia-500/10 text-fuchsia-600'
+    case 'news':
+      return 'bg-cyan-500/10 text-cyan-600'
+    case 'local':
+      return 'bg-teal-500/10 text-teal-600'
+    default:
+      return 'bg-emerald-500/10 text-emerald-600'
+  }
+}
 
 export function DiscoverScreen() {
   const { toast } = useToast()
@@ -178,14 +243,23 @@ export function DiscoverScreen() {
     }
   }
 
-  return (
-    <div className="mx-auto max-w-2xl p-4 pb-20 lg:pb-6">
-      <h1 className="text-2xl font-bold">Discover</h1>
-      <p className="text-sm text-muted-foreground">
-        Find communities that match your interests
-      </p>
+  const totalGroups = trending.length + popular.length + newGroups.length
 
-      {/* Category chips — polished, smooth horizontal scroll */}
+  return (
+    <div className="mx-auto max-w-2xl px-4 pb-20 pt-6 lg:pb-6 lg:pt-8">
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+      >
+        <h1 className="section-header">Discover</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Find communities that match your interests
+        </p>
+      </motion.div>
+
+      {/* Category chips — solid emerald active state */}
       <div className="no-scrollbar scroll-pan-y -mx-4 mt-3 w-full overflow-x-auto px-4">
         <div className="flex min-w-0 gap-2 pb-1">
           {CATEGORIES.map((cat) => {
@@ -195,11 +269,7 @@ export function DiscoverScreen() {
                 key={cat}
                 type="button"
                 onClick={() => handleCategoryClick(cat)}
-                className={`min-h-[36px] shrink-0 whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
-                  active
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'border border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground'
-                }`}
+                className={`category-chip min-h-[36px] ${active ? 'active' : ''}`}
               >
                 {cat}
               </button>
@@ -208,17 +278,38 @@ export function DiscoverScreen() {
         </div>
       </div>
 
+      {/* Empty state — no groups loaded */}
+      {!loading && totalGroups === 0 && !activeCategory && (
+        <div className="dotted-bg mt-6 flex flex-col items-center justify-center rounded-2xl border border-border bg-card p-10 text-center">
+          <Compass className="h-12 w-12 text-muted-foreground/60" />
+          <p className="mt-3 text-sm font-semibold text-foreground">
+            No communities yet
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Check back soon — new communities are added every day.
+          </p>
+        </div>
+      )}
+
       {/* Category results */}
       {activeCategory && (
-        <section className="mt-4">
-          <h2 className="text-base font-semibold">{activeCategory} communities</h2>
-          <div className="mt-2">
+        <section className="mt-4 animate-fade-in-up">
+          <h2 className="section-header">
+            {activeCategory} communities
+          </h2>
+          <div className="mt-3">
             {catLoading ? (
               <InlineLoadingRow />
             ) : categoryResults.length === 0 ? (
-              <p className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
-                No communities in this category yet.
-              </p>
+              <div className="dotted-bg flex flex-col items-center justify-center rounded-2xl border border-border bg-card p-8 text-center">
+                <Compass className="h-10 w-10 text-muted-foreground/60" />
+                <p className="mt-3 text-sm font-medium text-foreground">
+                  No communities in this category yet
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Try a different category — or check back later.
+                </p>
+              </div>
             ) : (
               <ul className="space-y-2">
                 {categoryResults.map((g) => (
@@ -249,6 +340,7 @@ export function DiscoverScreen() {
             joining={joining}
             onJoin={handleJoin}
             onPreview={(g) => setPreview(g)}
+            delay={0.05}
           />
           <Section
             title="Popular"
@@ -258,6 +350,7 @@ export function DiscoverScreen() {
             joining={joining}
             onJoin={handleJoin}
             onPreview={(g) => setPreview(g)}
+            delay={0.1}
           />
           <Section
             title="New"
@@ -267,13 +360,14 @@ export function DiscoverScreen() {
             joining={joining}
             onJoin={handleJoin}
             onPreview={(g) => setPreview(g)}
+            delay={0.15}
           />
 
           {/* Sponsored communities */}
           {sponsored.length > 0 && (
-            <section className="mt-5">
-              <h2 className="text-base font-semibold">Sponsored Communities</h2>
-              <div className="no-scrollbar scroll-pan-y -mx-4 mt-2 w-full overflow-x-auto px-4">
+            <section className="mt-6 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+              <h2 className="section-header">Sponsored Communities</h2>
+              <div className="no-scrollbar scroll-pan-y -mx-4 mt-3 w-full overflow-x-auto px-4">
                 <div className="flex min-w-0 gap-3 pb-1">
                   {sponsored.map((ad) => (
                     <a
@@ -281,16 +375,22 @@ export function DiscoverScreen() {
                       href={ad.ctaUrl || '#'}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="ad-box w-64 shrink-0 p-3"
+                      className="taly-card taly-card-hover group relative block w-64 shrink-0 overflow-hidden p-3"
                     >
-                      <span className="sponsored-label">Sponsored</span>
-                      <div className="mt-1 flex gap-2">
-                        {ad.imageUrl && (
+                      <span className="inline-flex items-center rounded-md bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                        Sponsored
+                      </span>
+                      <div className="mt-2 flex gap-2">
+                        {ad.imageUrl ? (
                           <img
                             src={ad.imageUrl}
                             alt={ad.brandName}
-                            className="h-12 w-12 shrink-0 rounded-lg object-cover"
+                            className="h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-border"
                           />
+                        ) : (
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500/15 to-emerald-500/5 text-emerald-600">
+                            <Compass className="h-5 w-5" />
+                          </div>
                         )}
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold">{ad.brandName}</p>
@@ -302,7 +402,7 @@ export function DiscoverScreen() {
                         </div>
                       </div>
                       {ad.ctaText && (
-                        <span className="mt-2 inline-block rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground">
+                        <span className="action-btn mt-2 inline-flex min-h-[32px] w-full !px-3 !py-1.5 !text-xs">
                           {ad.ctaText}
                         </span>
                       )}
@@ -335,6 +435,7 @@ function Section({
   joining,
   onJoin,
   onPreview,
+  delay = 0,
 }: {
   title: string
   loading: boolean
@@ -343,11 +444,17 @@ function Section({
   joining: string | null
   onJoin: (g: GroupItem) => void
   onPreview: (g: GroupItem) => void
+  delay?: number
 }) {
   return (
-    <section className="mt-5">
-      <h2 className="text-base font-semibold">{title}</h2>
-      <div className="no-scrollbar scroll-pan-y -mx-4 mt-2 w-full overflow-x-auto px-4">
+    <section
+      className="mt-6 animate-fade-in-up"
+      style={{ animationDelay: `${delay}s` }}
+    >
+      <div className="sticky top-0 z-10 -mx-4 mb-2 bg-background/95 px-4 py-2 backdrop-blur">
+        <h2 className="section-header">{title}</h2>
+      </div>
+      <div className="no-scrollbar scroll-pan-y -mx-4 w-full overflow-x-auto px-4">
         {loading ? (
           <CardLoadingRow />
         ) : groups.length === 0 ? (
@@ -385,32 +492,41 @@ function GroupCard({
   onPreview: () => void
 }) {
   return (
-    <div className="w-44 shrink-0 overflow-hidden rounded-xl border border-border bg-card">
+    <div className="group-card w-44 shrink-0 p-3">
       <button
         onClick={onPreview}
-        className="flex w-full flex-col items-center p-3 text-center"
+        className="flex w-full flex-col items-center text-center"
       >
-        <Avatar className="h-12 w-12">
+        <Avatar
+          className={`h-14 w-14 ring-2 ${categoryRing(g.category)}`}
+        >
           <AvatarImage src={g.logo || undefined} alt={g.name} />
           <AvatarFallback className="bg-primary/10 text-primary">
             {(g.name || '?')[0]?.toUpperCase()}
           </AvatarFallback>
         </Avatar>
         <p className="mt-2 flex items-center gap-1 text-sm font-semibold">
-          {g.isPublic === false && <Lock className="h-3 w-3 text-muted-foreground" />}
+          {g.isPublic === false && <Lock className="h-3 w-3 shrink-0 text-muted-foreground" />}
           <span className="line-clamp-1">{g.name}</span>
         </p>
-        <p className="line-clamp-1 w-full text-xs text-muted-foreground">
-          {g.category || 'Group'}
+        {g.category && (
+          <span
+            className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${categoryBadge(g.category)}`}
+          >
+            {g.category}
+          </span>
+        )}
+        <p className="mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground">
+          <Users className="h-3 w-3" />
+          {g.membersCount} members
         </p>
-        <p className="mt-1 text-[10px] text-muted-foreground">{g.membersCount} members</p>
         {g.description && (
-          <p className="mt-1 line-clamp-1 w-full text-[11px] text-muted-foreground">
+          <p className="mt-1.5 line-clamp-2 w-full text-[11px] leading-snug text-muted-foreground">
             {g.description}
           </p>
         )}
       </button>
-      <div className="px-3 pb-3">
+      <div className="mt-3">
         <JoinButton
           state={state}
           joining={joining}
@@ -438,12 +554,12 @@ function GroupRow({
   onPreview: () => void
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+    <div className="group-card flex items-center gap-3 p-3">
       <button
         onClick={onPreview}
         className="flex min-w-0 flex-1 items-center gap-3 text-left"
       >
-        <Avatar className="h-10 w-10">
+        <Avatar className={`h-12 w-12 ring-2 ${categoryRing(g.category)}`}>
           <AvatarImage src={g.logo || undefined} alt={g.name} />
           <AvatarFallback className="bg-primary/10 text-primary">
             {(g.name || '?')[0]?.toUpperCase()}
@@ -451,14 +567,29 @@ function GroupRow({
         </Avatar>
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-1 truncate text-sm font-semibold">
-            {g.isPublic === false && <Lock className="h-3 w-3 shrink-0 text-muted-foreground" />}
+            {g.isPublic === false && (
+              <Lock className="h-3 w-3 shrink-0 text-muted-foreground" />
+            )}
             <span className="truncate">{g.name}</span>
           </p>
-          <p className="truncate text-xs text-muted-foreground">
-            {g.membersCount} members · {g.category || 'Group'}
-          </p>
+          <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Users className="h-3 w-3" />
+            <span>{g.membersCount} members</span>
+            {g.category && (
+              <>
+                <span className="text-muted-foreground/50">·</span>
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${categoryBadge(g.category)}`}
+                >
+                  {g.category}
+                </span>
+              </>
+            )}
+          </div>
           {g.description && (
-            <p className="line-clamp-1 text-xs text-muted-foreground">{g.description}</p>
+            <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
+              {g.description}
+            </p>
           )}
         </div>
       </button>
@@ -492,30 +623,46 @@ function JoinButton({
   size?: 'sm' | 'default'
   block?: boolean
 }) {
-  const label = () => {
-    if (joining) return null
-    if (state === 'joined') return (
-      <>
+  const btnSizeClass = size === 'sm' ? '!min-h-[36px] !px-4 !py-2 !text-xs' : '!min-h-[44px] !px-5 !py-2.5 !text-sm'
+
+  // Joined → light emerald bg + check icon (no shadow, looks "settled")
+  if (state === 'joined' && !joining) {
+    return (
+      <span
+        className={`inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-500/20 ${block ? 'w-full' : ''} ${btnSizeClass}`}
+      >
         <Check className="h-3.5 w-3.5" /> Joined
-      </>
+      </span>
     )
-    if (state === 'requested') return 'Requested'
-    return isPublic === false ? 'Request to Join' : 'Join'
   }
 
-  const variant = state === 'joined' || state === 'requested' ? 'outline' : 'default'
-  const disabled = joining || state === 'joined' || state === 'requested'
+  // Requested → outline muted
+  if (state === 'requested' && !joining) {
+    return (
+      <span
+        className={`inline-flex items-center justify-center gap-1.5 rounded-lg bg-muted px-3 py-2 text-xs font-medium text-muted-foreground ${block ? 'w-full' : ''} ${btnSizeClass}`}
+      >
+        <Loader2 className="h-3 w-3" /> Requested
+      </span>
+    )
+  }
+
+  // Idle / loading
+  // Private → ghost-btn ("Request to Join"); Public → action-btn ("Join")
+  const label = joining
+    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+    : isPublic === false
+      ? 'Request to Join'
+      : 'Join'
 
   return (
-    <Button
-      size={size}
-      variant={variant}
-      disabled={disabled}
+    <button
       onClick={onClick}
-      className={`${block ? 'w-full' : ''} min-h-[36px]`}
+      disabled={joining}
+      className={`${isPublic === false ? 'ghost-btn' : 'action-btn'} ${block ? 'w-full' : ''} ${btnSizeClass} disabled:opacity-60`}
     >
-      {joining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : label()}
-    </Button>
+      {label}
+    </button>
   )
 }
 
@@ -525,9 +672,9 @@ function CardLoadingRow() {
       {[0, 1, 2, 3].map((i) => (
         <div
           key={i}
-          className="w-44 shrink-0 rounded-xl border border-border bg-card p-3"
+          className="group-card w-44 shrink-0 p-3"
         >
-          <div className="mx-auto h-12 w-12 animate-pulse rounded-full bg-muted" />
+          <div className="mx-auto h-14 w-14 animate-pulse rounded-full bg-muted" />
           <div className="mt-2 h-3 w-3/4 animate-pulse rounded bg-muted" />
           <div className="mt-1 h-2 w-1/2 animate-pulse rounded bg-muted" />
         </div>
@@ -542,9 +689,9 @@ function InlineLoadingRow() {
       {[0, 1, 2].map((i) => (
         <div
           key={i}
-          className="flex items-center gap-3 rounded-xl border border-border bg-card p-3"
+          className="taly-card flex items-center gap-3 p-3"
         >
-          <div className="h-10 w-10 animate-pulse rounded-full bg-muted" />
+          <div className="h-12 w-12 animate-pulse rounded-full bg-muted" />
           <div className="flex-1 space-y-1">
             <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
             <div className="h-2 w-3/4 animate-pulse rounded bg-muted" />
@@ -586,7 +733,9 @@ function GroupPreviewDialog({
         </DialogHeader>
         {group && (
           <div className="flex flex-col items-center text-center">
-            <Avatar className="h-16 w-16">
+            <Avatar
+              className={`h-16 w-16 ring-2 ${categoryRing(group.category)}`}
+            >
               <AvatarImage src={group.logo || undefined} alt={group.name} />
               <AvatarFallback className="bg-primary/10 text-primary text-lg">
                 {(group.name || '?')[0]?.toUpperCase()}
@@ -598,7 +747,13 @@ function GroupPreviewDialog({
               )}
               {group.name}
             </h3>
-            <p className="text-sm text-muted-foreground">{group.category || 'Group'}</p>
+            {group.category && (
+              <span
+                className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${categoryBadge(group.category)}`}
+              >
+                {group.category}
+              </span>
+            )}
             <div className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
               <Users className="h-4 w-4" /> {group.membersCount} members
             </div>
@@ -617,13 +772,17 @@ function GroupPreviewDialog({
             Close
           </Button>
           {group && (
-            <Button
+            <button
               disabled={joining || state === 'joined' || state === 'requested'}
               onClick={() => onJoin(group)}
-              className="btn-brand min-h-[44px]"
+              className={`action-btn min-h-[44px] ${
+                state === 'joined' || state === 'requested' || joining
+                  ? 'pointer-events-none opacity-60'
+                  : ''
+              } ${group.isPublic === false ? 'ghost-btn' : ''}`}
             >
               {label()}
-            </Button>
+            </button>
           )}
         </DialogFooter>
       </DialogContent>

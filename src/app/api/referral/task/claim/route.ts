@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { ok, jsonError, requireAuth } from '@/lib/auth'
 import { ensureSeed } from '@/lib/seed'
+import { tierFromMonths } from '@/lib/premium'
 
 export const runtime = 'nodejs'
 
@@ -60,12 +61,24 @@ export async function POST(req: NextRequest) {
     const newPremiumUntil = new Date(base)
     newPremiumUntil.setMonth(newPremiumUntil.getMonth() + activeTask.rewardMonths)
 
+    // V3: auto-assign premium tier based on the task's rewardMonths.
+    //   2 months -> bronze, 6 -> silver, 12 -> gold. Never downgrade an
+    //   existing higher tier.
+    const newTier = tierFromMonths(activeTask.rewardMonths)
+    const currentTier = (me.premiumTier || 'free').toLowerCase()
+    const tierRank: Record<string, number> = { free: 0, bronze: 1, silver: 2, gold: 3 }
+    const finalTier =
+      (tierRank[currentTier] ?? 0) >= (tierRank[newTier] ?? 0)
+        ? (currentTier as string)
+        : newTier
+
     await db.$transaction([
       db.user.update({
         where: { id: user.id },
         data: {
           isPremium: true,
           premiumUntil: newPremiumUntil,
+          premiumTier: finalTier,
         },
       }),
       db.referralTask.update({
@@ -92,6 +105,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       monthsAdded: activeTask.rewardMonths,
       premiumUntil: newPremiumUntil,
+      premiumTier: finalTier,
       task: {
         id: activeTask.id,
         tier: activeTask.tier,

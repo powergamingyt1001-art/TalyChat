@@ -4,16 +4,15 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useAuth } from '@/lib/auth-store'
 import { apiFetch, apiUpload, ApiError } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
+import { useSound } from '@/hooks/use-sound'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { PremiumAvatar } from '@/components/premium-avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
-import { Progress } from '@/components/ui/progress'
 import {
   Dialog,
   DialogContent,
@@ -154,6 +153,7 @@ interface AdData {
 export function ProfileScreen() {
   const { user, updateUser, logout, setAuth } = useAuth()
   const { toast } = useToast()
+  const { play: soundManager } = useSound()
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<any>(null)
   const [editOpen, setEditOpen] = useState(false)
@@ -390,6 +390,8 @@ export function ProfileScreen() {
           ? `Valid until ${format(new Date(premiumUntil), 'dd MMM yyyy')}`
           : 'Your premium has been extended.',
       })
+      // Fanfare — fires inside the user's "Redeem" button click gesture.
+      soundManager.playPremium()
       setRedeemCode('')
       loadProfile()
     } catch (e: any) {
@@ -434,41 +436,44 @@ export function ProfileScreen() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4 p-4">
-      {/* Profile header card */}
-      <Card className="p-4">
+    <div className="mx-auto max-w-2xl space-y-5 p-4">
+      {/* Profile header card — V3: taly-card with shadow, larger avatar, online dot, joined date */}
+      <div className="taly-card taly-card-hover animate-fade-in-up p-5" style={{ animationDelay: '0ms' }}>
         <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
-          <PremiumAvatar
-            user={{
-              isPremium: profile.isPremium,
-              premiumTier: profile.premiumTier,
-              avatar: profile.avatar || undefined,
-              name: profile.name || 'U',
-            }}
-            size={96}
-            showAura
-            className="shrink-0"
-          />
+          <div className="relative shrink-0">
+            <PremiumAvatar
+              user={{
+                isPremium: profile.isPremium,
+                premiumTier: profile.premiumTier,
+                avatar: profile.avatar || undefined,
+                name: profile.name || 'U',
+              }}
+              size={80}
+              showAura
+              className="shrink-0"
+            />
+            {profile.isOnline && <span className="online-dot" aria-label="online" />}
+          </div>
           <div className="min-w-0 flex-1 text-center sm:text-left">
-            <div className="flex items-center justify-center gap-2 sm:justify-start">
-              <h2 className="truncate text-xl font-bold">{profile.name}</h2>
+            <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+              <h2 className="truncate text-xl font-bold tracking-tight">{profile.name}</h2>
               {premiumActive && (
                 <span className="premium-badge">
                   <Crown className="h-3 w-3" /> Premium
                 </span>
               )}
             </div>
-            <p className="truncate text-sm text-muted-foreground">@{profile.username}</p>
+            <p className="truncate text-sm text-muted-foreground/80">@{profile.username}</p>
             {profile.bio ? (
-              <p className="mt-2 line-clamp-3 text-sm">{profile.bio}</p>
+              <p className="mt-2 line-clamp-3 text-sm italic text-muted-foreground">{profile.bio}</p>
             ) : (
               <p className="mt-2 text-sm italic text-muted-foreground">No bio yet.</p>
             )}
-            <div className="mt-2 flex flex-wrap items-center justify-center gap-3 text-xs text-muted-foreground sm:justify-start">
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-3 text-xs text-muted-foreground/80 sm:justify-start">
               <span className="inline-flex items-center gap-1">
                 <span
                   className={`inline-block h-2 w-2 rounded-full ${
-                    profile.isOnline ? 'bg-green-500' : 'bg-muted-foreground'
+                    profile.isOnline ? 'bg-emerald-500' : 'bg-muted-foreground/50'
                   }`}
                 />
                 {profile.isOnline ? 'Online' : 'Offline'}
@@ -481,45 +486,45 @@ export function ProfileScreen() {
               )}
             </div>
             <div className="mt-4">
-              <Button
+              <button
                 onClick={() => setEditOpen(true)}
-                variant="outline"
-                size="sm"
-                className="min-h-[40px]"
+                className="action-btn min-h-[40px]"
               >
-                <Pencil className="mr-1 h-4 w-4" /> Edit Profile
-              </Button>
+                <Pencil className="h-4 w-4" /> Edit Profile
+              </button>
             </div>
           </div>
         </div>
-      </Card>
+      </div>
 
-      {/* Behavior Bar */}
-      <Separator />
-      <BehaviorBar behavior={behavior} />
+      {/* Behavior Bar — V3: section-header + behavior-bar pill with inner glow */}
+      <div className="animate-fade-in-up" style={{ animationDelay: '60ms' }}>
+        <BehaviorBar behavior={behavior} />
+      </div>
 
       {/* Watch Behavior (watch ads to increase score) */}
-      <Separator />
-      <WatchBehaviorCard
-        behavior={behavior}
-        watching={watching}
-        onWatchAd={handleWatchAd}
-      />
+      <div className="animate-fade-in-up" style={{ animationDelay: '120ms' }}>
+        <WatchBehaviorCard
+          behavior={behavior}
+          watching={watching}
+          onWatchAd={handleWatchAd}
+        />
+      </div>
 
       {/* Premium section */}
-      <Separator />
-      <PremiumSection
-        premiumActive={premiumActive}
-        premiumUntil={profile.premiumUntil}
-        onChoosePlan={(plan) => setBuyPlan(plan)}
-      />
+      <div className="animate-fade-in-up" style={{ animationDelay: '180ms' }}>
+        <PremiumSection
+          premiumActive={premiumActive}
+          premiumUntil={profile.premiumUntil}
+          onChoosePlan={(plan) => setBuyPlan(plan)}
+        />
+      </div>
 
       {/* Redeem code */}
-      <Separator />
-      <Card className="p-4">
-        <h3 className="mb-3 flex items-center gap-2 text-base font-semibold">
+      <div className="taly-card animate-fade-in-up p-5" style={{ animationDelay: '240ms' }}>
+        <div className="section-header mb-3">
           <Gift className="h-4 w-4 text-primary" /> Redeem a Code
-        </h3>
+        </div>
         <div className="flex gap-2">
           <Input
             value={redeemCode}
@@ -530,22 +535,22 @@ export function ProfileScreen() {
               if (e.key === 'Enter') handleRedeem()
             }}
           />
-          <Button
+          <button
             onClick={handleRedeem}
             disabled={redeemLoading}
-            className="btn-brand min-h-[44px] px-5"
+            className="action-btn min-h-[44px] px-5 disabled:opacity-60"
           >
             {redeemLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               'Redeem'
             )}
-          </Button>
+          </button>
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">
+        <p className="mt-2 text-xs text-muted-foreground/80">
           Get codes from promotions, friends, or the founder.
         </p>
-      </Card>
+      </div>
 
       {/* V2 — Admin Login dialog (opened when user types 'admin.in' as the
           redeem code). On success, setAuth() switches the app to the
@@ -612,20 +617,20 @@ export function ProfileScreen() {
       </Dialog>
 
       {/* Referral section — V2 redesign with task tiers */}
-      <Separator />
-      <ReferralSection
-        referral={referral}
-        username={user?.username || profile.username}
-        onCopyLink={copyReferralLink}
-        onSelectTask={handleSelectTask}
-        onClaimTask={handleClaimTask}
-        onViewTeam={() => setTeamSheetOpen(true)}
-      />
+      <div className="animate-fade-in-up" style={{ animationDelay: '300ms' }}>
+        <ReferralSection
+          referral={referral}
+          username={user?.username || profile.username}
+          onCopyLink={copyReferralLink}
+          onSelectTask={handleSelectTask}
+          onClaimTask={handleClaimTask}
+          onViewTeam={() => setTeamSheetOpen(true)}
+        />
+      </div>
 
       {/* Privacy and Safety */}
-      <Separator />
-      <Card className="p-4">
-        <h3 className="mb-3 flex items-center gap-2 text-base font-semibold">
+      <div className="taly-card animate-fade-in-up p-5" style={{ animationDelay: '360ms' }}>
+        <div className="section-header mb-3">
           <Shield className="h-4 w-4 text-primary" /> Privacy and Safety
           {blockedCount > 0 && (
             <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-semibold text-destructive">
@@ -633,19 +638,17 @@ export function ProfileScreen() {
               {blockedCount}
             </span>
           )}
-        </h3>
-        <Button
-          variant="outline"
+        </div>
+        <button
           onClick={() => setSettingsOpen(true)}
-          className="min-h-[44px] w-full justify-start"
+          className="ghost-btn min-h-[44px] w-full justify-start"
         >
           <Shield className="mr-2 h-4 w-4" /> Open privacy settings
-        </Button>
+        </button>
         <Separator className="my-3" />
-        <Button
-          variant="outline"
+        <button
           onClick={() => setBlockedOpen(true)}
-          className="min-h-[44px] w-full justify-start"
+          className="ghost-btn min-h-[44px] w-full justify-start"
         >
           <Ban className="mr-2 h-4 w-4" /> Block List
           {blockedCount > 0 && (
@@ -653,19 +656,18 @@ export function ProfileScreen() {
               {blockedCount}
             </span>
           )}
-        </Button>
+        </button>
         <Separator className="my-3" />
-        <Button
-          variant="ghost"
+        <button
           onClick={() => {
             logout()
             toast({ title: 'Logged out' })
           }}
-          className="min-h-[44px] w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive"
+          className="ghost-btn min-h-[44px] w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive"
         >
           <LogOut className="mr-2 h-4 w-4" /> Logout
-        </Button>
-      </Card>
+        </button>
+      </div>
 
       {/* Edit profile dialog */}
       <EditProfileDialog
@@ -759,7 +761,7 @@ function PremiumSection({
 
   if (premiumActive) {
     return (
-      <Card className="p-4">
+      <div className="taly-card taly-card-hover animate-fade-in-up p-5">
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-amber-500">
             <Crown className="h-6 w-6 text-white" />
@@ -771,14 +773,14 @@ function PremiumSection({
                 <Crown className="h-3 w-3" /> Pro
               </span>
             </p>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground/80">
               {premiumUntil
                 ? `Valid until ${format(new Date(premiumUntil), 'dd MMM yyyy')}`
                 : 'Lifetime'}
             </p>
           </div>
         </div>
-      </Card>
+      </div>
     )
   }
 
@@ -789,11 +791,11 @@ function PremiumSection({
   ]
 
   return (
-    <Card className="p-4">
+    <div className="taly-card animate-fade-in-up p-5">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h3 className="flex items-center gap-2 text-base font-semibold">
+        <div className="section-header">
           <Sparkles className="h-4 w-4 text-primary" /> Upgrade to Premium
-        </h3>
+        </div>
         {offerMsLeft && offerMsLeft > 0 && (
           <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
             <Clock className="h-3 w-3" />
@@ -806,40 +808,51 @@ function PremiumSection({
           Limited-time offer! 1-year plan for ₹{OFFER_PRICE} (was ₹{REGULAR_PRICE})
         </p>
       ) : (
-        <p className="mb-3 text-xs text-muted-foreground">
+        <p className="mb-3 text-xs text-muted-foreground/80">
           Offer ended — 1-year plan is back to ₹{REGULAR_PRICE}
         </p>
       )}
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-3">
         {plans.map((p) => (
           <div
             key={p.id}
-            className={`relative flex flex-col gap-1 rounded-xl border-2 p-3 ${
-              p.best ? 'border-primary bg-primary/5' : 'border-border'
+            className={`taly-card taly-card-hover relative flex flex-col gap-1 overflow-hidden p-4 ${
+              p.best
+                ? 'border-emerald-500/40 bg-emerald-50 dark:bg-emerald-950/20'
+                : ''
             }`}
           >
+            {/* Best value ribbon + shimmer overlay */}
             {p.best && (
-              <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground">
-                Best Value
-              </span>
+              <>
+                <div className="premium-shimmer pointer-events-none absolute inset-0 opacity-60" />
+                <span className="absolute right-0 top-0 rounded-bl-lg bg-gradient-to-r from-amber-400 to-amber-500 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">
+                  Best Value
+                </span>
+              </>
             )}
-            <p className="text-xs font-medium text-muted-foreground">{p.label}</p>
-            <p className="text-2xl font-bold text-primary">₹{p.price}</p>
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-xs font-medium text-muted-foreground/80">{p.label}</p>
+            <p className={`text-2xl font-bold ${p.best ? 'text-emerald-600 dark:text-emerald-400' : 'text-primary'}`}>₹{p.price}</p>
+            <p className="text-[10px] text-muted-foreground/80">
               ₹{Math.round((p.price / p.months) * 100) / 100}/mo
             </p>
-            <Button
-              size="sm"
-              variant={p.best ? 'default' : 'outline'}
-              className={`mt-2 min-h-[36px] ${p.best ? 'btn-brand' : ''}`}
+            <button
               onClick={() => onChoosePlan(p)}
+              className={`mt-2 min-h-[36px] text-sm font-semibold ${
+                p.best
+                  ? 'action-btn relative overflow-hidden'
+                  : 'ghost-btn'
+              }`}
             >
-              Choose
-            </Button>
+              {p.best && (
+                <span className="premium-shimmer pointer-events-none absolute inset-0 opacity-40" />
+              )}
+              <span className="relative">Choose</span>
+            </button>
           </div>
         ))}
       </div>
-    </Card>
+    </div>
   )
 }
 
@@ -1364,11 +1377,11 @@ function BlockListDialog({
         </DialogHeader>
 
         {loading ? (
-          <div className="flex items-center justify-center py-8 text-muted-foreground">
+          <div className="flex items-center justify-center py-8 text-muted-foreground/80">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading…
           </div>
         ) : blocked.length === 0 ? (
-          <div className="rounded-md border border-dashed bg-muted/10 p-6 text-center text-sm text-muted-foreground">
+          <div className="rounded-md border border-dashed bg-muted/10 p-6 text-center text-sm text-muted-foreground/80">
             You haven&apos;t blocked anyone.
           </div>
         ) : (
@@ -1377,7 +1390,7 @@ function BlockListDialog({
               {blocked.map((u) => (
                 <li
                   key={u.id}
-                  className="flex items-center gap-3 rounded-md border p-2"
+                  className="chat-list-item border border-border bg-card"
                 >
                   <Avatar className="h-10 w-10">
                     {u.avatar && <AvatarImage src={u.avatar} alt={u.name || u.username || ''} />}
@@ -1389,23 +1402,21 @@ function BlockListDialog({
                     <p className="truncate text-sm font-medium">
                       {u.name || u.username || 'User'}
                     </p>
-                    <p className="truncate text-xs text-muted-foreground">
+                    <p className="truncate text-xs text-muted-foreground/80">
                       @{u.username || 'user'}
                     </p>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
+                  <button
                     onClick={() => handleUnblock(u)}
                     disabled={unblocking === u.id}
-                    className="min-h-[36px]"
+                    className="ghost-btn min-h-[36px] px-3 disabled:opacity-60"
                   >
                     {unblocking === u.id ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       'Unblock'
                     )}
-                  </Button>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -1427,20 +1438,26 @@ function BehaviorBar({ behavior }: { behavior: BehaviorData | null }) {
   const maxAdsPerDay = behavior?.maxAdsPerDay ?? 10
   const canMessage = behavior?.canMessage ?? true
 
-  // Color thresholds derived from score
+  // V3 — semantic thresholds: green≥80, amber≥50, red<50
   const colorClass =
-    score >= 70
-      ? 'text-emerald-600'
-      : score >= 40
-        ? 'text-amber-600'
-        : 'text-red-600'
+    score >= 80
+      ? 'text-emerald-600 dark:text-emerald-400'
+      : score >= 50
+        ? 'text-amber-600 dark:text-amber-400'
+        : 'text-red-600 dark:text-red-400'
+  const label =
+    score >= 80
+      ? 'Excellent'
+      : score >= 50
+        ? 'Fair'
+        : 'Low'
 
   return (
-    <Card className="p-4">
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="flex items-center gap-2 text-base font-semibold">
+    <div className="taly-card animate-fade-in-up p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="section-header">
           <Target className="h-4 w-4 text-primary" /> Behavior
-        </h3>
+        </div>
         <Badge
           variant={canMessage ? 'default' : 'destructive'}
           className={`${
@@ -1453,30 +1470,24 @@ function BehaviorBar({ behavior }: { behavior: BehaviorData | null }) {
         </Badge>
       </div>
 
-      {/* Score + warning */}
-      <div className="mb-1.5 flex items-baseline justify-between">
-        <span className={`text-2xl font-bold ${colorClass}`}>{score}%</span>
-        <span className="text-xs text-muted-foreground">
+      {/* Big score number + descriptive label + ads watched */}
+      <div className="mb-2 flex items-end justify-between gap-3">
+        <div className="flex items-baseline gap-2">
+          <span className={`text-2xl font-bold tabular-nums ${colorClass}`}>{score}%</span>
+          <span className={`text-xs font-semibold uppercase tracking-wide ${colorClass}`}>
+            {label}
+          </span>
+        </div>
+        <span className="text-xs text-muted-foreground/80">
           Ads watched today: {adsWatchedToday}/{maxAdsPerDay}
         </span>
       </div>
 
-      {/* Gradient bar — bottom (0%) = red, middle (50%) = orange, top (100%) = green */}
-      <div className="relative h-3 w-full overflow-hidden rounded-full bg-muted">
+      {/* V3 — behavior-bar pill with inner glow + gradient fill */}
+      <div className="behavior-bar">
         <div
-          className="absolute inset-0 opacity-20"
-          style={{
-            background:
-              'linear-gradient(to right, #ef4444, #f97316, #22c55e)',
-          }}
-        />
-        <div
-          className="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
-          style={{
-            width: `${Math.max(2, Math.min(100, score))}%`,
-            background:
-              'linear-gradient(to right, #ef4444, #f97316, #22c55e)',
-          }}
+          className="behavior-bar-fill"
+          style={{ width: `${Math.max(2, Math.min(100, score))}%` }}
         />
       </div>
 
@@ -1489,7 +1500,7 @@ function BehaviorBar({ behavior }: { behavior: BehaviorData | null }) {
           </span>
         </p>
       )}
-    </Card>
+    </div>
   )
 }
 
@@ -1511,16 +1522,16 @@ function WatchBehaviorCard({
   const reachedMax = adsWatchedToday >= maxAdsPerDay
 
   return (
-    <Card className="p-4">
+    <div className="taly-card animate-fade-in-up p-5">
       <div className="flex items-start gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
           <Megaphone className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="flex items-center gap-2 text-base font-semibold">
+          <div className="section-header !text-base">
             Watch Behavior
-          </h3>
-          <p className="text-sm text-muted-foreground">
+          </div>
+          <p className="text-sm text-muted-foreground/80">
             Watch ads to increase your behavior score. Max {maxAdsPerDay} per day.
           </p>
         </div>
@@ -1532,16 +1543,16 @@ function WatchBehaviorCard({
             Today: <span className="text-primary">{adsWatchedToday}/{maxAdsPerDay}</span>{' '}
             ads watched
           </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
+          <p className="mt-0.5 text-xs text-muted-foreground/80">
             {reachedMax
               ? 'Daily limit reached — come back tomorrow.'
               : `${maxAdsPerDay - adsWatchedToday} ad${maxAdsPerDay - adsWatchedToday === 1 ? '' : 's'} left today.`}
           </p>
         </div>
-        <Button
+        <button
           onClick={onWatchAd}
           disabled={watching || reachedMax}
-          className="btn-brand min-h-[40px]"
+          className="action-btn min-h-[40px] disabled:opacity-60"
         >
           {watching ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -1554,15 +1565,19 @@ function WatchBehaviorCard({
               <Eye className="mr-1 h-4 w-4" /> Watch Ad
             </>
           )}
-        </Button>
+        </button>
       </div>
 
-      {/* Small progress for today's ads */}
-      <Progress
-        value={Math.min((adsWatchedToday / maxAdsPerDay) * 100, 100)}
-        className="mt-3 h-1.5"
-      />
-    </Card>
+      {/* V3 — behavior-bar style progress for today's ads */}
+      <div className="behavior-bar mt-3">
+        <div
+          className="behavior-bar-fill"
+          style={{
+            width: `${Math.min((adsWatchedToday / maxAdsPerDay) * 100, 100)}%`,
+          }}
+        />
+      </div>
+    </div>
   )
 }
 
@@ -1706,22 +1721,20 @@ function ReferralSection({
   const hasActiveTask = !!activeTask
 
   return (
-    <Card className="p-4">
+    <div className="taly-card animate-fade-in-up p-5">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="flex items-center gap-2 text-base font-semibold">
+        <div className="section-header">
           <Users className="h-4 w-4 text-primary" /> Refer & Earn
-        </h3>
-        <Button
-          size="sm"
-          variant="outline"
+        </div>
+        <button
           onClick={onViewTeam}
-          className="min-h-[36px]"
+          className="ghost-btn min-h-[36px]"
         >
           <Users className="mr-1 h-3.5 w-3.5" /> View Team
-        </Button>
+        </button>
       </div>
 
-      <p className="mt-1 text-sm text-muted-foreground">
+      <p className="mt-1 text-sm text-muted-foreground/80">
         Pick a referral task, invite friends, claim premium rewards!
       </p>
 
@@ -1732,10 +1745,10 @@ function ReferralSection({
 
       {/* Task tier selection — disabled while an active task is in progress */}
       <div className="mt-4">
-        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground/80">
           {hasActiveTask ? 'Available tasks (locked)' : 'Choose a task'}
         </p>
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-3">
           {tiers.map((t) => (
             <TaskTierCard
               key={t.tier}
@@ -1749,35 +1762,33 @@ function ReferralSection({
       </div>
 
       {/* Referral code + copy link */}
-      <div className="mt-4 rounded-xl border border-border bg-muted/20 p-3">
-        <p className="text-xs font-medium text-muted-foreground">Your referral code</p>
+      <div className="mt-4 rounded-xl border border-border bg-muted/30 p-3">
+        <p className="text-xs font-medium text-muted-foreground/80">Your referral code</p>
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <code className="rounded-md border border-border bg-background px-3 py-2 text-sm font-mono">
             {username}
           </code>
-          <Button
-            size="sm"
-            variant="outline"
+          <button
             onClick={onCopyLink}
-            className="min-h-[40px]"
+            className="action-btn min-h-[40px]"
           >
             <Copy className="mr-1 h-4 w-4" /> Copy link
-          </Button>
+          </button>
         </div>
-        <p className="mt-2 text-[11px] text-muted-foreground">
+        <p className="mt-2 text-[11px] text-muted-foreground/80">
           Share your link: {typeof window !== 'undefined' ? window.location.origin : 'talychat.app'}/?ref={username}
         </p>
       </div>
 
       {/* Recent referrals */}
       <div className="mt-4">
-        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground/80">
           Recent referrals
         </p>
         {!referral ? (
-          <p className="text-sm text-muted-foreground">Loading referral data…</p>
+          <p className="text-sm text-muted-foreground/80">Loading referral data…</p>
         ) : referral.recent.length === 0 ? (
-          <p className="rounded-md border border-dashed bg-muted/10 p-3 text-center text-sm text-muted-foreground">
+          <p className="rounded-md border border-dashed bg-muted/10 p-3 text-center text-sm text-muted-foreground/80">
             No referrals yet. Share your link to start earning!
           </p>
         ) : (
@@ -1786,7 +1797,7 @@ function ReferralSection({
               {referral.recent.map((r) => (
                 <li
                   key={r.id}
-                  className="flex items-center gap-2 rounded-md border p-2"
+                  className="chat-list-item border border-border bg-card"
                 >
                   <Avatar className="h-8 w-8">
                     <AvatarImage src={r.referred?.avatar || undefined} />
@@ -1798,7 +1809,7 @@ function ReferralSection({
                     <p className="truncate text-sm font-medium">
                       {r.referred?.name || 'Unknown'}
                     </p>
-                    <p className="truncate text-xs text-muted-foreground">
+                    <p className="truncate text-xs text-muted-foreground/80">
                       @{r.referred?.username}
                     </p>
                   </div>
@@ -1818,7 +1829,7 @@ function ReferralSection({
           </ScrollArea>
         )}
       </div>
-    </Card>
+    </div>
   )
 }
 
@@ -1839,27 +1850,26 @@ function TaskTierCard({
 }) {
   return (
     <div
-      className={`relative flex flex-col gap-1 rounded-xl border-2 p-3 transition-colors ${
+      className={`taly-card taly-card-hover relative flex flex-col gap-1.5 p-4 transition-all ${
         selected
-          ? 'border-primary bg-primary/5'
+          ? 'ring-2 ring-emerald-500/60 bg-emerald-50/50 dark:bg-emerald-950/20'
           : disabled
-            ? 'border-border bg-muted/20 opacity-60'
-            : 'border-border hover:border-primary/40'
+            ? 'opacity-60'
+            : ''
       }`}
     >
+      {/* Selected checkmark badge top-right */}
+      {selected && (
+        <span className="absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm">
+          <CheckCircle2 className="h-3.5 w-3.5" />
+        </span>
+      )}
+
       {/* Tier label */}
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-muted-foreground">
+        <span className="text-xs font-medium text-muted-foreground/80">
           Tier {tier.rewardMonths <= 2 ? '1' : tier.rewardMonths <= 6 ? '2' : '3'}
         </span>
-        {selected && (
-          <Badge
-            variant="outline"
-            className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600"
-          >
-            Selected ✓
-          </Badge>
-        )}
       </div>
 
       {/* Required count */}
@@ -1867,7 +1877,7 @@ function TaskTierCard({
         <Target className="h-3.5 w-3.5 text-primary" />
         {tier.requiredCount} members
       </p>
-      <p className="flex items-center gap-1 text-xs text-muted-foreground">
+      <p className="flex items-center gap-1 text-xs text-muted-foreground/80">
         <Hourglass className="h-3 w-3" />
         in {tier.windowDays} days
       </p>
@@ -1878,15 +1888,17 @@ function TaskTierCard({
         {tier.rewardMonths} months premium
       </div>
 
-      <Button
-        size="sm"
-        variant={selected ? 'outline' : 'default'}
+      <button
         disabled={disabled}
         onClick={() => onSelect(tier.tier)}
-        className={`mt-2 min-h-[36px] ${!selected ? 'btn-brand' : ''}`}
+        className={`mt-2 min-h-[36px] text-sm font-semibold disabled:opacity-60 ${
+          selected
+            ? 'ghost-btn'
+            : 'action-btn'
+        }`}
       >
         {selected ? 'Selected ✓' : 'Select'}
-      </Button>
+      </button>
     </div>
   )
 }
@@ -1917,10 +1929,10 @@ function ActiveTaskCard({
     : 0
 
   return (
-    <div className="mt-4 rounded-xl border-2 border-primary/30 bg-primary/5 p-3">
+    <div className="mt-4 rounded-xl border-2 border-emerald-500/30 bg-emerald-50/40 p-3 dark:bg-emerald-950/20">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-primary">
+          <p className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
             <Target className="h-3 w-3" /> Current Task
           </p>
           <p className="mt-1 text-sm font-semibold">
@@ -1936,29 +1948,34 @@ function ActiveTaskCard({
         </Badge>
       </div>
 
-      {/* Progress */}
+      {/* Progress — V3 behavior-bar style */}
       <div className="mt-3">
         <div className="mb-1 flex items-center justify-between text-xs">
           <span className="font-medium text-foreground">
             Progress: {progress}/{task.requiredCount} members
           </span>
-          <span className="text-muted-foreground">{Math.round(pct)}%</span>
+          <span className="text-muted-foreground/80">{Math.round(pct)}%</span>
         </div>
-        <Progress value={pct} className="h-2" />
+        <div className="behavior-bar">
+          <div
+            className="behavior-bar-fill"
+            style={{ width: `${Math.max(2, Math.min(100, pct))}%` }}
+          />
+        </div>
       </div>
 
       {/* Reward */}
       <div className="mt-3 flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1 text-xs text-muted-foreground/80">
           <Trophy className="h-3 w-3 text-amber-500" />
           Reward: {task.rewardMonths} months premium
         </span>
-        <Button
-          size="sm"
-          variant={completed ? 'default' : 'outline'}
+        <button
           disabled={!completed}
           onClick={onClaim}
-          className={`min-h-[36px] ${completed ? 'btn-brand' : ''}`}
+          className={`min-h-[36px] text-sm font-semibold disabled:opacity-60 ${
+            completed ? 'action-btn' : 'ghost-btn'
+          }`}
         >
           {completed ? (
             <>
@@ -1967,7 +1984,7 @@ function ActiveTaskCard({
           ) : (
             'Claim Reward'
           )}
-        </Button>
+        </button>
       </div>
     </div>
   )
@@ -2008,20 +2025,20 @@ function ViewTeamSheet({
 
         {/* Summary stats */}
         <div className="grid grid-cols-2 gap-2 p-4 pb-2">
-          <div className="rounded-xl border border-border bg-card p-3 text-center">
+          <div className="taly-card p-3 text-center">
             <p className="text-2xl font-bold text-primary">{totalCount}</p>
-            <p className="text-xs text-muted-foreground">Total referrals</p>
+            <p className="text-xs text-muted-foreground/80">Total referrals</p>
           </div>
-          <div className="rounded-xl border border-border bg-card p-3 text-center">
-            <p className="text-2xl font-bold text-emerald-600">{activeCount}</p>
-            <p className="text-xs text-muted-foreground">Active members</p>
+          <div className="taly-card p-3 text-center">
+            <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{activeCount}</p>
+            <p className="text-xs text-muted-foreground/80">Active members</p>
           </div>
         </div>
 
         {/* List */}
         <ScrollArea className="flex-1 px-4 pb-4">
           {referrals.length === 0 ? (
-            <div className="rounded-xl border border-dashed bg-muted/20 p-6 text-center text-sm text-muted-foreground">
+            <div className="rounded-xl border border-dashed bg-muted/20 p-6 text-center text-sm text-muted-foreground/80">
               <Users className="mx-auto mb-2 h-10 w-10 opacity-40" />
               No team members yet. Share your referral link to start building your team!
             </div>
@@ -2030,7 +2047,7 @@ function ViewTeamSheet({
               {referrals.map((r) => (
                 <li
                   key={r.id}
-                  className="flex items-center gap-3 rounded-xl border border-border bg-card p-3"
+                  className="chat-list-item border border-border bg-card"
                 >
                   <Avatar className="h-10 w-10">
                     <AvatarImage src={r.referred?.avatar || undefined} />
@@ -2042,11 +2059,11 @@ function ViewTeamSheet({
                     <p className="truncate text-sm font-semibold">
                       {r.referred?.name || 'Unknown'}
                     </p>
-                    <p className="truncate text-xs text-muted-foreground">
+                    <p className="truncate text-xs text-muted-foreground/80">
                       @{r.referred?.username}
                     </p>
                     {r.createdAt && (
-                      <p className="text-[10px] text-muted-foreground">
+                      <p className="text-[10px] text-muted-foreground/80">
                         Joined {format(new Date(r.createdAt), 'dd MMM yyyy')}
                       </p>
                     )}

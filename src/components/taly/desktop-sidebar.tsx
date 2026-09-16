@@ -3,6 +3,7 @@
 import { Button } from '@/components/ui/button'
 import { PremiumAvatar } from '@/components/premium-avatar'
 import { NAV_ITEMS } from '@/components/taly/bottom-nav'
+import { SoundTogglePopover } from '@/components/taly/sound-toggle'
 import { Gift, Bot, LogOut, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth-store'
@@ -104,6 +105,15 @@ export function DesktopSidebar({
           <Gift className="h-5 w-5" />
           <span className="font-medium">Daily Reward</span>
         </button>
+
+        <div className="mt-1 flex items-center gap-2 px-3 py-1">
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Sound
+          </span>
+          <div className="ml-auto">
+            <SoundTogglePopover />
+          </div>
+        </div>
       </nav>
 
       <div className="border-t p-3">

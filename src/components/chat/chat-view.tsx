@@ -39,6 +39,7 @@ import { useAuth } from '@/lib/auth-store'
 import { apiFetch, apiUpload } from '@/lib/api'
 import { useSocket, getSocket } from '@/lib/socket'
 import { useToast } from '@/hooks/use-toast'
+import { useSound } from '@/hooks/use-sound'
 import {
   useCustomizer,
   getWallpaperStyle,
@@ -156,6 +157,7 @@ export function ChatView({
 }: ChatViewProps) {
   const { user } = useAuth()
   const { toast } = useToast()
+  const { play: soundManager } = useSound()
   const customizer = useCustomizerSafe(preferences)
 
   // ----- State -----
@@ -580,6 +582,9 @@ export function ChatView({
         })
         wasNearBottomRef.current = true
         getSocket()?.emit('message:send', { conversationId, message: sent })
+        // Subtle "pop" sound for an outgoing message — fires inside the
+        // user's send click/keypress gesture so the AudioContext is unlocked.
+        soundManager.playSend()
       }
       setReplyingTo(null)
       setText('')
@@ -1129,6 +1134,7 @@ export function ChatView({
               size={36}
               showAura
               className="shrink-0"
+              isOnline={!!conversation?.otherUser?.isOnline}
             />
           )}
 
