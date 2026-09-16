@@ -15,6 +15,7 @@ import { BottomNav, NAV_ITEMS } from '@/components/taly/bottom-nav'
 import { MobileTopBar } from '@/components/taly/mobile-top-bar'
 import { DesktopSidebar } from '@/components/taly/desktop-sidebar'
 import { DailyRewardDialog } from '@/components/taly/daily-reward-dialog'
+import { CreateStoryDialog } from '@/components/taly/create-story-dialog'
 import { useMediaQuery } from '@/hooks/use-mobile'
 import { useSound } from '@/hooks/use-sound'
 import { cn } from '@/lib/utils'
@@ -54,6 +55,8 @@ export function TalyApp() {
   }>(null)
   const [talyOpen, setTalyOpen] = useState(false)
   const [dailyOpen, setDailyOpen] = useState(false)
+  const [createStoryOpen, setCreateStoryOpen] = useState(false)
+  const [storiesSignal, setStoriesSignal] = useState(0)
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [preferences, setPreferences] = useState<any>(null)
 
@@ -128,6 +131,11 @@ export function TalyApp() {
         ]
       })
     },
+    'story:new': () => {
+      // A new story was posted (by us or someone visible). Bump the signal
+      // so HomeScreen re-fetches its stories list.
+      setStoriesSignal((n) => n + 1)
+    },
   })
 
   const shellClass = useMemo(
@@ -180,6 +188,7 @@ export function TalyApp() {
               user={user}
               onDailyReward={() => setDailyOpen(true)}
               onTalySupport={() => setTalyOpen(true)}
+              onOpenCreateStory={() => setCreateStoryOpen(true)}
               conversations={conversations}
               onOpenChat={(c) => setOpenChat(c)}
             />
@@ -192,6 +201,7 @@ export function TalyApp() {
                 user={user}
                 onDailyReward={() => setDailyOpen(true)}
                 onOpenTaly={() => setTalyOpen(true)}
+                onOpenCreateStory={() => setCreateStoryOpen(true)}
               />
             )}
 
@@ -209,6 +219,8 @@ export function TalyApp() {
                   }
                   onNavigate={setTab}
                   onOpenTaly={() => setTalyOpen(true)}
+                  onOpenCreateStory={() => setCreateStoryOpen(true)}
+                  storiesSignal={storiesSignal}
                 />
               )}
               {tab === 'chats' && (
@@ -254,6 +266,12 @@ export function TalyApp() {
       <FloatingAIAgent onClick={() => setTalyOpen(true)} hidden={!!openChat} />
 
       <DailyRewardDialog open={dailyOpen} onClose={() => setDailyOpen(false)} />
+
+      <CreateStoryDialog
+        open={createStoryOpen}
+        onClose={() => setCreateStoryOpen(false)}
+        onCreated={() => setStoriesSignal((n) => n + 1)}
+      />
     </CustomizerProvider>
   )
 }

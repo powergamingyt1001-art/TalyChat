@@ -48,9 +48,18 @@ export async function PUT(
             name: true,
             avatar: true,
             isPremium: true,
+            premiumTier: true,
+            isOnline: true,
           },
         },
         replyTo: {
+          include: {
+            sender: {
+              select: { id: true, username: true, name: true, avatar: true },
+            },
+          },
+        },
+        forwardedFrom: {
           include: {
             sender: {
               select: { id: true, username: true, name: true, avatar: true },
@@ -79,6 +88,16 @@ export async function PUT(
               type: updated.replyTo.type,
               sender: updated.replyTo.sender,
               deletedAt: updated.replyTo.deletedAt,
+            }
+          : null,
+        forwardedFromId: updated.forwardedFromId || null,
+        forwardedFrom: updated.forwardedFrom
+          ? {
+              id: updated.forwardedFrom.id,
+              content: updated.forwardedFrom.content,
+              type: updated.forwardedFrom.type,
+              mediaUrl: updated.forwardedFrom.mediaUrl,
+              sender: updated.forwardedFrom.sender,
             }
           : null,
         reactions: updated.reactions,

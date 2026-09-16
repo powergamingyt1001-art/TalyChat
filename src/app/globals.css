@@ -566,3 +566,63 @@
   background-size: 20px 20px;
   opacity: 0.1;
 }
+
+/* Wave animation for greeting emoji */
+@keyframes wave {
+  0%, 60%, 100% { transform: rotate(0deg); }
+  10% { transform: rotate(14deg); }
+  20% { transform: rotate(-8deg); }
+  30% { transform: rotate(14deg); }
+  40% { transform: rotate(-4deg); }
+  50% { transform: rotate(10deg); }
+}
+
+/* Typing indicator — animated dots */
+.typing-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--muted-foreground);
+  animation: typing-bounce 1.4s ease-in-out infinite;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* Story ring — gradient border */
+.story-ring {
+  background: linear-gradient(135deg, oklch(0.78 0.18 152), oklch(0.65 0.20 160), oklch(0.70 0.20 200));
+  padding: 2.5px;
+  border-radius: 999px;
+}
+.story-ring.viewed {
+  background: var(--muted);
+  padding: 2.5px;
+}
+.story-ring-inner {
+  background: var(--background);
+  padding: 2px;
+  border-radius: 999px;
+}
+
+/* Pinned message bar */
+.pinned-bar {
+  background: linear-gradient(135deg, oklch(0.96 0.04 152 / 0.95), oklch(0.98 0.02 152 / 0.95));
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid oklch(0.78 0.18 152 / 0.2);
+}
+
+/* Forward badge */
+.forward-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: var(--muted-foreground);
+  font-style: italic;
+  margin-bottom: 2px;
+}

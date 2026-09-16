@@ -54,6 +54,13 @@ export async function GET(req: NextRequest) {
             },
           },
         },
+        forwardedFrom: {
+          include: {
+            sender: {
+              select: { id: true, username: true, name: true, avatar: true },
+            },
+          },
+        },
         sender: {
           select: {
             id: true,
@@ -62,6 +69,7 @@ export async function GET(req: NextRequest) {
             avatar: true,
             isPremium: true,
             premiumTier: true,
+            isOnline: true,
           },
         },
       },
@@ -91,6 +99,16 @@ export async function GET(req: NextRequest) {
               type: m.replyTo.type,
               sender: m.replyTo.sender,
               deletedAt: m.replyTo.deletedAt,
+            }
+          : null,
+        forwardedFromId: m.forwardedFromId || null,
+        forwardedFrom: m.forwardedFrom
+          ? {
+              id: m.forwardedFrom.id,
+              content: m.forwardedFrom.content,
+              type: m.forwardedFrom.type,
+              mediaUrl: m.forwardedFrom.mediaUrl,
+              sender: m.forwardedFrom.sender,
             }
           : null,
         reactions: m.reactions,
@@ -124,6 +142,7 @@ export async function POST(req: NextRequest) {
       voiceDuration,
       stickerId,
       replyToId,
+      forwardedFromId,
     } = body || {}
 
     if (!conversationId) {
@@ -190,23 +209,71 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Forwarding: if forwardedFromId is provided, fetch the original message
+    // and copy its content/type/mediaUrl/voiceDuration/stickerId. The new
+    // message's senderId is the current user, replyToId is null (forwards are
+    // not replies), and forwardedFromId points to the original message.
+    let forwardedPayload: {
+      content: string
+      type: string
+      mediaUrl: string | null
+      voiceDuration: number | null
+      stickerId: string | null
+    } | null = null
+    if (forwardedFromId) {
+      const original = await db.message.findUnique({
+        where: { id: forwardedFromId },
+        select: {
+          id: true,
+          content: true,
+          type: true,
+          mediaUrl: true,
+          voiceDuration: true,
+          stickerId: true,
+          deletedAt: true,
+        },
+      })
+      if (!original) {
+        return jsonError(404, 'Original message for forwarding not found')
+      }
+      if (original.deletedAt) {
+        return jsonError(400, 'Cannot forward a deleted message')
+      }
+      forwardedPayload = {
+        content: original.content,
+        type: original.type,
+        mediaUrl: original.mediaUrl,
+        voiceDuration: original.voiceDuration,
+        stickerId: original.stickerId,
+      }
+    }
+
     const message = await db.message.create({
       data: {
         conversationId,
         senderId: user.id,
-        content: content || '',
-        type: msgType,
-        mediaUrl: mediaUrl || null,
-        voiceDuration:
-          voiceDuration !== undefined && voiceDuration !== null
+        content: forwardedPayload ? forwardedPayload.content : (content || ''),
+        type: forwardedPayload ? forwardedPayload.type : msgType,
+        mediaUrl: forwardedPayload ? forwardedPayload.mediaUrl : (mediaUrl || null),
+        voiceDuration: forwardedPayload
+          ? forwardedPayload.voiceDuration
+          : voiceDuration !== undefined && voiceDuration !== null
             ? Number(voiceDuration)
             : null,
-        stickerId: stickerId || null,
-        replyToId: replyToId || null,
+        stickerId: forwardedPayload ? forwardedPayload.stickerId : (stickerId || null),
+        replyToId: forwardedPayload ? null : (replyToId || null),
+        forwardedFromId: forwardedFromId || null,
       },
       include: {
         reactions: true,
         replyTo: {
+          include: {
+            sender: {
+              select: { id: true, username: true, name: true, avatar: true },
+            },
+          },
+        },
+        forwardedFrom: {
           include: {
             sender: {
               select: { id: true, username: true, name: true, avatar: true },
@@ -221,6 +288,7 @@ export async function POST(req: NextRequest) {
             avatar: true,
             isPremium: true,
             premiumTier: true,
+            isOnline: true,
           },
         },
       },
@@ -289,6 +357,16 @@ export async function POST(req: NextRequest) {
                 type: message.replyTo.type,
                 sender: message.replyTo.sender,
                 deletedAt: message.replyTo.deletedAt,
+              }
+            : null,
+          forwardedFromId: message.forwardedFromId || null,
+          forwardedFrom: message.forwardedFrom
+            ? {
+                id: message.forwardedFrom.id,
+                content: message.forwardedFrom.content,
+                type: message.forwardedFrom.type,
+                mediaUrl: message.forwardedFrom.mediaUrl,
+                sender: message.forwardedFrom.sender,
               }
             : null,
           reactions: message.reactions,

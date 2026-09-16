@@ -77,11 +77,13 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { format as formatDate } from 'date-fns'
 
-import { MessageBubble, MessageActionMenu } from './message-bubble'
+import { MessageBubble, MessageActionMenu, TypingBubble } from './message-bubble'
 import { EmojiPicker } from './emoji-picker'
 import { ChatAdBox } from './chat-ad'
 import { ReportDialog } from './report-dialog'
 import { AddMemberDialog } from './add-member-dialog'
+import { ForwardDialog } from './forward-dialog'
+import { PinnedMessagesDialog } from './pinned-messages-dialog'
 import {
   ChatMessage,
   ChatConversation,
@@ -97,6 +99,7 @@ import {
   messagePreview,
 } from './chat-helpers'
 import { cn } from '@/lib/utils'
+import { Pin as PinBadgeIcon, X as XIcon } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
 // Safe customizer hook (works with or without the CustomizerProvider).
@@ -207,6 +210,20 @@ export function ChatView({
   const [confirmLeave, setConfirmLeave] = React.useState(false)
   const [confirmBlock, setConfirmBlock] = React.useState(false)
 
+  // Forward dialog state
+  const [forwardState, setForwardState] = React.useState<{
+    open: boolean
+    message: ChatMessage | null
+  }>({ open: false, message: null })
+
+  // Pinned messages state
+  const [pinnedMessages, setPinnedMessages] = React.useState<any[]>([])
+  const [showPinnedBar, setShowPinnedBar] = React.useState(true)
+  const [pinnedDialogOpen, setPinnedDialogOpen] = React.useState(false)
+
+  // Typing username (group chats) — the user who is currently typing.
+  const [typingUsername, setTypingUsername] = React.useState<string | null>(null)
+
   // Profile / Group info dialog (opened by clicking the header name/avatar)
   const [profileViewOpen, setProfileViewOpen] = React.useState(false)
 
@@ -299,15 +316,38 @@ export function ChatView({
     [user?.id]
   )
 
-  // ----- Initial mount: load conversation + messages -----
+  // ----- API: Load pinned messages for the pinned bar -----
+  const loadPinned = React.useCallback(async () => {
+    try {
+      const res: any = await apiFetch(`/api/conversations/${conversationId}/pinned`)
+      const list: any[] = Array.isArray(res)
+        ? res
+        : Array.isArray(res?.messages)
+          ? res.messages
+          : Array.isArray(res?.items)
+            ? res.items
+            : []
+      setPinnedMessages(list)
+      // When a new pinned message appears, re-show the pinned bar.
+      if (list.length > 0) {
+        setShowPinnedBar(true)
+      }
+    } catch {
+      // Silent — pinned bar is optional
+    }
+  }, [conversationId])
+
+  // ----- Initial mount: load conversation + messages + pinned -----
   React.useEffect(() => {
     setLoading(true)
     setMessages([])
     setCursor(null)
     setHasMore(true)
+    setShowPinnedBar(true)
     loadConversation()
     loadMessages(null)
-  }, [loadConversation, loadMessages])
+    loadPinned()
+  }, [loadConversation, loadMessages, loadPinned])
 
   // ----- Auto-scroll on new messages if near bottom -----
   React.useEffect(() => {
@@ -455,8 +495,21 @@ export function ChatView({
       if (!payload || payload.conversationId !== conversationId) return
       if (payload.userId === user?.id) return // ignore my own
       setOtherTyping(!!payload.isTyping)
+      // For group chats, surface the username so we can show "@user is typing…".
+      if (payload.isTyping) {
+        // Resolve username from the conversation members (if available).
+        const member = conversation?.members?.find((m) => m.userId === payload.userId)
+        const uname =
+          payload.username ||
+          member?.user?.username ||
+          member?.user?.name ||
+          null
+        setTypingUsername(uname)
+      } else {
+        setTypingUsername(null)
+      }
     },
-    [conversationId, user?.id]
+    [conversationId, user?.id, conversation?.members]
   )
 
   const { connected } = useSocket({
@@ -708,26 +761,76 @@ export function ChatView({
   }
 
   const handlePin = async (m: ChatMessage) => {
+    const wantPin = !m.pinnedAt
     try {
-      // Pinning individual messages is server-side TBD; here we just
-      // emit + optimistically update locally. (Backend may store pinnedAt.)
+      // Optimistically update local state for snappy UI.
       setMessages((prev) =>
         prev.map((mm) =>
           mm.id === m.id
-            ? { ...mm, pinnedAt: mm.pinnedAt ? null : new Date().toISOString() }
+            ? {
+                ...mm,
+                pinnedAt: wantPin ? new Date().toISOString() : null,
+              }
             : mm
         )
       )
-      toast({ title: m.pinnedAt ? 'Unpinned' : 'Pinned' })
+      const res: any = await apiFetch(`/api/messages/${m.id}/pin`, {
+        method: 'POST',
+        body: JSON.stringify({ pin: wantPin }),
+      })
+      // If the server returned an updated pinnedAt, sync.
+      if (res?.message?.pinnedAt) {
+        setMessages((prev) =>
+          prev.map((mm) =>
+            mm.id === m.id ? { ...mm, pinnedAt: res.message.pinnedAt } : mm
+          )
+        )
+      }
+      // Refresh the pinned-messages bar.
+      await loadPinned()
+      // Re-show the pinned bar if we just pinned.
+      if (wantPin) setShowPinnedBar(true)
+      toast({ title: wantPin ? 'Message pinned' : 'Message unpinned' })
     } catch (e: any) {
-      toast({ title: e.message || 'Failed', variant: 'destructive' })
+      // Revert optimistic update on error.
+      setMessages((prev) =>
+        prev.map((mm) =>
+          mm.id === m.id ? { ...mm, pinnedAt: m.pinnedAt } : mm
+        )
+      )
+      toast({ title: e.message || 'Failed to pin', variant: 'destructive' })
     }
   }
 
   const handleForward = (m: ChatMessage) => {
-    // PRD says forward is "toast only" for now.
-    toast({ title: 'Forwarding is coming soon' })
+    setForwardState({ open: true, message: m })
   }
+
+  // ----- Jump to message (from pinned dialog) -----
+  // Scrolls the chat to the target message and briefly highlights it.
+  const handleMessageJump = React.useCallback((messageId: string) => {
+    // First, ensure the message is in the current list.
+    const exists = messages.some((m) => m.id === messageId)
+    if (!exists) {
+      toast({ title: 'Message not loaded — scroll up to find it.' })
+      return
+    }
+    // Find the DOM node for the message and scroll to it.
+    const el = scrollRef.current
+    if (!el) return
+    const node = el.querySelector(`[data-message-id="${messageId}"]`) as HTMLElement | null
+    if (node) {
+      node.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      // Brief flash highlight
+      node.classList.add('ring-2', 'ring-primary/60', 'rounded-xl')
+      setTimeout(() => {
+        node.classList.remove('ring-2', 'ring-primary/60', 'rounded-xl')
+      }, 1500)
+    } else {
+      // Fallback — just scroll to bottom
+      el.scrollTop = el.scrollHeight
+    }
+  }, [messages, toast])
 
   const handleCopy = (text: string) => {
     if (!text) {
@@ -1333,6 +1436,61 @@ export function ChatView({
         </div>
       )}
 
+      {/* =========================== PINNED BAR =========================== */}
+      {pinnedMessages.length > 0 && showPinnedBar && (() => {
+        const latest = pinnedMessages[0]
+        const senderName =
+          latest?.sender?.name || latest?.sender?.username || 'user'
+        const preview =
+          latest?.type === 'image'
+            ? '📷 Photo'
+            : latest?.type === 'voice'
+              ? '🎤 Voice message'
+              : latest?.type === 'sticker'
+                ? '🎨 Sticker'
+                : (latest?.content || '').slice(0, 50)
+        return (
+          <div
+            className="pinned-bar flex shrink-0 items-center gap-2 px-3 py-2"
+            role="button"
+            tabIndex={0}
+            onClick={() => setPinnedDialogOpen(true)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                setPinnedDialogOpen(true)
+              }
+            }}
+          >
+            <PinBadgeIcon className="h-4 w-4 shrink-0 text-primary" />
+            <div className="min-w-0 flex-1 cursor-pointer">
+              <div className="truncate text-xs text-foreground">
+                <span className="font-semibold text-primary">
+                  @{senderName}:
+                </span>{' '}
+                <span className="opacity-90">{preview}</span>
+              </div>
+              {pinnedMessages.length > 1 && (
+                <div className="text-[10px] text-muted-foreground">
+                  +{pinnedMessages.length - 1} more pinned
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setShowPinnedBar(false)
+              }}
+              aria-label="Hide pinned bar"
+              className="flex h-7 w-7 min-h-[36px] min-w-[36px] items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10"
+            >
+              <XIcon className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )
+      })()}
+
       {/* =========================== MESSAGES =========================== */}
       <div
         ref={scrollRef}
@@ -1373,34 +1531,35 @@ export function ChatView({
               const m = item.message!
               const isMine = m.senderId === user?.id
               return (
-                <MessageBubble
-                  key={m.id}
-                  message={m}
-                  isMine={isMine}
-                  isGroup={isGroup}
-                  currentUserId={user?.id || ''}
-                  messageStyle={messageStyle}
-                  fontFamilyClass={fontFamilyClass}
-                  fontSizePx={fontSizePx}
-                  isFirstInGroup={item.isFirstInGroup}
-                  isLastInGroup={item.isLastInGroup}
-                  showDateSeparator={false}
-                  dateSeparatorLabel={item.label}
-                  onReply={handleReplyTo}
-                  onReact={handleReact}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                  onPin={handlePin}
-                  onForward={handleForward}
-                  onCopy={handleCopy}
-                  registerActionAnchor={(el, msg) => {
-                    if (el && msg) {
-                      setActionMenu({ message: msg, anchorRect: el.getBoundingClientRect() })
-                    } else {
-                      setActionMenu(null)
-                    }
-                  }}
-                />
+                <div key={m.id} data-message-id={m.id}>
+                  <MessageBubble
+                    message={m}
+                    isMine={isMine}
+                    isGroup={isGroup}
+                    currentUserId={user?.id || ''}
+                    messageStyle={messageStyle}
+                    fontFamilyClass={fontFamilyClass}
+                    fontSizePx={fontSizePx}
+                    isFirstInGroup={item.isFirstInGroup}
+                    isLastInGroup={item.isLastInGroup}
+                    showDateSeparator={false}
+                    dateSeparatorLabel={item.label}
+                    onReply={handleReplyTo}
+                    onReact={handleReact}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onPin={handlePin}
+                    onForward={handleForward}
+                    onCopy={handleCopy}
+                    registerActionAnchor={(el, msg) => {
+                      if (el && msg) {
+                        setActionMenu({ message: msg, anchorRect: el.getBoundingClientRect() })
+                      } else {
+                        setActionMenu(null)
+                      }
+                    }}
+                  />
+                </div>
               )
             })
           )}
@@ -1414,6 +1573,15 @@ export function ChatView({
             />
           )}
         </div>
+
+        {/* Typing indicator bubble (above composer, inside scroll area) */}
+        {otherTyping && (
+          <TypingBubble
+            isGroup={isGroup}
+            typingUsername={typingUsername}
+            messageStyle={messageStyle}
+          />
+        )}
       </div>
 
       {/* =========================== COMPOSER =========================== */}
@@ -1658,6 +1826,32 @@ export function ChatView({
         onLeaveGroup={() => {
           setProfileViewOpen(false)
           setConfirmLeave(true)
+        }}
+      />
+
+      {/* Forward dialog */}
+      <ForwardDialog
+        open={forwardState.open}
+        onClose={() => setForwardState({ open: false, message: null })}
+        message={forwardState.message}
+      />
+
+      {/* Pinned messages dialog */}
+      <PinnedMessagesDialog
+        open={pinnedDialogOpen}
+        onClose={() => setPinnedDialogOpen(false)}
+        conversationId={conversationId}
+        onJumpToMessage={handleMessageJump}
+        onUnpinned={async (messageId) => {
+          // Update the local message's pinnedAt to null so the bubble
+          // loses its pin badge immediately.
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === messageId ? { ...m, pinnedAt: null } : m
+            )
+          )
+          // Refresh the pinned-messages bar.
+          await loadPinned()
         }}
       />
 

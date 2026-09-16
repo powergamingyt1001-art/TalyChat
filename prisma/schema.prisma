@@ -77,6 +77,8 @@ model User {
   sentGroupRequests    GroupRequest[]   @relation("groupReqSender")
   // Referral tasks
   referralTasks        ReferralTask[]
+  // Stories
+  stories              Story[]
 
   @@index([email])
   @@index([username])
@@ -139,6 +141,7 @@ model Message {
   voiceDuration   Int?                       // seconds
   stickerId       String?
   replyToId       String?                    // message id being replied to
+  forwardedFromId String?                    // original message id (if this message was forwarded)
   editedAt        DateTime?
   deletedAt       DateTime?
   pinnedAt        DateTime?
@@ -150,10 +153,13 @@ model Message {
   sender        User         @relation(fields: [senderId], references: [id])
   replyTo       Message?     @relation("MessageReply", fields: [replyToId], references: [id])
   replies       Message[]    @relation("MessageReply")
+  forwardedFrom Message?     @relation("ForwardedMessages", fields: [forwardedFromId], references: [id])
+  forwardedTo   Message[]    @relation("ForwardedMessages")
   reactions     Reaction[]
 
   @@index([conversationId, createdAt])
   @@index([senderId])
+  @@index([forwardedFromId])
 }
 
 model Reaction {
@@ -531,3 +537,39 @@ model ReferralTask {
   @@index([userId, isActive])
 }
 
+
+// ============================================================
+// STORIES (WhatsApp-style disappearing status updates)
+// ============================================================
+
+model Story {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String   @default("text") // text | image
+  content     String   @default("")     // text content or image URL
+  bgColor     String   @default("#10b981") // for text stories
+  textColor   String   @default("#ffffff")
+  caption     String?
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime                  // createdAt + 24h
+  viewedBy    String   @default("")     // comma-separated user IDs
+  isDeleted   Boolean  @default(false)
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  views       StoryView[]
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+}
+
+model StoryView {
+  id        String   @id @default(cuid())
+  storyId   String
+  userId    String
+  viewedAt  DateTime @default(now())
+
+  story      Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@unique([storyId, userId])
+  @@index([storyId])
+}

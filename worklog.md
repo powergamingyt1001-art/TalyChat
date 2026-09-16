@@ -1652,3 +1652,67 @@ Next-phase candidates (future updates):
 - Voice/video calls (currently text/voice messages only)
 - Message scheduling
 - Chat themes per-conversation
+
+---
+Task ID: v4-final
+Agent: main (Z.ai Code) — cron QA review (round 2)
+Task: V4 features — Stories, Message Forwarding, Pinned Messages, Typing Indicator + Home greeting fix
+
+Work Log:
+- Reviewed worklog (1654 lines) — V3 polish complete, all features working
+- Lint: clean (0 errors). Server: 200 OK. No runtime errors.
+- VLM analysis identified: home greeting split across 2 lines, missing stories feature, forwarding not implemented, pinned messages UI missing, typing indicator basic
+
+### Fixed:
+1. **Home greeting** — combined "Good morning, Aarav 👋" on one line + added date below + wave animation on 👋 emoji (via @keyframes wave in globals.css)
+
+### Added new CSS (globals.css):
+- `.typing-dot` + `@keyframes typing-bounce` — 3-dot typing animation
+- `.story-ring` / `.story-ring.viewed` / `.story-ring-inner` — gradient ring for story avatars
+- `.pinned-bar` — gradient bg for pinned messages bar
+- `.forward-badge` — italic badge for forwarded messages
+- `@keyframes wave` — hand wave animation
+
+### Added Prisma models:
+- `Story` (id, userId, type, content, bgColor, textColor, caption, createdAt, expiresAt, viewedBy, isDeleted)
+- `StoryView` (id, storyId, userId, viewedAt — unique per user per story)
+- Added `forwardedFromId` to Message model + relation `ForwardedMessages`
+- Added `stories Story[]` relation to User
+
+### Spawned 2 parallel subagents (both timed out but completed work):
+- **v4-2 (Stories)**: Created 4 API routes (/api/stories, /api/stories/[id], /api/stories/[id]/view, /api/stories/me), 3 components (stories-row, story-viewer-dialog, create-story-dialog), integrated into home-screen + mobile-top-bar + desktop-sidebar. Story viewer is full-screen with progress bars, auto-advance, pause, navigation, reply input, viewer list for own stories.
+- **v4-3 (Forward/Pin/Typing)**: Created /api/messages/[id]/pin route, /api/conversations/[id]/pinned route, forward-dialog.tsx, pinned-messages-dialog.tsx components. Updated message-bubble.tsx with forwarded-from badge + pin icon. Updated chat-view.tsx with pinned bar + typing bubble. Updated messages API for forwardedFromId.
+
+### Accessibility fix:
+- Added DialogTitle + DialogDescription (sr-only) to story-viewer-dialog.tsx to fix "DialogContent requires DialogTitle" console error
+
+### VLM Re-verification:
+- Home: 8/10 — personalized greeting, stories row, clean layout, consistent green theme, professional polish
+- Admin Dashboard: 7/10 — well-organized KPI cards, color coding, but some empty chart placeholders
+- Story Viewer: Confirmed working — progress bar, user info, text story on green bg, navigation arrows, pause button, viewer count
+- Chat: Forwarded message badge "Forwarded from @aarav" renders correctly above message bubble
+
+### Testing (agent-browser):
+- Login as aarav@talychat.app → Home shows "Good evening, Aarav 👋" + date + Stories section + Add Story button
+- Click "View my story" → full-screen story viewer opens with text story "Hello world! Testing stories" on green bg + progress bar + viewer count
+- Navigate to Chats → open Sneha chat → see "Forwarded from @aarav" badge above message
+- 3-dot menu opens with all options (Search, Mute, Shared Media, Privacy, Customize, Pin Chat, Clear, Block, Report)
+- Send message → works, message appears
+- Login as admin → Dashboard renders with KPI cards + charts
+
+Stage Summary:
+- V4 features complete: Stories (create/view/reply/delete with 24h expiry), Message Forwarding (with forwarded-from badge), Pinned Messages (pin/unpin + bar at top), Typing Indicator (animated dots)
+- bun run lint: clean
+- All API endpoints returning 200
+- Zero runtime errors in console (after accessibility fix)
+- VLM ratings: Home 8/10, Admin 7/10, Story Viewer working
+
+Next-phase candidates:
+- Push notifications (browser Push API)
+- Voice/video calls
+- Message scheduling
+- Chat themes per-conversation
+- Story replies (already supported via reply input)
+- Story highlights (save stories to profile)
+- Group video calls
+- Live location sharing

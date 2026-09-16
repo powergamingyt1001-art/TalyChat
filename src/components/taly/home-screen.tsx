@@ -1,5 +1,6 @@
 'use client'
 
+import * as React from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
@@ -22,12 +23,22 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { PremiumAvatar } from '@/components/premium-avatar'
 import { Button } from '@/components/ui/button'
 import type { ConversationSummary } from '@/components/taly-app'
+import {
+  StoriesRow,
+  type StoriesGroup,
+  type StoryAuthor,
+  type StoryItem,
+} from '@/components/taly/stories-row'
+import { StoryViewerDialog } from '@/components/taly/story-viewer-dialog'
+import { CreateStoryDialog } from '@/components/taly/create-story-dialog'
 
 interface HomeProps {
   user: any
   onOpenChat: (c: ConversationSummary) => void
   onNavigate: (tab: any) => void
   onOpenTaly: () => void
+  onOpenCreateStory?: () => void
+  storiesSignal?: number
 }
 
 function relativeTime(iso?: string): string {
@@ -107,12 +118,77 @@ function categoryColor(cat?: string | null): string {
   }
 }
 
-export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly }: HomeProps) {
+export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly, onOpenCreateStory, storiesSignal }: HomeProps) {
   const [chats, setChats] = useState<ConversationSummary[]>([])
   const [notifications, setNotifications] = useState<any[]>([])
   const [trending, setTrending] = useState<any[]>([])
   const [ad, setAd] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // Stories state
+  const [myStories, setMyStories] = useState<StoryItem[]>([])
+  const [friendsStories, setFriendsStories] = useState<StoriesGroup[]>([])
+  const [storiesLoading, setStoriesLoading] = useState(true)
+  const [viewerOpen, setViewerOpen] = useState(false)
+  const [viewerUserId, setViewerUserId] = useState<string | null>(null)
+  const [viewerInitialIndex, setViewerInitialIndex] = useState(0)
+  const [createOpen, setCreateOpen] = useState(false)
+
+  const refreshStories = React.useCallback(async () => {
+    setStoriesLoading(true)
+    try {
+      const res: any = await apiFetch('/api/stories')
+      setMyStories((res?.myStories as StoryItem[]) || [])
+      setFriendsStories((res?.friends as StoriesGroup[]) || [])
+    } catch {
+      // silent — stories are non-critical
+    } finally {
+      setStoriesLoading(false)
+    }
+  }, [])
+
+  // Fetch stories on mount + when storiesSignal changes (e.g. socket push)
+  useEffect(() => {
+    refreshStories()
+  }, [refreshStories, storiesSignal])
+
+  const handleOpenStory = (userId: string, storyIndex: number) => {
+    setViewerUserId(userId)
+    setViewerInitialIndex(storyIndex)
+    setViewerOpen(true)
+  }
+
+  const handleAddStory = () => {
+    // Use parent handler if provided (so the same dialog can be triggered
+    // from the top bar). Otherwise open the local instance.
+    if (onOpenCreateStory) {
+      onOpenCreateStory()
+    } else {
+      setCreateOpen(true)
+    }
+  }
+
+  // Compose the active "all stories" list for the viewer (myStories +
+  // friends, with the author attached to my stories)
+  const myAuthor: StoryAuthor = React.useMemo(
+    () => ({
+      id: user?.id || 'me',
+      name: user?.name || 'Me',
+      username: user?.username,
+      avatar: user?.avatar || null,
+      isPremium: !!user?.isPremium,
+      premiumTier: user?.premiumTier,
+    }),
+    [user]
+  )
+
+  const allStoriesForViewer: StoriesGroup[] = React.useMemo(() => {
+    const myGroup: StoriesGroup | null =
+      myStories.length > 0
+        ? { user: myAuthor, stories: myStories, hasUnviewed: false }
+        : null
+    return [...(myGroup ? [myGroup] : []), ...friendsStories]
+  }, [myStories, myAuthor, friendsStories])
 
   useEffect(() => {
     let cancelled = false
@@ -209,8 +285,13 @@ export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly }: HomePro
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        <p className="text-sm font-medium text-muted-foreground">{greeting()},</p>
-        <h1 className="text-2xl font-bold tracking-tight">{firstName} 👋</h1>
+        <h1 className="text-2xl font-bold tracking-tight">
+          <span className="text-muted-foreground font-medium">{greeting()},</span>{' '}
+          {firstName} <span className="inline-block animate-[wave_1.8s_ease-in-out_infinite]">👋</span>
+        </h1>
+        <p className="mt-0.5 text-xs text-muted-foreground/80">
+          {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+        </p>
       </motion.div>
 
       {/* Hero banner — glassmorphism */}
@@ -283,6 +364,16 @@ export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly }: HomePro
           )
         })}
       </motion.div>
+
+      {/* Stories row */}
+      <StoriesRow
+        myStoryAuthor={myAuthor}
+        myStories={myStories}
+        friends={friendsStories}
+        onOpenStory={handleOpenStory}
+        onAddStory={handleAddStory}
+        loading={storiesLoading}
+      />
 
       {/* Recent private chats */}
       <section className="mt-6 animate-fade-in-up" style={{ animationDelay: '0.05s' }}>
@@ -459,6 +550,25 @@ export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly }: HomePro
 
       {/* Sponsored ad */}
       {ad && <SponsoredAdCard ad={ad} onDismiss={() => setAd(null)} />}
+
+      {/* Story viewer dialog */}
+      <StoryViewerDialog
+        open={viewerOpen}
+        onClose={() => setViewerOpen(false)}
+        userId={viewerUserId || ''}
+        initialIndex={viewerInitialIndex}
+        allStories={allStoriesForViewer}
+        onStoryDeleted={refreshStories}
+      />
+
+      {/* Create story dialog (local fallback when no parent handler) */}
+      {!onOpenCreateStory && (
+        <CreateStoryDialog
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+          onCreated={refreshStories}
+        />
+      )}
     </div>
   )
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { Bell, Gift, Bot } from 'lucide-react'
+import { Bell, Gift, Bot, Camera } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { apiFetch } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -12,9 +12,10 @@ interface Props {
   user?: any
   onDailyReward: () => void
   onOpenTaly: () => void
+  onOpenCreateStory?: () => void
 }
 
-export function MobileTopBar({ title, user, onDailyReward, onOpenTaly }: Props) {
+export function MobileTopBar({ title, user, onDailyReward, onOpenTaly, onOpenCreateStory }: Props) {
   const [notifications, setNotifications] = useState<any[]>([])
   const [openNotif, setOpenNotif] = useState(false)
 
@@ -74,6 +75,12 @@ export function MobileTopBar({ title, user, onDailyReward, onOpenTaly }: Props) 
         <Button size="icon" variant="ghost" onClick={onDailyReward} aria-label="Daily reward" className="h-9 w-9">
           <Gift className="h-5 w-5" />
         </Button>
+
+        {onOpenCreateStory && (
+          <Button size="icon" variant="ghost" onClick={onOpenCreateStory} aria-label="Add story" className="h-9 w-9">
+            <Camera className="h-5 w-5" />
+          </Button>
+        )}
 
         <Button size="icon" variant="ghost" onClick={onOpenTaly} aria-label="Ask Taly" className="h-9 w-9">
           <Bot className="h-5 w-5" />

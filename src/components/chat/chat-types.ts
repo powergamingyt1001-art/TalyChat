@@ -27,6 +27,14 @@ export interface ChatReplyTo {
   sender?: ChatUser | null
 }
 
+export interface ChatForwardedFrom {
+  id: string
+  content?: string
+  type?: string
+  mediaUrl?: string | null
+  sender?: ChatUser | null
+}
+
 export interface ChatMessage {
   id: string
   conversationId: string
@@ -39,6 +47,8 @@ export interface ChatMessage {
   stickerId?: string | null
   replyToId?: string | null
   replyTo?: ChatReplyTo | null
+  forwardedFromId?: string | null
+  forwardedFrom?: ChatForwardedFrom | null
   reactions?: ChatReaction[]
   editedAt?: string | null
   deletedAt?: string | null

@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { motion } from 'framer-motion'
 import { PremiumAvatar } from '@/components/premium-avatar'
 import {
   Dialog,
@@ -370,6 +371,36 @@ export const MessageBubble = React.forwardRef<MessageBubbleHandle, MessageBubble
               </div>
             )}
 
+            {/* Forwarded badge above bubble */}
+            {message.forwardedFrom && !isDeleted && (
+              <div
+                className={cn(
+                  'forward-badge max-w-full',
+                  isMine ? 'self-end' : 'self-start'
+                )}
+                title={`Forwarded from @${message.forwardedFrom.sender?.username || message.forwardedFrom.sender?.name || 'user'}`}
+              >
+                <Forward className="h-3 w-3 shrink-0" />
+                <span className="truncate">
+                  Forwarded from @{message.forwardedFrom.sender?.username || message.forwardedFrom.sender?.name || 'user'}
+                </span>
+              </div>
+            )}
+
+            {/* Pinned badge — small 📌 above the bubble */}
+            {message.pinnedAt && !isDeleted && (
+              <div
+                className={cn(
+                  'mb-0.5 flex items-center gap-0.5 text-[10px] font-medium text-primary',
+                  isMine ? 'self-end' : 'self-start'
+                )}
+                aria-label="Pinned message"
+              >
+                <Pin className="h-3 w-3" />
+                <span>Pinned</span>
+              </div>
+            )}
+
             {/* Bubble */}
             <div
               className={cn(
@@ -622,3 +653,69 @@ function ActionMenuItem({
 }
 
 export type { ActionMenuState }
+
+// ---------------------------------------------------------------------------
+// TypingBubble — a received-style bubble with 3 animated typing dots.
+// Rendered at the bottom of the chat (above the composer) when the other
+// user is typing. Uses the `.typing-dot` CSS class for the bounce animation.
+// ---------------------------------------------------------------------------
+
+interface TypingBubbleProps {
+  /** Group chat? — show "@username is typing…" label above the dots. */
+  isGroup?: boolean
+  /** Username to display when isGroup (the user who is typing). */
+  typingUsername?: string | null
+  /** Bubble style — passed through for consistency with message bubbles. */
+  messageStyle?: string
+}
+
+export function TypingBubble({
+  isGroup = false,
+  typingUsername,
+  messageStyle = 'bubble',
+}: TypingBubbleProps) {
+  const styleCls = (() => {
+    switch (messageStyle) {
+      case 'sharp':
+        return 'rounded-none'
+      case 'tail':
+        return 'bubble-tail-received'
+      case 'none':
+        return 'bubble-none'
+      default:
+        return ''
+    }
+  })()
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6, scale: 0.94 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 4, scale: 0.96 }}
+      transition={{ duration: 0.25, ease: [0.34, 1.56, 0.64, 1] }}
+      className="flex w-full items-end justify-start gap-2 px-3 pb-1 pt-0"
+      aria-live="polite"
+      aria-label={
+        isGroup && typingUsername
+          ? `${typingUsername} is typing`
+          : 'Other user is typing'
+      }
+    >
+      <div
+        className={cn(
+          'rounded-2xl bg-muted/80 px-3 py-2.5 shadow-sm',
+          'flex items-center gap-1',
+          styleCls
+        )}
+      >
+        <span className="typing-dot" />
+        <span className="typing-dot" />
+        <span className="typing-dot" />
+      </div>
+      {isGroup && typingUsername && (
+        <span className="self-center text-[11px] italic text-muted-foreground">
+          {typingUsername} is typing…
+        </span>
+      )}
+    </motion.div>
+  )
+}

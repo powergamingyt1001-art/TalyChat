@@ -121,6 +121,16 @@ io.on('connection', (socket) => {
     }
   )
 
+  // ---------- Story broadcast ----------
+  // When a user creates a story, the client emits `story:new` with the
+  // author's userId. We broadcast to ALL connected clients so any user
+  // who can see the author (private conv or shared group) refreshes their
+  // StoriesRow on Home. Each client filters server-side visibility on
+  // its own /api/stories GET, so over-broadcasting is safe.
+  socket.on('story:new', (payload: { userId?: string } | undefined) => {
+    io.emit('story:new', { userId: payload?.userId || userId })
+  })
+
   // ---------- Disconnect ----------
   socket.on('disconnect', () => {
     const set = userSockets.get(userId)
