@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "410813408724",
+    "project_id": "talychat-296c6",
+    "storage_bucket": "talychat-296c6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:410813408724:android:874e2a84bf6cee76f5a241",
+        "android_client_info": {
+          "package_name": "com.talychat.social"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "410813408724-kugk904nuugt1fj03a0bu7bqtss54g7n.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBUZRbkkzORrgzTYza5drsFFafcgAGJo3U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "410813408724-kugk904nuugt1fj03a0bu7bqtss54g7n.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
