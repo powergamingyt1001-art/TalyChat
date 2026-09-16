@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -532,6 +533,9 @@ function NewChatDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Start a new chat</DialogTitle>
+          <DialogDescription className="sr-only">
+            Search for a TalyChat user by name or username. Picking someone new sends them a chat request.
+          </DialogDescription>
         </DialogHeader>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

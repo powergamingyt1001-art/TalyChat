@@ -1,0 +1,792 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState } from 'react'
+     4→import { motion } from 'framer-motion'
+     5→import { Check, Compass, Loader2, Lock, Users } from 'lucide-react'
+     6→import { apiFetch } from '@/lib/api'
+     7→import { useToast } from '@/hooks/use-toast'
+     8→import { CATEGORIES } from '@/components/taly/customizer-context'
+     9→import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+    10→import { Button } from '@/components/ui/button'
+    11→import {
+    12→  Dialog,
+    13→  DialogContent,
+    14→  DialogFooter,
+    15→  DialogHeader,
+    16→  DialogTitle,
+    17→} from '@/components/ui/dialog'
+    18→
+    19→interface GroupItem {
+    20→  id: string
+    21→  name: string
+    22→  description?: string | null
+    23→  logo?: string | null
+    24→  category?: string | null
+    25→  membersCount: number
+    26→  isPublic: boolean
+    27→  isJoined?: boolean
+    28→  conversationId?: string | null
+    29→}
+    30→
+    31→// Track per-group state: 'idle' (default Join), 'requested' (private, request sent)
+    32→type JoinState = 'idle' | 'joined' | 'requested'
+    33→
+    34→// Category → ring color (used for avatar ring + badge tint)
+    35→function categoryRing(cat?: string | null): string {
+    36→  switch ((cat || '').toLowerCase()) {
+    37→    case 'gaming':
+    38→      return 'ring-violet-400/70'
+    39→    case 'technology':
+    40→    case 'ai':
+    41→      return 'ring-blue-400/70'
+    42→    case 'cricket':
+    43→    case 'sports':
+    44→      return 'ring-orange-400/70'
+    45→    case 'entertainment':
+    46→    case 'movies':
+    47→    case 'music':
+    48→      return 'ring-pink-400/70'
+    49→    case 'education':
+    50→      return 'ring-emerald-400/70'
+    51→    case 'business':
+    52→    case 'finance':
+    53→    case 'jobs':
+    54→      return 'ring-yellow-400/70'
+    55→    case 'memes':
+    56→      return 'ring-fuchsia-400/70'
+    57→    case 'news':
+    58→      return 'ring-cyan-400/70'
+    59→    case 'local':
+    60→      return 'ring-teal-400/70'
+    61→    default:
+    62→      return 'ring-emerald-400/70'
+    63→  }
+    64→}
+    65→
+    66→// Category → badge text/bg color
+    67→function categoryBadge(cat?: string | null): string {
+    68→  switch ((cat || '').toLowerCase()) {
+    69→    case 'gaming':
+    70→      return 'bg-violet-500/10 text-violet-600'
+    71→    case 'technology':
+    72→    case 'ai':
+    73→      return 'bg-blue-500/10 text-blue-600'
+    74→    case 'cricket':
+    75→    case 'sports':
+    76→      return 'bg-orange-500/10 text-orange-600'
+    77→    case 'entertainment':
+    78→    case 'movies':
+    79→    case 'music':
+    80→      return 'bg-pink-500/10 text-pink-600'
+    81→    case 'education':
+    82→      return 'bg-emerald-500/10 text-emerald-600'
+    83→    case 'business':
+    84→    case 'finance':
+    85→    case 'jobs':
+    86→      return 'bg-yellow-500/10 text-yellow-700'
+    87→    case 'memes':
+    88→      return 'bg-fuchsia-500/10 text-fuchsia-600'
+    89→    case 'news':
+    90→      return 'bg-cyan-500/10 text-cyan-600'
+    91→    case 'local':
+    92→      return 'bg-teal-500/10 text-teal-600'
+    93→    default:
+    94→      return 'bg-emerald-500/10 text-emerald-600'
+    95→  }
+    96→}
+    97→
+    98→export function DiscoverScreen() {
+    99→  const { toast } = useToast()
+   100→  const [trending, setTrending] = useState<GroupItem[]>([])
+   101→  const [popular, setPopular] = useState<GroupItem[]>([])
+   102→  const [newGroups, setNewGroups] = useState<GroupItem[]>([])
+   103→  const [sponsored, setSponsored] = useState<any[]>([])
+   104→  const [activeCategory, setActiveCategory] = useState<string | null>(null)
+   105→  const [categoryResults, setCategoryResults] = useState<GroupItem[]>([])
+   106→  const [loading, setLoading] = useState(true)
+   107→  const [catLoading, setCatLoading] = useState(false)
+   108→  const [joining, setJoining] = useState<string | null>(null)
+   109→  // joinedIds = public joined; requestedIds = private groups with sent requests
+   110→  const [joinedIds, setJoinedIds] = useState<Set<string>>(new Set())
+   111→  const [requestedIds, setRequestedIds] = useState<Set<string>>(new Set())
+   112→  const [preview, setPreview] = useState<GroupItem | null>(null)
+   113→
+   114→  useEffect(() => {
+   115→    let cancelled = false
+   116→    ;(async () => {
+   117→      setLoading(true)
+   118→      try {
+   119→        const [t, p, n] = await Promise.all([
+   120→          apiFetch('/api/discover?sort=trending').catch(() => null),
+   121→          apiFetch('/api/discover?sort=popular').catch(() => null),
+   122→          apiFetch('/api/discover?sort=new').catch(() => null),
+   123→        ])
+   124→        if (cancelled) return
+   125→        // Defensive: API returns { groups: [...], sponsored: [...] }.
+   126→        // Fall back to bare arrays if the shape is ever flat.
+   127→        const tGroups: GroupItem[] = (Array.isArray(t)
+   128→          ? t
+   129→          : t?.groups || t?.items || []) as GroupItem[]
+   130→        const pGroups: GroupItem[] = (Array.isArray(p)
+   131→          ? p
+   132→          : p?.groups || p?.items || []) as GroupItem[]
+   133→        const nGroups: GroupItem[] = (Array.isArray(n)
+   134→          ? n
+   135→          : n?.groups || n?.items || []) as GroupItem[]
+   136→        setTrending(tGroups)
+   137→        setPopular(pGroups)
+   138→        setNewGroups(nGroups)
+   139→        // Sponsored ads: prefer the trending response's sponsored list,
+   140→        // fall back to popular's, then to an empty array.
+   141→        const sponsoredList: any[] = Array.isArray(t?.sponsored)
+   142→          ? t.sponsored
+   143→          : Array.isArray(p?.sponsored)
+   144→            ? p.sponsored
+   145→            : Array.isArray(n?.sponsored)
+   146→              ? n.sponsored
+   147→              : []
+   148→        setSponsored(sponsoredList)
+   149→        const joined = new Set<string>([
+   150→          ...tGroups.filter((g) => g.isJoined).map((g) => g.id),
+   151→          ...pGroups.filter((g) => g.isJoined).map((g) => g.id),
+   152→          ...nGroups.filter((g) => g.isJoined).map((g) => g.id),
+   153→        ])
+   154→        setJoinedIds(joined)
+   155→      } finally {
+   156→        if (!cancelled) setLoading(false)
+   157→      }
+   158→    })()
+   159→    return () => {
+   160→      cancelled = true
+   161→    }
+   162→  }, [])
+   163→
+   164→  // Load the user's sent group join requests once on mount so we can mark
+   165→  // private groups as "requested".
+   166→  useEffect(() => {
+   167→    ;(async () => {
+   168→      try {
+   169→        const res: any = await apiFetch('/api/groups/requests/sent')
+   170→        const list: any[] = Array.isArray(res) ? res : (res?.requests || res?.items || [])
+   171→        const pending = new Set<string>(
+   172→          list
+   173→            .filter((r: any) => r.status === 'pending' && r.group?.id)
+   174→            .map((r: any) => r.group.id),
+   175→        )
+   176→        setRequestedIds(pending)
+   177→      } catch {
+   178→        // ignore — feature best-effort
+   179→      }
+   180→    })()
+   181→  }, [])
+   182→
+   183→  const fetchCategory = async (cat: string) => {
+   184→    setCatLoading(true)
+   185→    try {
+   186→      const res: any = await apiFetch(
+   187→        `/api/discover?category=${encodeURIComponent(cat)}&sort=trending`,
+   188→      )
+   189→      // Defensive: API returns { groups: [...] }, fall back to bare array.
+   190→      const list: GroupItem[] = (Array.isArray(res)
+   191→        ? res
+   192→        : res?.groups || res?.items || []) as GroupItem[]
+   193→      setCategoryResults(list)
+   194→    } catch (e: any) {
+   195→      toast({ title: e?.message || 'Failed to load category', variant: 'destructive' })
+   196→    } finally {
+   197→      setCatLoading(false)
+   198→    }
+   199→  }
+   200→
+   201→  const handleCategoryClick = (cat: string) => {
+   202→    if (activeCategory === cat) {
+   203→      setActiveCategory(null)
+   204→      setCategoryResults([])
+   205→    } else {
+   206→      setActiveCategory(cat)
+   207→      fetchCategory(cat)
+   208→    }
+   209→  }
+   210→
+   211→  // Returns the join state for a group, factoring in joined + requested sets.
+   212→  const joinStateFor = (g: GroupItem): JoinState => {
+   213→    if (joinedIds.has(g.id)) return 'joined'
+   214→    if (!g.isPublic && requestedIds.has(g.id)) return 'requested'
+   215→    return 'idle'
+   216→  }
+   217→
+   218→  const handleJoin = async (g: GroupItem) => {
+   219→    setJoining(g.id)
+   220→    try {
+   221→      const res: any = await apiFetch('/api/groups/join', {
+   222→        method: 'POST',
+   223→        body: JSON.stringify({ groupId: g.id }),
+   224→      })
+   225→      if (res?.alreadyMember) {
+   226→        toast({ title: 'You are already a member' })
+   227→        setJoinedIds((prev) => new Set(prev).add(g.id))
+   228→      } else if (res?.requested) {
+   229→        // Private group → request was sent
+   230→        toast({
+   231→          title: 'Join request sent! Wait for admin approval.',
+   232→        })
+   233→        setRequestedIds((prev) => new Set(prev).add(g.id))
+   234→      } else {
+   235→        // Public group → direct join
+   236→        toast({ title: `Joined ${g.name} 🎉` })
+   237→        setJoinedIds((prev) => new Set(prev).add(g.id))
+   238→      }
+   239→    } catch (e: any) {
+   240→      toast({ title: e?.message || 'Failed to join', variant: 'destructive' })
+   241→    } finally {
+   242→      setJoining(null)
+   243→    }
+   244→  }
+   245→
+   246→  const totalGroups = trending.length + popular.length + newGroups.length
+   247→
+   248→  return (
+   249→    <div className="mx-auto max-w-2xl px-4 pb-20 pt-6 lg:pb-6 lg:pt-8">
+   250→      {/* Header */}
+   251→      <motion.div
+   252→        initial={{ opacity: 0, y: -8 }}
+   253→        animate={{ opacity: 1, y: 0 }}
+   254→        transition={{ duration: 0.3 }}
+   255→      >
+   256→        <h1 className="section-header">Discover</h1>
+   257→        <p className="mt-1 text-sm text-muted-foreground">
+   258→          Find communities that match your interests
+   259→        </p>
+   260→      </motion.div>
+   261→
+   262→      {/* Category chips — solid emerald active state */}
+   263→      <div className="no-scrollbar scroll-pan-y -mx-4 mt-3 w-full overflow-x-auto px-4">
+   264→        <div className="flex min-w-0 gap-2 pb-1">
+   265→          {CATEGORIES.map((cat) => {
+   266→            const active = activeCategory === cat
+   267→            return (
+   268→              <button
+   269→                key={cat}
+   270→                type="button"
+   271→                onClick={() => handleCategoryClick(cat)}
+   272→                className={`category-chip min-h-[36px] ${active ? 'active' : ''}`}
+   273→              >
+   274→                {cat}
+   275→              </button>
+   276→            )
+   277→          })}
+   278→        </div>
+   279→      </div>
+   280→
+   281→      {/* Empty state — no groups loaded */}
+   282→      {!loading && totalGroups === 0 && !activeCategory && (
+   283→        <div className="dotted-bg mt-6 flex flex-col items-center justify-center rounded-2xl border border-border bg-card p-10 text-center">
+   284→          <Compass className="h-12 w-12 text-muted-foreground/60" />
+   285→          <p className="mt-3 text-sm font-semibold text-foreground">
+   286→            No communities yet
+   287→          </p>
+   288→          <p className="mt-1 text-xs text-muted-foreground">
+   289→            Check back soon — new communities are added every day.
+   290→          </p>
+   291→        </div>
+   292→      )}
+   293→
+   294→      {/* Category results */}
+   295→      {activeCategory && (
+   296→        <section className="mt-4 animate-fade-in-up">
+   297→          <h2 className="section-header">
+   298→            {activeCategory} communities
+   299→          </h2>
+   300→          <div className="mt-3">
+   301→            {catLoading ? (
+   302→              <InlineLoadingRow />
+   303→            ) : categoryResults.length === 0 ? (
+   304→              <div className="dotted-bg flex flex-col items-center justify-center rounded-2xl border border-border bg-card p-8 text-center">
+   305→                <Compass className="h-10 w-10 text-muted-foreground/60" />
+   306→                <p className="mt-3 text-sm font-medium text-foreground">
+   307→                  No communities in this category yet
+   308→                </p>
+   309→                <p className="mt-1 text-xs text-muted-foreground">
+   310→                  Try a different category — or check back later.
+   311→                </p>
+   312→              </div>
+   313→            ) : (
+   314→              <ul className="space-y-2">
+   315→                {categoryResults.map((g) => (
+   316→                  <li key={g.id}>
+   317→                    <GroupRow
+   318→                      g={g}
+   319→                      state={joinStateFor(g)}
+   320→                      joining={joining === g.id}
+   321→                      onJoin={handleJoin}
+   322→                      onPreview={() => setPreview(g)}
+   323→                    />
+   324→                  </li>
+   325→                ))}
+   326→              </ul>
+   327→            )}
+   328→          </div>
+   329→        </section>
+   330→      )}
+   331→
+   332→      {/* Default sections */}
+   333→      {!activeCategory && (
+   334→        <>
+   335→          <Section
+   336→            title="Trending"
+   337→            loading={loading}
+   338→            groups={trending}
+   339→            joinStateFor={joinStateFor}
+   340→            joining={joining}
+   341→            onJoin={handleJoin}
+   342→            onPreview={(g) => setPreview(g)}
+   343→            delay={0.05}
+   344→          />
+   345→          <Section
+   346→            title="Popular"
+   347→            loading={loading}
+   348→            groups={popular}
+   349→            joinStateFor={joinStateFor}
+   350→            joining={joining}
+   351→            onJoin={handleJoin}
+   352→            onPreview={(g) => setPreview(g)}
+   353→            delay={0.1}
+   354→          />
+   355→          <Section
+   356→            title="New"
+   357→            loading={loading}
+   358→            groups={newGroups}
+   359→            joinStateFor={joinStateFor}
+   360→            joining={joining}
+   361→            onJoin={handleJoin}
+   362→            onPreview={(g) => setPreview(g)}
+   363→            delay={0.15}
+   364→          />
+   365→
+   366→          {/* Sponsored communities */}
+   367→          {sponsored.length > 0 && (
+   368→            <section className="mt-6 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+   369→              <h2 className="section-header">Sponsored Communities</h2>
+   370→              <div className="no-scrollbar scroll-pan-y -mx-4 mt-3 w-full overflow-x-auto px-4">
+   371→                <div className="flex min-w-0 gap-3 pb-1">
+   372→                  {sponsored.map((ad) => (
+   373→                    <a
+   374→                      key={ad.id}
+   375→                      href={ad.ctaUrl || '#'}
+   376→                      target="_blank"
+   377→                      rel="noopener noreferrer"
+   378→                      className="taly-card taly-card-hover group relative block w-64 shrink-0 overflow-hidden p-3"
+   379→                    >
+   380→                      <span className="inline-flex items-center rounded-md bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+   381→                        Sponsored
+   382→                      </span>
+   383→                      <div className="mt-2 flex gap-2">
+   384→                        {ad.imageUrl ? (
+   385→                          <img
+   386→                            src={ad.imageUrl}
+   387→                            alt={ad.brandName}
+   388→                            className="h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-border"
+   389→                          />
+   390→                        ) : (
+   391→                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500/15 to-emerald-500/5 text-emerald-600">
+   392→                            <Compass className="h-5 w-5" />
+   393→                          </div>
+   394→                        )}
+   395→                        <div className="min-w-0 flex-1">
+   396→                          <p className="truncate text-sm font-semibold">{ad.brandName}</p>
+   397→                          {ad.headline && (
+   398→                            <p className="line-clamp-2 text-xs text-muted-foreground">
+   399→                              {ad.headline}
+   400→                            </p>
+   401→                          )}
+   402→                        </div>
+   403→                      </div>
+   404→                      {ad.ctaText && (
+   405→                        <span className="action-btn mt-2 inline-flex min-h-[32px] w-full !px-3 !py-1.5 !text-xs">
+   406→                          {ad.ctaText}
+   407→                        </span>
+   408→                      )}
+   409→                    </a>
+   410→                  ))}
+   411→                </div>
+   412→              </div>
+   413→            </section>
+   414→          )}
+   415→        </>
+   416→      )}
+   417→
+   418→      {/* Group preview dialog */}
+   419→      <GroupPreviewDialog
+   420→        group={preview}
+   421→        state={preview ? joinStateFor(preview) : 'idle'}
+   422→        joining={preview ? joining === preview.id : false}
+   423→        onJoin={handleJoin}
+   424→        onClose={() => setPreview(null)}
+   425→      />
+   426→    </div>
+   427→  )
+   428→}
+   429→
+   430→function Section({
+   431→  title,
+   432→  loading,
+   433→  groups,
+   434→  joinStateFor,
+   435→  joining,
+   436→  onJoin,
+   437→  onPreview,
+   438→  delay = 0,
+   439→}: {
+   440→  title: string
+   441→  loading: boolean
+   442→  groups: GroupItem[]
+   443→  joinStateFor: (g: GroupItem) => JoinState
+   444→  joining: string | null
+   445→  onJoin: (g: GroupItem) => void
+   446→  onPreview: (g: GroupItem) => void
+   447→  delay?: number
+   448→}) {
+   449→  return (
+   450→    <section
+   451→      className="mt-6 animate-fade-in-up"
+   452→      style={{ animationDelay: `${delay}s` }}
+   453→    >
+   454→      <div className="sticky top-0 z-10 -mx-4 mb-2 bg-background/95 px-4 py-2 backdrop-blur">
+   455→        <h2 className="section-header">{title}</h2>
+   456→      </div>
+   457→      <div className="no-scrollbar scroll-pan-y -mx-4 w-full overflow-x-auto px-4">
+   458→        {loading ? (
+   459→          <CardLoadingRow />
+   460→        ) : groups.length === 0 ? (
+   461→          <p className="px-4 text-sm text-muted-foreground">No groups yet.</p>
+   462→        ) : (
+   463→          <div className="flex min-w-0 gap-3 pb-1">
+   464→            {groups.map((g) => (
+   465→              <GroupCard
+   466→                key={g.id}
+   467→                g={g}
+   468→                state={joinStateFor(g)}
+   469→                joining={joining === g.id}
+   470→                onJoin={onJoin}
+   471→                onPreview={() => onPreview(g)}
+   472→              />
+   473→            ))}
+   474→          </div>
+   475→        )}
+   476→      </div>
+   477→    </section>
+   478→  )
+   479→}
+   480→
+   481→function GroupCard({
+   482→  g,
+   483→  state,
+   484→  joining,
+   485→  onJoin,
+   486→  onPreview,
+   487→}: {
+   488→  g: GroupItem
+   489→  state: JoinState
+   490→  joining: boolean
+   491→  onJoin: (g: GroupItem) => void
+   492→  onPreview: () => void
+   493→}) {
+   494→  return (
+   495→    <div className="group-card w-44 shrink-0 p-3">
+   496→      <button
+   497→        onClick={onPreview}
+   498→        className="flex w-full flex-col items-center text-center"
+   499→      >
+   500→        <Avatar
+   501→          className={`h-14 w-14 ring-2 ${categoryRing(g.category)}`}
+   502→        >
+   503→          <AvatarImage src={g.logo || undefined} alt={g.name} />
+   504→          <AvatarFallback className="bg-primary/10 text-primary">
+   505→            {(g.name || '?')[0]?.toUpperCase()}
+   506→          </AvatarFallback>
+   507→        </Avatar>
+   508→        <p className="mt-2 flex items-center gap-1 text-sm font-semibold">
+   509→          {g.isPublic === false && <Lock className="h-3 w-3 shrink-0 text-muted-foreground" />}
+   510→          <span className="line-clamp-1">{g.name}</span>
+   511→        </p>
+   512→        {g.category && (
+   513→          <span
+   514→            className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${categoryBadge(g.category)}`}
+   515→          >
+   516→            {g.category}
+   517→          </span>
+   518→        )}
+   519→        <p className="mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground">
+   520→          <Users className="h-3 w-3" />
+   521→          {g.membersCount} members
+   522→        </p>
+   523→        {g.description && (
+   524→          <p className="mt-1.5 line-clamp-2 w-full text-[11px] leading-snug text-muted-foreground">
+   525→            {g.description}
+   526→          </p>
+   527→        )}
+   528→      </button>
+   529→      <div className="mt-3">
+   530→        <JoinButton
+   531→          state={state}
+   532→          joining={joining}
+   533→          isPublic={g.isPublic}
+   534→          onClick={() => onJoin(g)}
+   535→          size="sm"
+   536→          block
+   537→        />
+   538→      </div>
+   539→    </div>
+   540→  )
+   541→}
+   542→
+   543→function GroupRow({
+   544→  g,
+   545→  state,
+   546→  joining,
+   547→  onJoin,
+   548→  onPreview,
+   549→}: {
+   550→  g: GroupItem
+   551→  state: JoinState
+   552→  joining: boolean
+   553→  onJoin: (g: GroupItem) => void
+   554→  onPreview: () => void
+   555→}) {
+   556→  return (
+   557→    <div className="group-card flex items-center gap-3 p-3">
+   558→      <button
+   559→        onClick={onPreview}
+   560→        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+   561→      >
+   562→        <Avatar className={`h-12 w-12 ring-2 ${categoryRing(g.category)}`}>
+   563→          <AvatarImage src={g.logo || undefined} alt={g.name} />
+   564→          <AvatarFallback className="bg-primary/10 text-primary">
+   565→            {(g.name || '?')[0]?.toUpperCase()}
+   566→          </AvatarFallback>
+   567→        </Avatar>
+   568→        <div className="min-w-0 flex-1">
+   569→          <p className="flex items-center gap-1 truncate text-sm font-semibold">
+   570→            {g.isPublic === false && (
+   571→              <Lock className="h-3 w-3 shrink-0 text-muted-foreground" />
+   572→            )}
+   573→            <span className="truncate">{g.name}</span>
+   574→          </p>
+   575→          <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+   576→            <Users className="h-3 w-3" />
+   577→            <span>{g.membersCount} members</span>
+   578→            {g.category && (
+   579→              <>
+   580→                <span className="text-muted-foreground/50">·</span>
+   581→                <span
+   582→                  className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${categoryBadge(g.category)}`}
+   583→                >
+   584→                  {g.category}
+   585→                </span>
+   586→              </>
+   587→            )}
+   588→          </div>
+   589→          {g.description && (
+   590→            <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
+   591→              {g.description}
+   592→            </p>
+   593→          )}
+   594→        </div>
+   595→      </button>
+   596→      <JoinButton
+   597→        state={state}
+   598→        joining={joining}
+   599→        isPublic={g.isPublic}
+   600→        onClick={() => onJoin(g)}
+   601→        size="sm"
+   602→      />
+   603→    </div>
+   604→  )
+   605→}
+   606→
+   607→// ============================================================
+   608→// Reusable Join / Request to Join / Joined button
+   609→// ============================================================
+   610→
+   611→function JoinButton({
+   612→  state,
+   613→  joining,
+   614→  isPublic,
+   615→  onClick,
+   616→  size = 'default',
+   617→  block = false,
+   618→}: {
+   619→  state: JoinState
+   620→  joining: boolean
+   621→  isPublic: boolean
+   622→  onClick: () => void
+   623→  size?: 'sm' | 'default'
+   624→  block?: boolean
+   625→}) {
+   626→  const btnSizeClass = size === 'sm' ? '!min-h-[36px] !px-4 !py-2 !text-xs' : '!min-h-[44px] !px-5 !py-2.5 !text-sm'
+   627→
+   628→  // Joined → light emerald bg + check icon (no shadow, looks "settled")
+   629→  if (state === 'joined' && !joining) {
+   630→    return (
+   631→      <span
+   632→        className={`inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-500/20 ${block ? 'w-full' : ''} ${btnSizeClass}`}
+   633→      >
+   634→        <Check className="h-3.5 w-3.5" /> Joined
+   635→      </span>
+   636→    )
+   637→  }
+   638→
+   639→  // Requested → outline muted
+   640→  if (state === 'requested' && !joining) {
+   641→    return (
+   642→      <span
+   643→        className={`inline-flex items-center justify-center gap-1.5 rounded-lg bg-muted px-3 py-2 text-xs font-medium text-muted-foreground ${block ? 'w-full' : ''} ${btnSizeClass}`}
+   644→      >
+   645→        <Loader2 className="h-3 w-3" /> Requested
+   646→      </span>
+   647→    )
+   648→  }
+   649→
+   650→  // Idle / loading
+   651→  // Private → ghost-btn ("Request to Join"); Public → action-btn ("Join")
+   652→  const label = joining
+   653→    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+   654→    : isPublic === false
+   655→      ? 'Request to Join'
+   656→      : 'Join'
+   657→
+   658→  return (
+   659→    <button
+   660→      onClick={onClick}
+   661→      disabled={joining}
+   662→      className={`${isPublic === false ? 'ghost-btn' : 'action-btn'} ${block ? 'w-full' : ''} ${btnSizeClass} disabled:opacity-60`}
+   663→    >
+   664→      {label}
+   665→    </button>
+   666→  )
+   667→}
+   668→
+   669→function CardLoadingRow() {
+   670→  return (
+   671→    <div className="flex min-w-0 gap-3 px-4 pb-1">
+   672→      {[0, 1, 2, 3].map((i) => (
+   673→        <div
+   674→          key={i}
+   675→          className="group-card w-44 shrink-0 p-3"
+   676→        >
+   677→          <div className="mx-auto h-14 w-14 animate-pulse rounded-full bg-muted" />
+   678→          <div className="mt-2 h-3 w-3/4 animate-pulse rounded bg-muted" />
+   679→          <div className="mt-1 h-2 w-1/2 animate-pulse rounded bg-muted" />
+   680→        </div>
+   681→      ))}
+   682→    </div>
+   683→  )
+   684→}
+   685→
+   686→function InlineLoadingRow() {
+   687→  return (
+   688→    <div className="space-y-2">
+   689→      {[0, 1, 2].map((i) => (
+   690→        <div
+   691→          key={i}
+   692→          className="taly-card flex items-center gap-3 p-3"
+   693→        >
+   694→          <div className="h-12 w-12 animate-pulse rounded-full bg-muted" />
+   695→          <div className="flex-1 space-y-1">
+   696→            <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
+   697→            <div className="h-2 w-3/4 animate-pulse rounded bg-muted" />
+   698→          </div>
+   699→        </div>
+   700→      ))}
+   701→    </div>
+   702→  )
+   703→}
+   704→
+   705→function GroupPreviewDialog({
+   706→  group,
+   707→  state,
+   708→  joining,
+   709→  onJoin,
+   710→  onClose,
+   711→}: {
+   712→  group: GroupItem | null
+   713→  state: JoinState
+   714→  joining: boolean
+   715→  onJoin: (g: GroupItem) => void
+   716→  onClose: () => void
+   717→}) {
+   718→  const label = () => {
+   719→    if (joining) return <Loader2 className="h-4 w-4 animate-spin" />
+   720→    if (state === 'joined') return (
+   721→      <>
+   722→        <Check className="h-4 w-4" /> Joined
+   723→      </>
+   724→    )
+   725→    if (state === 'requested') return 'Requested'
+   726→    return group?.isPublic === false ? 'Request to Join' : 'Join group'
+   727→  }
+   728→  return (
+   729→    <Dialog open={!!group} onOpenChange={(o) => !o && onClose()}>
+   730→      <DialogContent className="sm:max-w-md">
+   731→        <DialogHeader>
+   732→          <DialogTitle>Group preview</DialogTitle>
+   733→        </DialogHeader>
+   734→        {group && (
+   735→          <div className="flex flex-col items-center text-center">
+   736→            <Avatar
+   737→              className={`h-16 w-16 ring-2 ${categoryRing(group.category)}`}
+   738→            >
+   739→              <AvatarImage src={group.logo || undefined} alt={group.name} />
+   740→              <AvatarFallback className="bg-primary/10 text-primary text-lg">
+   741→                {(group.name || '?')[0]?.toUpperCase()}
+   742→              </AvatarFallback>
+   743→            </Avatar>
+   744→            <h3 className="mt-2 flex items-center gap-1 text-lg font-bold">
+   745→              {group.isPublic === false && (
+   746→                <Lock className="h-4 w-4 text-muted-foreground" />
+   747→              )}
+   748→              {group.name}
+   749→            </h3>
+   750→            {group.category && (
+   751→              <span
+   752→                className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${categoryBadge(group.category)}`}
+   753→              >
+   754→                {group.category}
+   755→              </span>
+   756→            )}
+   757→            <div className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
+   758→              <Users className="h-4 w-4" /> {group.membersCount} members
+   759→            </div>
+   760→            {group.description && (
+   761→              <p className="mt-3 text-sm text-muted-foreground">{group.description}</p>
+   762→            )}
+   763→            {group.isPublic === false && (
+   764→              <p className="mt-2 rounded-md bg-amber-500/10 px-2 py-1 text-xs text-amber-600">
+   765→                Private group — your request will need admin approval.
+   766→              </p>
+   767→            )}
+   768→          </div>
+   769→        )}
+   770→        <DialogFooter>
+   771→          <Button variant="ghost" onClick={onClose}>
+   772→            Close
+   773→          </Button>
+   774→          {group && (
+   775→            <button
+   776→              disabled={joining || state === 'joined' || state === 'requested'}
+   777→              onClick={() => onJoin(group)}
+   778→              className={`action-btn min-h-[44px] ${
+   779→                state === 'joined' || state === 'requested' || joining
+   780→                  ? 'pointer-events-none opacity-60'
+   781→                  : ''
+   782→              } ${group.isPublic === false ? 'ghost-btn' : ''}`}
+   783→            >
+   784→              {label()}
+   785→            </button>
+   786→          )}
+   787→        </DialogFooter>
+   788→      </DialogContent>
+   789→    </Dialog>
+   790→  )
+   791→}
+   792→

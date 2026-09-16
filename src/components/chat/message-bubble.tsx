@@ -6,6 +6,7 @@ import { PremiumAvatar } from '@/components/premium-avatar'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
@@ -507,6 +508,9 @@ export const MessageBubble = React.forwardRef<MessageBubbleHandle, MessageBubble
               className="max-w-fit border-0 bg-black/90 p-0 sm:max-w-fit"
             >
               <DialogTitle className="sr-only">Image preview</DialogTitle>
+              <DialogDescription className="sr-only">
+                Enlarged view of the shared image. Press Escape or click outside to close.
+              </DialogDescription>
               <img
                 src={message.mediaUrl}
                 alt={message.content || 'Image'}

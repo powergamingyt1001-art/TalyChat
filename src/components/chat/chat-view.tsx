@@ -34,6 +34,8 @@ import {
   BadgeCheck,
   Info,
   Copy,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-store'
 import { apiFetch, apiUpload } from '@/lib/api'
@@ -179,6 +181,7 @@ export function ChatView({
   // Search overlay
   const [searchOpen, setSearchOpen] = React.useState(false)
   const [searchQuery, setSearchQuery] = React.useState('')
+  const [searchMatchIndex, setSearchMatchIndex] = React.useState(0)
 
   // Action menu (long-press / right-click)
   const [actionMenu, setActionMenu] = React.useState<{
@@ -1417,16 +1420,82 @@ export function ChatView({
           <SearchIcon className="h-4 w-4 text-muted-foreground" />
           <Input
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value)
+              setSearchMatchIndex(0)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                const q = searchQuery.trim().toLowerCase()
+                if (!q) return
+                const matches = sortedMessages.filter((m) => (m.content || '').toLowerCase().includes(q))
+                if (matches.length > 0) {
+                  const next = (searchMatchIndex + 1) % matches.length
+                  setSearchMatchIndex(next)
+                  const target = matches[next]
+                  if (target) {
+                    const el = document.getElementById(`msg-${target.id}`)
+                    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                  }
+                }
+              }
+            }}
             placeholder="Search this chat…"
-            className="h-8 flex-1"
+            className="h-9 flex-1 rounded-full"
             autoFocus
           />
+          {searchQuery.trim() && (() => {
+            const q = searchQuery.trim().toLowerCase()
+            const matches = sortedMessages.filter((m) => (m.content || '').toLowerCase().includes(q))
+            const total = matches.length
+            return total > 0 ? (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const prev = searchMatchIndex <= 0 ? total - 1 : searchMatchIndex - 1
+                    setSearchMatchIndex(prev)
+                    const target = matches[prev]
+                    if (target) {
+                      const el = document.getElementById(`msg-${target.id}`)
+                      el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                    }
+                  }}
+                  aria-label="Previous match"
+                  className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-accent"
+                >
+                  <ChevronUp className="h-4 w-4" />
+                </button>
+                <span className="min-w-[3rem] text-center tabular-nums">
+                  {searchMatchIndex + 1}/{total}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = (searchMatchIndex + 1) % total
+                    setSearchMatchIndex(next)
+                    const target = matches[next]
+                    if (target) {
+                      const el = document.getElementById(`msg-${target.id}`)
+                      el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                    }
+                  }}
+                  aria-label="Next match"
+                  className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-accent"
+                >
+                  <ChevronDown className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <span className="text-xs text-muted-foreground">No match</span>
+            )
+          })()}
           <button
             type="button"
             onClick={() => {
               setSearchOpen(false)
               setSearchQuery('')
+              setSearchMatchIndex(0)
             }}
             aria-label="Close search"
             className="flex h-8 w-8 min-h-[44px] min-w-[44px] items-center justify-center rounded-full hover:bg-accent"
@@ -1531,7 +1600,7 @@ export function ChatView({
               const m = item.message!
               const isMine = m.senderId === user?.id
               return (
-                <div key={m.id} data-message-id={m.id}>
+                <div key={m.id} id={`msg-${m.id}`} data-message-id={m.id}>
                   <MessageBubble
                     message={m}
                     isMine={isMine}

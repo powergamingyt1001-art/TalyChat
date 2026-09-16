@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -60,6 +61,38 @@ function categoryRing(cat?: string | null): string {
       return 'ring-teal-400/70'
     default:
       return 'ring-emerald-400/70'
+  }
+}
+
+// Category → 3px top-border color on the group card (visual category tint)
+function categoryTopBorder(cat?: string | null): string {
+  switch ((cat || '').toLowerCase()) {
+    case 'gaming':
+      return 'border-t-violet-500'
+    case 'technology':
+    case 'ai':
+      return 'border-t-blue-500'
+    case 'cricket':
+    case 'sports':
+      return 'border-t-orange-500'
+    case 'entertainment':
+    case 'movies':
+    case 'music':
+      return 'border-t-pink-500'
+    case 'education':
+      return 'border-t-emerald-500'
+    case 'business':
+    case 'finance':
+    case 'jobs':
+      return 'border-t-yellow-500'
+    case 'memes':
+      return 'border-t-fuchsia-500'
+    case 'news':
+      return 'border-t-cyan-500'
+    case 'local':
+      return 'border-t-teal-500'
+    default:
+      return 'border-t-emerald-500'
   }
 }
 
@@ -259,8 +292,11 @@ export function DiscoverScreen() {
         </p>
       </motion.div>
 
-      {/* Category chips — solid emerald active state */}
-      <div className="no-scrollbar scroll-pan-y -mx-4 mt-3 w-full overflow-x-auto px-4">
+      {/* Category chips — solid emerald active state + horizontal scroll snap */}
+      <div
+        className="no-scrollbar scroll-pan-y -mx-4 mt-3 w-full overflow-x-auto px-4"
+        style={{ scrollSnapType: 'x proximity' }}
+      >
         <div className="flex min-w-0 gap-2 pb-1">
           {CATEGORIES.map((cat) => {
             const active = activeCategory === cat
@@ -270,6 +306,7 @@ export function DiscoverScreen() {
                 type="button"
                 onClick={() => handleCategoryClick(cat)}
                 className={`category-chip min-h-[36px] ${active ? 'active' : ''}`}
+                style={{ scrollSnapAlign: 'start' }}
               >
                 {cat}
               </button>
@@ -334,6 +371,7 @@ export function DiscoverScreen() {
         <>
           <Section
             title="Trending"
+            icon="🔥"
             loading={loading}
             groups={trending}
             joinStateFor={joinStateFor}
@@ -344,6 +382,7 @@ export function DiscoverScreen() {
           />
           <Section
             title="Popular"
+            icon="⭐"
             loading={loading}
             groups={popular}
             joinStateFor={joinStateFor}
@@ -354,6 +393,7 @@ export function DiscoverScreen() {
           />
           <Section
             title="New"
+            icon="🆕"
             loading={loading}
             groups={newGroups}
             joinStateFor={joinStateFor}
@@ -429,6 +469,7 @@ export function DiscoverScreen() {
 
 function Section({
   title,
+  icon,
   loading,
   groups,
   joinStateFor,
@@ -438,6 +479,7 @@ function Section({
   delay = 0,
 }: {
   title: string
+  icon?: string
   loading: boolean
   groups: GroupItem[]
   joinStateFor: (g: GroupItem) => JoinState
@@ -451,7 +493,9 @@ function Section({
       className="mt-6 animate-fade-in-up"
       style={{ animationDelay: `${delay}s` }}
     >
-      <div className="sticky top-0 z-10 -mx-4 mb-2 bg-background/95 px-4 py-2 backdrop-blur">
+      {/* Sticky header — backdrop blur + category icon */}
+      <div className="sticky top-0 z-10 -mx-4 mb-2 flex items-center gap-1.5 bg-background/95 px-4 py-2 backdrop-blur">
+        {icon && <span aria-hidden className="text-base">{icon}</span>}
         <h2 className="section-header">{title}</h2>
       </div>
       <div className="no-scrollbar scroll-pan-y -mx-4 w-full overflow-x-auto px-4">
@@ -491,8 +535,14 @@ function GroupCard({
   onJoin: (g: GroupItem) => void
   onPreview: () => void
 }) {
+  // Group is considered "active" (recently messaged) if membersCount > 5 —
+  // a simple heuristic to drive the pulsing green dot without needing
+  // a per-group lastMessageAt in the discover payload.
+  const isActive = g.membersCount > 5
   return (
-    <div className="group-card w-44 shrink-0 p-3">
+    <div
+      className={`group-card w-44 shrink-0 border-t-2 ${categoryTopBorder(g.category)} p-3`}
+    >
       <button
         onClick={onPreview}
         className="flex w-full flex-col items-center text-center"
@@ -516,10 +566,22 @@ function GroupCard({
             {g.category}
           </span>
         )}
-        <p className="mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground">
-          <Users className="h-3 w-3" />
-          {g.membersCount} members
-        </p>
+        {/* Stacked mini avatars + member count + active dot */}
+        <div className="mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground">
+          <MiniStackedAvatars logo={g.logo} name={g.name} memberCount={g.membersCount} />
+          <span className="inline-flex items-center gap-1">
+            {isActive && (
+              <span
+                aria-label="Active group"
+                className="relative inline-flex h-2 w-2"
+              >
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-70" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+              </span>
+            )}
+            <span>{g.membersCount}</span>
+          </span>
+        </div>
         {g.description && (
           <p className="mt-1.5 line-clamp-2 w-full text-[11px] leading-snug text-muted-foreground">
             {g.description}
@@ -553,8 +615,9 @@ function GroupRow({
   onJoin: (g: GroupItem) => void
   onPreview: () => void
 }) {
+  const isActive = g.membersCount > 5
   return (
-    <div className="group-card flex items-center gap-3 p-3">
+    <div className={`group-card flex items-center gap-3 border-t-2 ${categoryTopBorder(g.category)} p-3`}>
       <button
         onClick={onPreview}
         className="flex min-w-0 flex-1 items-center gap-3 text-left"
@@ -571,9 +634,18 @@ function GroupRow({
               <Lock className="h-3 w-3 shrink-0 text-muted-foreground" />
             )}
             <span className="truncate">{g.name}</span>
+            {isActive && (
+              <span
+                aria-label="Active group"
+                className="relative ml-1 inline-flex h-2 w-2 shrink-0"
+              >
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-70" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+              </span>
+            )}
           </p>
           <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Users className="h-3 w-3" />
+            <MiniStackedAvatars logo={g.logo} name={g.name} memberCount={g.membersCount} small />
             <span>{g.membersCount} members</span>
             {g.category && (
               <>
@@ -605,6 +677,81 @@ function GroupRow({
 }
 
 // ============================================================
+// MiniStackedAvatars — 2-3 small overlapping letter-avatars with +N.
+// Used inside group cards/rows to humanize the member count display.
+// ============================================================
+function MiniStackedAvatars({
+  logo,
+  name,
+  memberCount,
+  small = false,
+}: {
+  logo?: string | null
+  name: string
+  memberCount: number
+  small?: boolean
+}) {
+  const baseName = name || 'G'
+  const initials = (baseName.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean))
+  const derived: string[] = []
+  for (let i = 0; i < initials.length && derived.length < 3; i++) {
+    derived.push(initials[i][0]?.toUpperCase() || 'U')
+  }
+  while (derived.length < 3) {
+    derived.push(baseName[0]?.toUpperCase() || 'U')
+  }
+  const visible = derived.slice(0, 3)
+  const extra = Math.max(0, memberCount - 3)
+  const sizeClass = small ? 'h-4 w-4' : 'h-5 w-5'
+  const textSize = small ? 'text-[7px]' : 'text-[8px]'
+  const offset = small ? 8 : 10
+  const slotClass = (i: number) => {
+    switch (i % 3) {
+      case 0:
+        return 'bg-emerald-500/15 text-emerald-600'
+      case 1:
+        return 'bg-amber-500/15 text-amber-600'
+      default:
+        return 'bg-sky-500/15 text-sky-600'
+    }
+  }
+  return (
+    <span className="relative inline-flex items-center" aria-hidden>
+      <span className="relative inline-flex" style={{ minWidth: `${offset * 2 + 8}px` }}>
+        {visible.map((letter, i) => {
+          const z = visible.length - i
+          return (
+            <span
+              key={i}
+              className={`absolute flex ${sizeClass} items-center justify-center rounded-full ${textSize} font-bold ring-1 ring-card ${slotClass(i)}`}
+              style={{ left: `${i * offset}px`, zIndex: z }}
+            >
+              {i === 0 && logo ? (
+                <img
+                  src={logo}
+                  alt=""
+                  className="h-full w-full rounded-full object-cover"
+                />
+              ) : (
+                letter
+              )}
+            </span>
+          )
+        })}
+        {extra > 0 && (
+          <span
+            className={`absolute flex ${sizeClass} items-center justify-center rounded-full bg-muted ${textSize} font-bold text-muted-foreground ring-1 ring-card`}
+            style={{ left: `${visible.length * offset}px`, zIndex: visible.length + 1 }}
+          >
+            +{extra > 99 ? '99' : extra}
+          </span>
+        )}
+      </span>
+    </span>
+  )
+}
+
+// ============================================================
 // Reusable Join / Request to Join / Joined button
 // ============================================================
 
@@ -625,11 +772,11 @@ function JoinButton({
 }) {
   const btnSizeClass = size === 'sm' ? '!min-h-[36px] !px-4 !py-2 !text-xs' : '!min-h-[44px] !px-5 !py-2.5 !text-sm'
 
-  // Joined → light emerald bg + check icon (no shadow, looks "settled")
+  // Joined → ghost button with emerald border/text + checkmark (tactile)
   if (state === 'joined' && !joining) {
     return (
       <span
-        className={`inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-500/20 ${block ? 'w-full' : ''} ${btnSizeClass}`}
+        className={`ghost-btn inline-flex items-center justify-center gap-1.5 !border-emerald-500/40 !text-emerald-700 dark:!text-emerald-400 active:scale-95 ${block ? 'w-full' : ''} ${btnSizeClass}`}
       >
         <Check className="h-3.5 w-3.5" /> Joined
       </span>
@@ -640,7 +787,7 @@ function JoinButton({
   if (state === 'requested' && !joining) {
     return (
       <span
-        className={`inline-flex items-center justify-center gap-1.5 rounded-lg bg-muted px-3 py-2 text-xs font-medium text-muted-foreground ${block ? 'w-full' : ''} ${btnSizeClass}`}
+        className={`ghost-btn inline-flex items-center justify-center gap-1.5 active:scale-95 ${block ? 'w-full' : ''} ${btnSizeClass}`}
       >
         <Loader2 className="h-3 w-3" /> Requested
       </span>
@@ -659,7 +806,7 @@ function JoinButton({
     <button
       onClick={onClick}
       disabled={joining}
-      className={`${isPublic === false ? 'ghost-btn' : 'action-btn'} ${block ? 'w-full' : ''} ${btnSizeClass} disabled:opacity-60`}
+      className={`${isPublic === false ? 'ghost-btn' : 'action-btn'} active:scale-95 ${block ? 'w-full' : ''} ${btnSizeClass} disabled:opacity-60`}
     >
       {label}
     </button>
@@ -730,6 +877,9 @@ function GroupPreviewDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Group preview</DialogTitle>
+          <DialogDescription className="sr-only">
+            Preview of a TalyChat community. Tap Join (public) or Request to Join (private) to participate.
+          </DialogDescription>
         </DialogHeader>
         {group && (
           <div className="flex flex-col items-center text-center">

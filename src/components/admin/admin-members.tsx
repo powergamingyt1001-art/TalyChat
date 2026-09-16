@@ -165,7 +165,7 @@ export function AdminMembers() {
             ) : (
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="sticky top-0 z-10 bg-card hover:bg-card">
                     <TableHead>User</TableHead>
                     <TableHead>Username</TableHead>
                     <TableHead>Role</TableHead>

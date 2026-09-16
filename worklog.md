@@ -1716,3 +1716,157 @@ Next-phase candidates:
 - Story highlights (save stories to profile)
 - Group video calls
 - Live location sharing
+
+---
+
+Task ID: v5-polish
+Agent: general-purpose (sub agent)
+Task: Fix accessibility errors (DialogContent missing DialogTitle/Description) + apply VLM visual polish to 4 key screens (Groups, Discover, Profile, Admin Dashboard).
+
+### Part 1: Accessibility — DialogContent missing DialogDescription
+
+Added `<DialogDescription className="sr-only">…</DialogDescription>` to 4 dialogs (each already had a DialogTitle):
+
+1. **`/src/components/chat/message-bubble.tsx`** — Image lightbox dialog. Imported `DialogDescription`; added sr-only description: "Enlarged view of the shared image. Press Escape or click outside to close.".
+2. **`/src/components/taly/groups-screen.tsx`** — CreateGroupDialog. Imported `DialogDescription`; added sr-only description: "Fill in the name, description, category, and visibility for your new group, then tap Create group.".
+3. **`/src/components/taly/chats-screen.tsx`** — NewChatDialog. Imported `DialogDescription`; added sr-only description: "Search for a TalyChat user by name or username. Picking someone new sends them a chat request.".
+4. **`/src/components/taly/discover-screen.tsx`** — GroupPreviewDialog. Imported `DialogDescription`; added sr-only description: "Preview of a TalyChat community. Tap Join (public) or Request to Join (private) to participate.".
+
+Verified via agent-browser `eval`: every dialog now contains both `[data-slot=dialog-title]` and `[data-slot=dialog-description]`. Zero "DialogContent requires DialogTitle/Description" console errors.
+
+### Part 2: Groups Screen VLM polish — `/src/components/taly/groups-screen.tsx`
+
+- **Stacked member avatars**: New `StackedGroupAvatars` component (3 overlapping small letter-avatars, 14px stagger; first slot uses the group's logo if available; emerald→amber→sky color palette; "+N" overflow chip if memberCount>3).
+- **Two-line hierarchy**: Group name in `text-[15px] font-semibold`; member count moved to a smaller sub-text line (text-xs) with `Users` icon + member count as `font-medium text-foreground/80` + preview truncated after a " · " separator.
+- **Create button as FAB**: Top "Create" button hidden on mobile (`hidden lg:inline-flex`); a fixed circular FAB at `bottom-20 right-4 z-30 h-14 w-14 !rounded-full !p-0 shadow-xl lg:hidden` opens the same dialog.
+- **Segmented control tabs**: Replaced shadcn `<Tabs>` with a `<div className="segmented-control w-full">` containing 4 buttons (all/unread/private/requests). Active button gets the white-bg + shadow from the existing CSS rule. Removed the now-unused `Tabs/TabsList/TabsTrigger` imports and the obsolete `groupInitial` helper.
+- **Member count with Users icon**: ✓ (see two-line hierarchy above).
+- Row uses `chat-list-item taly-card taly-card-hover` for consistent modern styling.
+
+### Part 3: Discover Screen VLM polish — `/src/components/taly/discover-screen.tsx`
+
+- **Category chips active state**: Already used `.category-chip` + `.category-chip.active`. Added horizontal scroll snap via inline `style={{ scrollSnapType: 'x proximity' }}` on the scroll container and `style={{ scrollSnapAlign: 'start' }}` per chip.
+- **Group cards with category top-border**: New `categoryTopBorder(cat)` helper returning `border-t-violet-500` / `border-t-blue-500` / etc. Applied to `GroupCard` and `GroupRow` as `border-t-2` (overriding the `border-1` from `.group-card`).
+- **Status badges — stacked mini avatars + pulsing dot**: New `MiniStackedAvatars` component (smaller variant of the stacked-avatars pattern, 16px or 20px avatars + "+N"). Renders inside both `GroupCard` (under the avatar) and `GroupRow` (next to member count). For groups with `membersCount > 5` (active heuristic), a pulsing green dot (`animate-ping` outer + solid `bg-emerald-500` inner) shows next to the count in `GroupCard` and beside the group name in `GroupRow`.
+- **Sticky section headers with icons**: `Section` component now takes an `icon?: string` prop and renders `🔥` / `⭐` / `🆕` next to the section-header title in a `sticky top-0 z-10 bg-background/95 backdrop-blur` wrapper. Trending/Popular/New all pass the icon prop.
+- **Join button states**: `JoinButton` now uses `.ghost-btn` with emerald border/text (`!border-emerald-500/40 !text-emerald-700`) + Check icon for "Joined" state (was previously a non-button styled span). Added `active:scale-95` tactile feedback to all three states (Joined / Requested / Join).
+
+### Part 4: Profile Screen VLM polish — `/src/components/taly/profile-screen.tsx`
+
+- **Behavior ring around avatar**: Wrapped `PremiumAvatar` in a `relative inline-flex rounded-full ring-4 <color> animate-pulse` div. Color: `ring-emerald-500/60` for score≥80, `ring-amber-500/60` for 50–79, `ring-red-500/60` for <50. Pulse duration set to 2.4s (subtle).
+- **Best Value card elevation**: 1-Year plan card now has `border border-emerald-500/40 bg-emerald-50 shadow-lg shadow-emerald-500/10 dark:bg-emerald-950/20` (added the `border` token + `shadow-lg shadow-emerald-500/10`). Other plans still use `taly-card taly-card-hover` with `ghost-btn` for "Choose". Best Value's "Choose" already had the `premium-shimmer` overlay (preserved from V3).
+- **Gamified behavior bar**: Replaced the single-gradient fill with 5 segmented 20%-blocks colored `red-500` → `orange-500` → `amber-400` → `lime-400` → `emerald-500`. Filled blocks are tinted, empty blocks are `bg-muted-foreground/15`. Trophy icon (lucide `Trophy`) is rendered at the 100% position as a small circle marker — emerald-filled with shadow when score=100, muted otherwise. The original `.behavior-bar` pill style still wraps the blocks.
+- **Locked referral tiers**: `ReferralSection` now computes `tier1Done` / `tier2Done` from `referral.completedTasks` (any task with rewardMonths≤2 and `completedAt` qualifies for tier1; same for tier2 with rewardMonths 3-6). Passes a `locked` prop to `TaskTierCard`. Tier 1 is always available; Tier 2 locked unless tier1 done; Tier 3 locked unless tier2 done. Locked cards render with `opacity-70 ring-1 ring-dashed ring-muted-foreground/30`, a Lock icon badge, and a "Complete Tier N-1 to unlock" message — specific member counts / window days / reward months are hidden behind "??? members · ??? days" placeholder, and the Select button is replaced with a disabled "Locked" button. (When `hasActiveTask` is true, the existing behavior of disabling all tiers takes precedence.)
+- **Account container card**: Moved "Block List" + "Logout" out of the Privacy and Safety card into a new Account container card. Background uses `bg-red-50/50 dark:bg-red-950/10` with `border border-red-500/20`. Header is a `section-header` with red text + `ShieldAlert` icon. Block List is a `ghost-btn` with red-tinted border + hover. Logout is now a text-only link style (`text-xs font-medium text-muted-foreground/70 hover:text-destructive`, no border, low contrast) — preventing accidental taps. Privacy and Safety card retains only "Open privacy settings".
+
+### Part 5: Admin Dashboard VLM polish — `/src/components/admin/admin-dashboard.tsx` (+ sticky header in `admin-members.tsx`)
+
+- **Sparklines in KPI cards**: `KpiCard` now accepts an optional `stats` prop. From the metric's `chart` kind (`registerData` / `userGrowth` / `salesData`), it derives a small dataset and renders a 32px tall `LineChart` (no axes, no dots, no animation) in the bottom-right corner of the card via `ResponsiveContainer` + `LineChart` + `Line`. Stroke color matches the KPI's accent (`--kpi-accent`). All 12 Overview metrics + 4 User Status + 3 Subscriptions cards now receive `stats`.
+- **Empty state for charts**: Added 4 helpers (`isAllZeroRegister`, `isAllZeroGrowth`, `isAllZeroActiveInactive`, `isAllZeroSubs`) + a reusable `ChartEmptyState` component (dotted-bg, muted icon, "No data yet" label, contextual hint). Each of the 4 main charts (Bar registrations, Pie Active/Inactive, Area user growth, Pie subscriptions) checks its helper and renders the empty state instead of axes with no data.
+- **Collapsible sections**: Wrapped the 3 KPI sections (Overview metrics, User status, Subscriptions) in a `<Collapsible defaultOpen>` titled "Key Performance" (BarChart3 icon + chevron). Wrapped the 4 charts in a second Collapsible titled "Analytics & Growth" (PieChart icon + chevron). Both default expanded; chevron rotates via `group-data-[state=closed]:rotate-[-90deg]`.
+- **Period selector as segmented control**: Was already using `.segmented-control` from V3 — verified the active option has `bg-card + shadow` from the existing CSS rule. No change needed.
+- **Sticky table headers** (`admin-members.tsx`): Added `sticky top-0 z-10 bg-card hover:bg-card` to the `<TableRow>` inside `<TableHeader>` so the header row sticks when scrolling the members list.
+
+### Quality / lint / types
+
+- `bun run lint` → exit 0 (clean, no warnings, no errors).
+- `bunx tsc --noEmit --skipLibCheck` → zero errors in any of the 7 files I touched. The only `src/components/taly/*` TS error is in `taly-app.tsx:193` (ConversationSummary ↔ setOpenChat shape mismatch) — pre-existing from V3 worklog, not in scope.
+- Removed the now-unused `Tabs/TabsList/TabsTrigger` import and `groupInitial` helper from `groups-screen.tsx`; removed the unused `StatCard` import from `admin-dashboard.tsx`.
+- All `'use client'` directives preserved; no API calls or backend routes touched.
+- All targets ≥44px (FAB is 56×56, navigation rows min-h-[60px], Logout text-link area is min-h-[44px]).
+
+### Runtime smoke tests (agent-browser)
+
+- Logged in as `aarav@talychat.app/password123` → Home, Chats, Groups, Discover, Profile all render with no console errors (`agent-browser errors --json` returned `{"errors": []}` after every screen).
+- Opened Chats → New Chat dialog → verified via DOM eval that both `[data-slot=dialog-title]` ("Start a new chat") and `[data-slot=dialog-description]` (the sr-only description) are present.
+- Opened Groups → Create Group dialog → same verification (DialogTitle "Create a new group" + DialogDescription present).
+- Opened Discover → clicked "Indian Gamers Hub" → Group preview dialog → verified DialogTitle + DialogDescription present.
+- Groups screen: saw the segmented-control tabs (All / Unread / Private / Requests), the circular FAB at bottom-right (mobile), stacked member avatars next to each group row.
+- Discover screen: saw the category chips row, sticky headers with 🔥 Trending / ⭐ Popular / 🆕 New, group cards with category top-borders, mini stacked avatars + member counts + pulsing green dot for active groups.
+- Profile screen: avatar wrapped in behavior ring (emerald for score 100), 5-segment behavior bar with Trophy marker at the 100% position, Best Value premium card with emerald tint + shadow + shimmer on Choose, Account card (red-tinted) at the bottom with Block List + low-contrast Logout text link. Locked tier state verified via code logic (not screenshot-visible because the seed user has an active task selected, which disables all tiers via the existing `hasActiveTask` path).
+- Logged in as `admin.in/Admin123` (desktop 1280×900) → Dashboard renders with collapsible "Key Performance" + "Analytics & Growth" sections (both expanded by default, chevrons visible), KPI cards have sparklines in the bottom-right corner matching each card's accent color, 4 charts render correctly with data (no empty-state triggered because seed has users), members table sticky header works on scroll. Zero console errors.
+- Verified collapsing behavior: clicked "Key Performance" → all 3 KPI sections hide; clicked again → they re-expand.
+
+### Screenshots saved under `/home/z/my-project/screenshots/v5/`
+
+- `v5-1-admin-dashboard.png` — full admin dashboard (1280×900, collapsibles expanded)
+- `v5-1b-admin-collapsed.png` — admin dashboard with Key Performance collapsed (verifies chevron state)
+- `v5-1c-admin-charts.png` — analytics & growth charts section (Bar, Pie Active/Inactive, Area user growth, Pie subscriptions)
+- `v5-2-home.png` — home (mobile 390×844, post-V4 with stories)
+- `v5-3-groups.png` — Groups screen (mobile) with segmented control + stacked avatars
+- `v5-3b-groups-fab.png` — same screen showing the circular Create FAB at bottom-right
+- `v5-4-discover.png` — Discover with category chips + sticky headers
+- `v5-4b-discover-scroll.png` — Discover scrolled to show group cards with category top-borders + mini stacked avatars
+- `v5-5-profile.png` — Profile top (behavior ring around avatar, behavior bar with 5 segments + trophy marker)
+- `v5-5b-profile-mid.png` — Profile middle (Best Value premium plan with emerald tint + shadow + shimmer)
+- `v5-5c-profile-bottom.png` — Profile bottom (Account container with red-tinted bg, Block List + low-contrast Logout text link)
+- `v5-6-chats.png` — Chats list (mobile)
+- `v5-7-new-chat-dialog.png` — New Chat dialog (with DialogTitle + sr-only DialogDescription verified)
+- `v5-8-create-group-dialog.png` — Create Group dialog (with DialogTitle + sr-only DialogDescription verified)
+
+### Files Modified (7)
+
+1. `src/components/chat/message-bubble.tsx` — added `DialogDescription` import + sr-only description to image lightbox dialog.
+2. `src/components/taly/groups-screen.tsx` — added `DialogDescription`; replaced `Tabs` with `segmented-control`; added `StackedGroupAvatars` component + FAB + two-line hierarchy; removed unused Tabs import + `groupInitial` helper; added `cn` import.
+3. `src/components/taly/chats-screen.tsx` — added `DialogDescription` to NewChatDialog.
+4. `src/components/taly/discover-screen.tsx` — added `DialogDescription` to GroupPreviewDialog; added `categoryTopBorder` helper + `MiniStackedAvatars` component; updated `Section` (sticky header + icon prop); updated `GroupCard` (top-border + mini avatars + pulsing active dot); updated `GroupRow` (top-border + mini avatars + active dot next to name); updated `JoinButton` (Joined state now uses ghost-btn with emerald border, added `active:scale-95` to all states); added scroll-snap to category chips container.
+5. `src/components/taly/profile-screen.tsx` — added behavior ring wrapper around `PremiumAvatar`; elevated Best Value card styling; refactored `BehaviorBar` to 5-segment gamified blocks with Trophy marker; added `locked` prop to `TaskTierCard` + locked-state rendering + lock computation in `ReferralSection`; extracted Block List + Logout into a new red-tinted Account container card with low-contrast Logout text link.
+6. `src/components/admin/admin-dashboard.tsx` — added `LineChart`/`Line`/`BarChart3`/`PieChart` icon / `ChevronDown` / `Collapsible` imports; removed unused `StatCard` import; added `stats` prop + sparkline to `KpiCard`; added 4 `isAllZero*` helpers + `ChartEmptyState` component; wrapped 3 KPI sections in `Collapsible` "Key Performance"; wrapped 4 charts in `Collapsible` "Analytics & Growth"; each chart now checks for all-zero data and renders empty state.
+7. `src/components/admin/admin-members.tsx` — added `sticky top-0 z-10 bg-card` to the members `<TableHeader>` row.
+
+### Stage Summary
+
+All accessibility errors fixed (DialogContent → DialogTitle + DialogDescription in 4 dialogs). VLM visual polish applied to Groups, Discover, Profile, and Admin Dashboard. `bun run lint` is clean (exit 0). All 7 modified files are TS-clean (the only TS error in `src/components/taly/*` is pre-existing in `taly-app.tsx`). Zero console errors verified via agent-browser across Home, Chats, Groups, Discover, Profile (mobile 390×844), and Admin Dashboard (desktop 1280×900). 14 screenshots saved as evidence. No backend routes, API calls, or existing functionality touched — only UI layer.
+
+---
+Task ID: v5-final
+Agent: main (Z.ai Code) — cron QA review (round 3)
+Task: V5 polish + in-chat search improvements
+
+Work Log:
+- Reviewed worklog (1718 lines) — V4 features complete (Stories, Forwarding, Pinned, Typing)
+- Lint clean. Server 200. No runtime errors after V4 accessibility fix.
+- VLM analysis on Groups, Discover, Profile, Admin Dashboard identified visual polish gaps
+
+### Subagent v5-polish (completed):
+- **Accessibility fix**: Added DialogDescription (sr-only) to 4 dialogs (message-bubble, groups-screen, chats-screen, discover-screen). Zero console errors after fix.
+- **Groups screen**: Segmented control tabs, two-line hierarchy (bold name + Users icon + count), StackedGroupAvatars component (3 overlapping avatars + "+N"), mobile FAB for Create
+- **Discover screen**: Category chips with scroll-snap, group cards with category-colored top-border, MiniStackedAvatars + pulsing green dot for active groups, sticky section headers with 🔥/⭐/🆕 icons, JoinButton with ghost-btn + Check icon for "Joined" state
+- **Profile screen**: Behavior ring around avatar (emerald/amber/red based on score), Best Value card with emerald tint + shadow + premium shimmer, gamified 5-segment behavior bar with Trophy marker, locked referral tiers (Tier 2/3 hidden until Tier 1 done), red-tinted Account container for Block List + low-contrast Logout
+- **Admin Dashboard**: KPI cards with 32px sparklines (color matches accent), ChartEmptyState component for empty charts, collapsible sections (Key Performance + Analytics & Growth), sticky table header row in admin-members
+
+### In-chat Search Enhancement (main agent):
+- Added `searchMatchIndex` state to chat-view.tsx
+- Search bar now shows match count "X/Y" (e.g. "1/2")
+- Added Previous/Next match navigation buttons (ChevronUp/ChevronDown)
+- Enter key cycles to next match + scrolls to it
+- Added `id={`msg-${m.id}`}` to message container divs for scrollIntoView
+- Improved search input styling: rounded-full, h-9
+- Created `/api/messages/search` backend route for global search across all user's conversations (returns results with sender + conversation info)
+- Tested: search "test" in chat → shows "2/2" matches, navigation works, scrolls to matched message
+
+### VLM Re-verification:
+- Groups: 8/10 — clean segmented tabs, stacked avatars, accessible Create button
+- Discover: 8/10 — distinct section headers with icons, clear Join button states
+- Profile: 8/10 — engaging behavior bar, well-structured premium cards, logical referral tiers
+- Admin Dashboard: 8/10 (up from 7/10) — comprehensive KPI cards with sparklines, clear visual hierarchy
+- Chat Search: Functional — match count "2/2" displays, prev/next navigation works, scrolls to matched message
+- Console errors: ZERO (accessibility fixes resolved all DialogContent errors)
+
+Stage Summary:
+- V5 polish round complete. All screens now rated 8/10 by VLM.
+- New feature: Enhanced in-chat search with match count + prev/next navigation
+- New backend: Global message search API (/api/messages/search?q=)
+- Accessibility: All dialogs have DialogTitle + DialogDescription
+- bun run lint: clean (0 errors, 0 warnings)
+- All API endpoints returning 200
+- Zero console errors
+
+Next-phase candidates:
+- Push notifications (browser Push API)
+- Voice/video calls
+- Message scheduling
+- Chat themes per-conversation
+- Global search UI on home screen (backend ready)
+- Story highlights
+- Live location sharing

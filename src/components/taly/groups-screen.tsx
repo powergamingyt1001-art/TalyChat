@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { cn } from '@/lib/utils'
 import {
   Select,
   SelectContent,
@@ -23,6 +23,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -84,11 +85,6 @@ function groupLogo(c: ConversationSummary): string | undefined {
   return undefined
 }
 
-function groupInitial(c: ConversationSummary): string {
-  const name = (c.name || c.group?.name || '?').toString()
-  return name[0]?.toUpperCase() || '?'
-}
-
 export function GroupsScreen({ conversations, onOpenChat, onRefresh }: GroupsProps) {
   const { toast } = useToast()
   const [createOpen, setCreateOpen] = useState(false)
@@ -141,33 +137,30 @@ export function GroupsScreen({ conversations, onOpenChat, onRefresh }: GroupsPro
   return (
     <div className="mx-auto max-w-2xl p-4 pb-20 lg:pb-6">
       <div className="flex items-center justify-between gap-2">
-        <h1 className="text-2xl font-bold">Groups</h1>
-        <Button onClick={() => setCreateOpen(true)} className="btn-brand min-h-[44px]">
+        <h1 className="section-header">Groups</h1>
+        {/* Desktop "Create" button — on mobile a FAB is rendered at the bottom */}
+        <Button onClick={() => setCreateOpen(true)} className="btn-brand hidden min-h-[44px] lg:inline-flex">
           <Plus className="h-4 w-4" /> Create
         </Button>
       </div>
 
-      {/* Tabs: All / Unread / Private / Requests (no bottom indicator) */}
-      <Tabs
-        value={filter}
-        onValueChange={(v) => setFilter(v as 'all' | 'unread' | 'private' | 'requests')}
-        className="mt-4"
-      >
-        <TabsList className="w-full">
-          <TabsTrigger value="all" className="flex-1">
-            All
-          </TabsTrigger>
-          <TabsTrigger value="unread" className="flex-1">
-            Unread
-          </TabsTrigger>
-          <TabsTrigger value="private" className="flex-1">
-            Private
-          </TabsTrigger>
-          <TabsTrigger value="requests" className="flex-1">
-            Requests
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {/* Tabs: All / Unread / Private / Requests — segmented control */}
+      <div className="mt-4">
+        <div className="segmented-control w-full">
+          {(['all', 'unread', 'private', 'requests'] as const).map((id) => {
+            const active = filter === id
+            return (
+              <button
+                key={id}
+                onClick={() => setFilter(id)}
+                className={cn('flex-1 capitalize', active ? 'active' : '')}
+              >
+                {id}
+              </button>
+            )
+          })}
+        </div>
+      </div>
 
       {/* Tab content */}
       <div className="mt-4 space-y-2">
@@ -199,17 +192,17 @@ export function GroupsScreen({ conversations, onOpenChat, onRefresh }: GroupsPro
               <button
                 key={c.id}
                 onClick={() => onOpenChat(c)}
-                className="flex w-full min-h-[60px] items-center gap-3 rounded-xl border border-border bg-card p-3 text-left transition-colors hover:bg-accent/50"
+                className="chat-list-item taly-card taly-card-hover w-full border border-border text-left"
               >
-                <Avatar className="h-10 w-10 rounded-lg">
-                  <AvatarImage src={groupLogo(c)} alt={c.name} />
-                  <AvatarFallback className="rounded-lg bg-primary/10 text-primary">
-                    {groupInitial(c)}
-                  </AvatarFallback>
-                </Avatar>
+                {/* Stacked member avatars — 2-3 small overlapping letter avatars + "+N" */}
+                <StackedGroupAvatars
+                  logo={groupLogo(c)}
+                  name={c.name}
+                  memberCount={memberCount}
+                />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-2">
-                    <span className="flex items-center gap-1 truncate text-sm font-semibold">
+                    <span className="flex items-center gap-1 truncate text-[15px] font-semibold">
                       {isPrivate && (
                         <Lock className="h-3 w-3 shrink-0 text-muted-foreground" />
                       )}
@@ -219,15 +212,15 @@ export function GroupsScreen({ conversations, onOpenChat, onRefresh }: GroupsPro
                       {relativeTime(last?.createdAt || c.updatedAt)}
                     </span>
                   </div>
-                  <p className="truncate text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground/80">
-                      {memberCount} members
-                    </span>
-                    {last && <span> · {preview}</span>}
+                  {/* Member count sub-text with Users icon */}
+                  <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                    <Users className="h-3 w-3" />
+                    <span className="font-medium text-foreground/80">{memberCount} members</span>
+                    {last && <span className="truncate"> · {preview}</span>}
                   </p>
                 </div>
                 {(c.unread || 0) > 0 && (
-                  <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                  <span className="unread-badge shrink-0">
                     {(c.unread || 0) > 99 ? '99+' : c.unread}
                   </span>
                 )}
@@ -237,6 +230,15 @@ export function GroupsScreen({ conversations, onOpenChat, onRefresh }: GroupsPro
         )}
       </div>
 
+      {/* Floating Create button — mobile only, sits above the bottom nav */}
+      <button
+        onClick={() => setCreateOpen(true)}
+        aria-label="Create a new group"
+        className="action-btn fixed bottom-20 right-4 z-30 h-14 w-14 !rounded-full !p-0 shadow-xl lg:hidden"
+      >
+        <Plus className="h-6 w-6" />
+      </button>
+
       <CreateGroupDialog
         open={createOpen}
         onClose={() => setCreateOpen(false)}
@@ -245,6 +247,88 @@ export function GroupsScreen({ conversations, onOpenChat, onRefresh }: GroupsPro
           onRefresh()
         }}
       />
+    </div>
+  )
+}
+
+// ============================================================
+// StackedGroupAvatars — shows 2-3 overlapping small letter avatars
+// representing the group's members. Falls back to the group's logo
+// avatar as the topmost avatar when available. Shows "+N" when
+// memberCount > 3.
+// ============================================================
+function StackedGroupAvatars({
+  logo,
+  name,
+  memberCount,
+}: {
+  logo?: string
+  name: string
+  memberCount: number
+}) {
+  // Generate up to 3 distinct "member" initials from the group name.
+  const baseName = name || 'G'
+  const initials = (baseName.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean))
+  const derived: string[] = []
+  for (let i = 0; i < initials.length && derived.length < 3; i++) {
+    derived.push(initials[i][0]?.toUpperCase() || 'U')
+  }
+  // Pad with the group's own initial + generic dots until we have 3 entries.
+  while (derived.length < 3) {
+    derived.push(baseName[0]?.toUpperCase() || 'U')
+  }
+  const visible = derived.slice(0, 3)
+  // "+N" overflow chip — show extra member count beyond the 3 visible.
+  const extra = Math.max(0, memberCount - 3)
+
+  // Color palette per slot — emerald, amber, sky for variety.
+  const slotClass = (i: number) => {
+    switch (i % 3) {
+      case 0:
+        return 'bg-emerald-500/15 text-emerald-600'
+      case 1:
+        return 'bg-amber-500/15 text-amber-600'
+      default:
+        return 'bg-sky-500/15 text-sky-600'
+    }
+  }
+
+  return (
+    <div className="relative flex shrink-0 items-center" aria-hidden>
+      <div className="relative flex h-10 w-14 items-center">
+        {visible.map((letter, i) => {
+          const z = visible.length - i // back→front
+          const offset = i * 14 // 14px stagger, overlap 6px on 20px avatars
+          return (
+            <div
+              key={i}
+              className={cn(
+                'absolute flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold ring-2 ring-card',
+                slotClass(i),
+              )}
+              style={{ left: `${offset}px`, zIndex: z }}
+            >
+              {i === 0 && logo ? (
+                <img
+                  src={logo}
+                  alt=""
+                  className="h-full w-full rounded-full object-cover"
+                />
+              ) : (
+                letter
+              )}
+            </div>
+          )
+        })}
+        {extra > 0 && (
+          <span
+            className="absolute -right-1 top-1/2 inline-flex h-5 min-w-5 -translate-y-1/2 items-center justify-center rounded-full bg-muted px-1 text-[9px] font-bold text-muted-foreground ring-2 ring-card"
+            style={{ zIndex: visible.length + 1 }}
+          >
+            +{extra > 99 ? '99' : extra}
+          </span>
+        )}
+      </div>
     </div>
   )
 }
@@ -456,6 +540,9 @@ function CreateGroupDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Create a new group</DialogTitle>
+          <DialogDescription className="sr-only">
+            Fill in the name, description, category, and visibility for your new group, then tap Create group.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">

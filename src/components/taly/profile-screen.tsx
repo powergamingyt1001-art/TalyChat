@@ -435,23 +435,38 @@ export function ProfileScreen() {
     }
   }
 
+  // V5 — behavior score for the ring around the avatar
+  const behaviorScore = behavior?.score ?? 100
+  const behaviorRingClass =
+    behaviorScore >= 80
+      ? 'ring-emerald-500/60'
+      : behaviorScore >= 50
+        ? 'ring-amber-500/60'
+        : 'ring-red-500/60'
+
   return (
     <div className="mx-auto max-w-2xl space-y-5 p-4">
       {/* Profile header card — V3: taly-card with shadow, larger avatar, online dot, joined date */}
       <div className="taly-card taly-card-hover animate-fade-in-up p-5" style={{ animationDelay: '0ms' }}>
         <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
           <div className="relative shrink-0">
-            <PremiumAvatar
-              user={{
-                isPremium: profile.isPremium,
-                premiumTier: profile.premiumTier,
-                avatar: profile.avatar || undefined,
-                name: profile.name || 'U',
-              }}
-              size={80}
-              showAura
-              className="shrink-0"
-            />
+            {/* V5 — behavior ring (pulses subtly) around the avatar */}
+            <div
+              className={`relative inline-flex rounded-full ring-4 ${behaviorRingClass} animate-pulse`}
+              style={{ animationDuration: '2.4s' }}
+            >
+              <PremiumAvatar
+                user={{
+                  isPremium: profile.isPremium,
+                  premiumTier: profile.premiumTier,
+                  avatar: profile.avatar || undefined,
+                  name: profile.name || 'U',
+                }}
+                size={80}
+                showAura
+                className="shrink-0"
+              />
+            </div>
             {profile.isOnline && <span className="online-dot" aria-label="online" />}
           </div>
           <div className="min-w-0 flex-1 text-center sm:text-left">
@@ -645,10 +660,19 @@ export function ProfileScreen() {
         >
           <Shield className="mr-2 h-4 w-4" /> Open privacy settings
         </button>
-        <Separator className="my-3" />
+      </div>
+
+      {/* V5 — Account container: red-tinted bg, holds Block List + Logout */}
+      <div
+        className="animate-fade-in-up rounded-xl border border-red-500/20 bg-red-50/50 p-5 dark:bg-red-950/10"
+        style={{ animationDelay: '420ms' }}
+      >
+        <div className="section-header mb-3 text-red-600 dark:text-red-400">
+          <ShieldAlert className="h-4 w-4" /> Account
+        </div>
         <button
           onClick={() => setBlockedOpen(true)}
-          className="ghost-btn min-h-[44px] w-full justify-start"
+          className="ghost-btn min-h-[44px] w-full justify-start !border-red-500/20 hover:!bg-red-500/10"
         >
           <Ban className="mr-2 h-4 w-4" /> Block List
           {blockedCount > 0 && (
@@ -657,15 +681,16 @@ export function ProfileScreen() {
             </span>
           )}
         </button>
-        <Separator className="my-3" />
+        <Separator className="my-3 bg-red-500/10" />
+        {/* V5 — Logout as text-only link style (low contrast to prevent accidental taps) */}
         <button
           onClick={() => {
             logout()
             toast({ title: 'Logged out' })
           }}
-          className="ghost-btn min-h-[44px] w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive"
+          className="mx-auto block min-h-[44px] w-full text-center text-xs font-medium text-muted-foreground/70 transition-colors hover:text-destructive"
         >
-          <LogOut className="mr-2 h-4 w-4" /> Logout
+          Logout
         </button>
       </div>
 
@@ -818,7 +843,7 @@ function PremiumSection({
             key={p.id}
             className={`taly-card taly-card-hover relative flex flex-col gap-1 overflow-hidden p-4 ${
               p.best
-                ? 'border-emerald-500/40 bg-emerald-50 dark:bg-emerald-950/20'
+                ? 'border border-emerald-500/40 bg-emerald-50 shadow-lg shadow-emerald-500/10 dark:bg-emerald-950/20'
                 : ''
             }`}
           >
@@ -1483,12 +1508,36 @@ function BehaviorBar({ behavior }: { behavior: BehaviorData | null }) {
         </span>
       </div>
 
-      {/* V3 — behavior-bar pill with inner glow + gradient fill */}
-      <div className="behavior-bar">
-        <div
-          className="behavior-bar-fill"
-          style={{ width: `${Math.max(2, Math.min(100, score))}%` }}
-        />
+      {/* V5 — gamified behavior bar: 5 segmented blocks (20% each) with
+          red → orange → amber → light-green → green color ramp.
+          Filled blocks are tinted, empty blocks are muted. Trophy icon
+          marks the 100% goal. */}
+      <div className="relative mt-2">
+        <div className="behavior-bar flex gap-1 px-0" style={{ height: '14px' }}>
+          {[
+            { color: 'bg-red-500', filled: score >= 20 },
+            { color: 'bg-orange-500', filled: score >= 40 },
+            { color: 'bg-amber-400', filled: score >= 60 },
+            { color: 'bg-lime-400', filled: score >= 80 },
+            { color: 'bg-emerald-500', filled: score >= 100 },
+          ].map((block, i) => (
+            <div
+              key={i}
+              className={`flex-1 rounded-full transition-colors duration-500 ${block.filled ? block.color : 'bg-muted-foreground/15'}`}
+            />
+          ))}
+        </div>
+        {/* Trophy marker at the 100% position */}
+        <span
+          className={`absolute -top-1 right-0 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full ring-2 ring-card transition-all ${
+            score >= 100
+              ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/40'
+              : 'bg-muted text-muted-foreground'
+          }`}
+          title={score >= 100 ? 'Perfect score!' : 'Reach 100 to unlock the trophy'}
+        >
+          <Trophy className="h-3 w-3" />
+        </span>
       </div>
 
       {/* Warning if score < 50 */}
@@ -1749,15 +1798,26 @@ function ReferralSection({
           {hasActiveTask ? 'Available tasks (locked)' : 'Choose a task'}
         </p>
         <div className="grid gap-3 sm:grid-cols-3">
-          {tiers.map((t) => (
-            <TaskTierCard
-              key={t.tier}
-              tier={t}
-              disabled={hasActiveTask}
-              selected={activeTask?.tier === t.tier}
-              onSelect={onSelectTask}
-            />
-          ))}
+          {tiers.map((t) => {
+            // V5 — locked state: Tier 2 (rewardMonths 3–6) requires
+            // completing a Tier 1 task; Tier 3 (rewardMonths ≥7) requires
+            // completing a Tier 2 task. Tier 1 is always available.
+            const tierNum = t.rewardMonths <= 2 ? 1 : t.rewardMonths <= 6 ? 2 : 3
+            const completed = referral?.completedTasks ?? []
+            const tier1Done = completed.some((c) => c.rewardMonths <= 2 && c.completedAt)
+            const tier2Done = completed.some((c) => c.rewardMonths <= 6 && c.rewardMonths > 2 && c.completedAt)
+            const locked = tierNum === 2 ? !tier1Done : tierNum === 3 ? !tier2Done : false
+            return (
+              <TaskTierCard
+                key={t.tier}
+                tier={t}
+                disabled={hasActiveTask}
+                selected={activeTask?.tier === t.tier}
+                locked={locked && !hasActiveTask}
+                onSelect={onSelectTask}
+              />
+            )
+          })}
         </div>
       </div>
 
@@ -1841,13 +1901,16 @@ function TaskTierCard({
   tier,
   disabled,
   selected,
+  locked,
   onSelect,
 }: {
   tier: TaskTier
   disabled: boolean
   selected: boolean
+  locked?: boolean
   onSelect: (tier: string) => void
 }) {
+  const tierNum = tier.rewardMonths <= 2 ? '1' : tier.rewardMonths <= 6 ? '2' : '3'
   return (
     <div
       className={`taly-card taly-card-hover relative flex flex-col gap-1.5 p-4 transition-all ${
@@ -1855,7 +1918,9 @@ function TaskTierCard({
           ? 'ring-2 ring-emerald-500/60 bg-emerald-50/50 dark:bg-emerald-950/20'
           : disabled
             ? 'opacity-60'
-            : ''
+            : locked
+              ? 'opacity-70 ring-1 ring-dashed ring-muted-foreground/30'
+              : ''
       }`}
     >
       {/* Selected checkmark badge top-right */}
@@ -1865,40 +1930,70 @@ function TaskTierCard({
         </span>
       )}
 
+      {/* Locked overlay — lock icon + hint */}
+      {locked && (
+        <span className="absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted text-muted-foreground ring-1 ring-border">
+          <Lock className="h-3 w-3" />
+        </span>
+      )}
+
       {/* Tier label */}
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground/80">
-          Tier {tier.rewardMonths <= 2 ? '1' : tier.rewardMonths <= 6 ? '2' : '3'}
+          Tier {tierNum}
         </span>
       </div>
 
-      {/* Required count */}
-      <p className="flex items-center gap-1 text-sm font-bold">
-        <Target className="h-3.5 w-3.5 text-primary" />
-        {tier.requiredCount} members
-      </p>
-      <p className="flex items-center gap-1 text-xs text-muted-foreground/80">
-        <Hourglass className="h-3 w-3" />
-        in {tier.windowDays} days
-      </p>
+      {locked ? (
+        // V5 — hide specifics until unlocked
+        <div className="space-y-1.5 py-1">
+          <p className="flex items-center gap-1 text-sm font-bold text-muted-foreground/80">
+            <Lock className="h-3.5 w-3.5" /> Locked
+          </p>
+          <p className="text-xs text-muted-foreground/80">
+            Complete Tier {Number(tierNum) - 1} to unlock.
+          </p>
+          <div className="mt-1 rounded-md bg-muted/40 px-2 py-1 text-[10px] italic text-muted-foreground">
+            ??? members · ??? days
+          </div>
+          <button
+            disabled
+            className="ghost-btn mt-2 min-h-[36px] w-full cursor-not-allowed opacity-60"
+          >
+            <Lock className="mr-1 h-3.5 w-3.5" /> Locked
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* Required count */}
+          <p className="flex items-center gap-1 text-sm font-bold">
+            <Target className="h-3.5 w-3.5 text-primary" />
+            {tier.requiredCount} members
+          </p>
+          <p className="flex items-center gap-1 text-xs text-muted-foreground/80">
+            <Hourglass className="h-3 w-3" />
+            in {tier.windowDays} days
+          </p>
 
-      {/* Reward */}
-      <div className="mt-1 flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-1 text-xs font-semibold text-amber-600">
-        <Trophy className="h-3 w-3" />
-        {tier.rewardMonths} months premium
-      </div>
+          {/* Reward */}
+          <div className="mt-1 flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-1 text-xs font-semibold text-amber-600">
+            <Trophy className="h-3 w-3" />
+            {tier.rewardMonths} months premium
+          </div>
 
-      <button
-        disabled={disabled}
-        onClick={() => onSelect(tier.tier)}
-        className={`mt-2 min-h-[36px] text-sm font-semibold disabled:opacity-60 ${
-          selected
-            ? 'ghost-btn'
-            : 'action-btn'
-        }`}
-      >
-        {selected ? 'Selected ✓' : 'Select'}
-      </button>
+          <button
+            disabled={disabled}
+            onClick={() => onSelect(tier.tier)}
+            className={`mt-2 min-h-[36px] text-sm font-semibold disabled:opacity-60 ${
+              selected
+                ? 'ghost-btn'
+                : 'action-btn'
+            }`}
+          >
+            {selected ? 'Selected ✓' : 'Select'}
+          </button>
+        </>
+      )}
     </div>
   )
 }

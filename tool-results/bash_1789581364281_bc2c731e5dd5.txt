@@ -8,8 +8,6 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  Line,
-  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -35,9 +33,6 @@ import {
   ShieldAlert,
   UserMinus,
   CreditCard,
-  BarChart3,
-  PieChart as PieChartIcon,
-  ChevronDown,
   type LucideIcon,
 } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
@@ -47,12 +42,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
-import {
   type AdminStats,
+  StatCard,
   formatINR,
 } from './admin-shared'
 import { AdminMembers } from './admin-members'
@@ -214,318 +205,291 @@ export function AdminDashboard() {
         </div>
       </div>
 
-      {/* V5 — Key Performance collapsible (default open).
-          Wraps the three KPI sections: Overview metrics, User status, Subscriptions. */}
-      <Collapsible defaultOpen className="animate-fade-in-up" style={{ animationDelay: '60ms' }}>
-        <CollapsibleTrigger className="group flex w-full items-center justify-between rounded-xl bg-muted/30 px-4 py-3 text-left transition-colors hover:bg-muted/50">
-          <div className="section-header flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-primary" /> Key Performance
+      {/* Overview metrics — V3 grouped section with light grey container + section-header */}
+      <section
+        className="animate-fade-in-up rounded-xl bg-muted/30 p-4"
+        style={{ animationDelay: '60ms' }}
+      >
+        <div className="section-header mb-4">
+          Overview metrics
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {METRICS.map((m, i) => {
+            if (loading || !stats) {
+              return (
+                <Skeleton
+                  key={m.label}
+                  className={cn(
+                    'h-[110px] rounded-xl',
+                    m.featured && 'sm:col-span-2 sm:h-[120px]'
+                  )}
+                />
+              )
+            }
+            return (
+              <KpiCard
+                key={m.label}
+                metric={m}
+                value={m.value(stats)}
+                hint={m.hint ? m.hint(stats) : undefined}
+                onClick={() => setDrilldown(m)}
+                featured={!!m.featured}
+                style={{ animationDelay: `${60 + i * 30}ms` }}
+              />
+            )
+          })}
+        </div>
+      </section>
+
+      {/* V2 — User Status cards (4 cards) */}
+      <section
+        className="animate-fade-in-up rounded-xl bg-muted/30 p-4"
+        style={{ animationDelay: '120ms' }}
+      >
+        <div className="section-header mb-4">
+          User status
+        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {USER_STATUS_METRICS.map((m) => {
+            if (loading || !stats) {
+              return <Skeleton key={m.label} className="h-[110px] rounded-xl" />
+            }
+            return (
+              <KpiCard
+                key={m.label}
+                metric={m}
+                value={m.value(stats).toLocaleString('en-IN')}
+                onClick={() => setDrilldown(m)}
+              />
+            )
+          })}
+        </div>
+      </section>
+
+      {/* V2 — Subscriptions cards (3 cards) */}
+      <section
+        className="animate-fade-in-up rounded-xl bg-muted/30 p-4"
+        style={{ animationDelay: '180ms' }}
+      >
+        <div className="section-header mb-4">
+          Subscriptions
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {SUBS_METRICS.map((m) => {
+            if (loading || !stats) {
+              return <Skeleton key={m.label} className="h-[110px] rounded-xl" />
+            }
+            return (
+              <KpiCard
+                key={m.label}
+                metric={m}
+                value={m.value(stats).toLocaleString('en-IN')}
+                onClick={() => setDrilldown(m)}
+              />
+            )
+          })}
+        </div>
+      </section>
+
+      {/* Chart 1: Candle/Bar — new user registrations */}
+      <Card className="animate-fade-in-up" style={{ animationDelay: '240ms' }}>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base font-bold">New user registrations</CardTitle>
+          <p className="text-xs text-muted-foreground/80">
+            {period === '7days'
+              ? 'Daily new sign-ups (last 7 days)'
+              : period === '1month'
+                ? 'Weekly new sign-ups (this month)'
+                : 'Monthly new sign-ups (all time)'}
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[300px] w-full">
+            {loading || !stats ? (
+              <Skeleton className="h-full w-full" />
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={stats.registerData ?? []}
+                  margin={{ top: 8, right: 8, left: -10, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
+                  <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" width={36} allowDecimals={false} />
+                  <Tooltip
+                    contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                    formatter={(v: number) => [v, 'New users']}
+                  />
+                  {/* Candle-like tall thin bars with rounded tops */}
+                  <Bar
+                    dataKey="count"
+                    fill={BRAND}
+                    radius={[6, 6, 0, 0]}
+                    barSize={period === 'alltime' ? 28 : 38}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
-          <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 group-data-[state=closed]:rotate-[-90deg]" />
-        </CollapsibleTrigger>
-        <CollapsibleContent className="mt-3 flex flex-col gap-4">
-          {/* Overview metrics — V3 grouped section with light grey container + section-header */}
-          <section className="rounded-xl bg-muted/30 p-4">
-            <div className="section-header mb-4">
-              Overview metrics
-            </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {METRICS.map((m, i) => {
-                if (loading || !stats) {
-                  return (
-                    <Skeleton
-                      key={m.label}
-                      className={cn(
-                        'h-[110px] rounded-xl',
-                        m.featured && 'sm:col-span-2 sm:h-[120px]'
-                      )}
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {/* Chart 2: Donut — Active vs Inactive members */}
+        <Card className="animate-fade-in-up" style={{ animationDelay: '300ms' }}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-bold">Active vs Inactive</CardTitle>
+            <p className="text-xs text-muted-foreground/80">Members active (last 24h) vs dormant</p>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[300px] w-full">
+              {loading || !stats ? (
+                <Skeleton className="h-full w-full" />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Tooltip
+                      contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                      formatter={(v: number, n) => [v, n === 'active' ? 'Active' : 'Inactive']}
                     />
-                  )
-                }
-                return (
-                  <KpiCard
-                    key={m.label}
-                    metric={m}
-                    value={m.value(stats)}
-                    hint={m.hint ? m.hint(stats) : undefined}
-                    onClick={() => setDrilldown(m)}
-                    featured={!!m.featured}
-                    stats={stats}
-                    style={{ animationDelay: `${60 + i * 30}ms` }}
-                  />
-                )
-              })}
-            </div>
-          </section>
-
-          {/* V2 — User Status cards (4 cards) */}
-          <section className="rounded-xl bg-muted/30 p-4">
-            <div className="section-header mb-4">
-              User status
-            </div>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              {USER_STATUS_METRICS.map((m) => {
-                if (loading || !stats) {
-                  return <Skeleton key={m.label} className="h-[110px] rounded-xl" />
-                }
-                return (
-                  <KpiCard
-                    key={m.label}
-                    metric={m}
-                    value={m.value(stats).toLocaleString('en-IN')}
-                    onClick={() => setDrilldown(m)}
-                    stats={stats}
-                  />
-                )
-              })}
-            </div>
-          </section>
-
-          {/* V2 — Subscriptions cards (3 cards) */}
-          <section className="rounded-xl bg-muted/30 p-4">
-            <div className="section-header mb-4">
-              Subscriptions
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              {SUBS_METRICS.map((m) => {
-                if (loading || !stats) {
-                  return <Skeleton key={m.label} className="h-[110px] rounded-xl" />
-                }
-                return (
-                  <KpiCard
-                    key={m.label}
-                    metric={m}
-                    value={m.value(stats).toLocaleString('en-IN')}
-                    onClick={() => setDrilldown(m)}
-                    stats={stats}
-                  />
-                )
-              })}
-            </div>
-          </section>
-        </CollapsibleContent>
-      </Collapsible>
-
-      {/* V5 — Analytics & Growth collapsible (default open).
-          Wraps the 4 charts: New user registrations, Active/Inactive,
-          User growth (cumulative), Subscriptions breakdown. */}
-      <Collapsible defaultOpen className="animate-fade-in-up" style={{ animationDelay: '120ms' }}>
-        <CollapsibleTrigger className="group flex w-full items-center justify-between rounded-xl bg-muted/30 px-4 py-3 text-left transition-colors hover:bg-muted/50">
-          <div className="section-header flex items-center gap-2">
-            <PieChartIcon className="h-4 w-4 text-primary" /> Analytics &amp; Growth
-          </div>
-          <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 group-data-[state=closed]:rotate-[-90deg]" />
-        </CollapsibleTrigger>
-        <CollapsibleContent className="mt-3 flex flex-col gap-4">
-          {/* Chart 1: Candle/Bar — new user registrations */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-bold">New user registrations</CardTitle>
-              <p className="text-xs text-muted-foreground/80">
-                {period === '7days'
-                  ? 'Daily new sign-ups (last 7 days)'
-                  : period === '1month'
-                    ? 'Weekly new sign-ups (this month)'
-                    : 'Monthly new sign-ups (all time)'}
-              </p>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[300px] w-full">
-                {loading || !stats ? (
-                  <Skeleton className="h-full w-full" />
-                ) : isAllZeroRegister(stats.registerData) ? (
-                  <ChartEmptyState icon={BarChart3} label="No data yet" hint="New sign-ups will appear here once users start joining." />
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={stats.registerData ?? []}
-                      margin={{ top: 8, right: 8, left: -10, bottom: 0 }}
+                    <Pie
+                      data={[
+                        { name: 'active', value: stats.activeVsInactive?.active ?? stats.activeInactive.active },
+                        { name: 'inactive', value: stats.activeVsInactive?.inactive ?? stats.activeInactive.inactive },
+                      ]}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={60}
+                      outerRadius={90}
+                      paddingAngle={2}
+                      label={(e: any) => {
+                        const total =
+                          (stats?.activeVsInactive?.active ?? stats?.activeInactive.active ?? 0) +
+                          (stats?.activeVsInactive?.inactive ?? stats?.activeInactive.inactive ?? 0)
+                        const pct = total ? Math.round((e.value / total) * 100) : 0
+                        return `${pct}%`
+                      }}
                     >
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-                      <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
-                      <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" width={36} allowDecimals={false} />
-                      <Tooltip
-                        contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                        formatter={(v: number) => [v, 'New users']}
-                      />
-                      {/* Candle-like tall thin bars with rounded tops */}
-                      <Bar
-                        dataKey="count"
-                        fill={BRAND}
-                        radius={[6, 6, 0, 0]}
-                        barSize={period === 'alltime' ? 28 : 38}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                      <Cell fill={BRAND} />
+                      <Cell fill={NEUTRAL} />
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+            <div className="mt-2 flex items-center justify-center gap-4 text-xs">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-primary" />
+                Active ({stats?.activeVsInactive?.active ?? stats?.activeInactive.active ?? 0})
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/40" />
+                Inactive ({stats?.activeVsInactive?.inactive ?? stats?.activeInactive.inactive ?? 0})
+              </span>
+            </div>
+          </CardContent>
+        </Card>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {/* Chart 2: Donut — Active vs Inactive members */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base font-bold">Active vs Inactive</CardTitle>
-                <p className="text-xs text-muted-foreground/80">Members active (last 24h) vs dormant</p>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[300px] w-full">
-                  {loading || !stats ? (
-                    <Skeleton className="h-full w-full" />
-                  ) : isAllZeroActiveInactive(stats) ? (
-                    <ChartEmptyState icon={PieChartIcon} label="No data yet" hint="No active/inactive users to display." />
-                  ) : (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Tooltip
-                          contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                          formatter={(v: number, n) => [v, n === 'active' ? 'Active' : 'Inactive']}
-                        />
-                        <Pie
-                          data={[
-                            { name: 'active', value: stats.activeVsInactive?.active ?? stats.activeInactive.active },
-                            { name: 'inactive', value: stats.activeVsInactive?.inactive ?? stats.activeInactive.inactive },
-                          ]}
-                          dataKey="value"
-                          nameKey="name"
-                          innerRadius={60}
-                          outerRadius={90}
-                          paddingAngle={2}
-                          label={(e: any) => {
-                            const total =
-                              (stats?.activeVsInactive?.active ?? stats?.activeInactive.active ?? 0) +
-                              (stats?.activeVsInactive?.inactive ?? stats?.activeInactive.inactive ?? 0)
-                            const pct = total ? Math.round((e.value / total) * 100) : 0
-                            return `${pct}%`
-                          }}
-                        >
-                          <Cell fill={BRAND} />
-                          <Cell fill={NEUTRAL} />
-                        </Pie>
-                      </PieChart>
-                    </ResponsiveContainer>
-                  )}
-                </div>
-                <div className="mt-2 flex items-center justify-center gap-4 text-xs">
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-primary" />
-                    Active ({stats?.activeVsInactive?.active ?? stats?.activeInactive.active ?? 0})
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/40" />
-                    Inactive ({stats?.activeVsInactive?.inactive ?? stats?.activeInactive.inactive ?? 0})
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
+        {/* Chart 3: Area chart — User growth (cumulative) with gradient fill */}
+        <Card className="animate-fade-in-up" style={{ animationDelay: '360ms' }}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-bold">User growth (cumulative)</CardTitle>
+            <p className="text-xs text-muted-foreground/80">Cumulative total users over period</p>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[300px] w-full">
+              {loading || !stats ? (
+                <Skeleton className="h-full w-full" />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={stats.userGrowth ?? []}
+                    margin={{ top: 8, right: 8, left: -10, bottom: 0 }}
+                  >
+                    <defs>
+                      <linearGradient id="userGrowthFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={BRAND} stopOpacity={0.35} />
+                        <stop offset="100%" stopColor={BRAND} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
+                    <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" width={36} allowDecimals={false} />
+                    <Tooltip
+                      contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                      formatter={(v: number) => [v, 'Total users']}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="value"
+                      stroke={BRAND}
+                      strokeWidth={3}
+                      dot={{ r: 3, fill: BRAND, strokeWidth: 0 }}
+                      activeDot={{ r: 5, fill: BRAND, stroke: 'var(--card)', strokeWidth: 2 }}
+                      fill="url(#userGrowthFill)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-            {/* Chart 3: Area chart — User growth (cumulative) with gradient fill */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base font-bold">User growth (cumulative)</CardTitle>
-                <p className="text-xs text-muted-foreground/80">Cumulative total users over period</p>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[300px] w-full">
-                  {loading || !stats ? (
-                    <Skeleton className="h-full w-full" />
-                  ) : isAllZeroGrowth(stats.userGrowth) ? (
-                    <ChartEmptyState icon={BarChart3} label="No data yet" hint="User growth will populate as users join TalyChat." />
-                  ) : (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart
-                        data={stats.userGrowth ?? []}
-                        margin={{ top: 8, right: 8, left: -10, bottom: 0 }}
-                      >
-                        <defs>
-                          <linearGradient id="userGrowthFill" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor={BRAND} stopOpacity={0.35} />
-                            <stop offset="100%" stopColor={BRAND} stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-                        <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
-                        <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" width={36} allowDecimals={false} />
-                        <Tooltip
-                          contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                          formatter={(v: number) => [v, 'Total users']}
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="value"
-                          stroke={BRAND}
-                          strokeWidth={3}
-                          dot={{ r: 3, fill: BRAND, strokeWidth: 0 }}
-                          activeDot={{ r: 5, fill: BRAND, stroke: 'var(--card)', strokeWidth: 2 }}
-                          fill="url(#userGrowthFill)"
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+      {/* Chart 4: Donut — Subscriptions: Paid / Free / Expired */}
+      <Card className="animate-fade-in-up" style={{ animationDelay: '420ms' }}>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base font-bold">Subscriptions breakdown</CardTitle>
+          <p className="text-xs text-muted-foreground/80">Paid vs free vs expired subscriptions</p>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[300px] w-full">
+            {loading || !stats ? (
+              <Skeleton className="h-full w-full" />
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Tooltip
+                    contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                    formatter={(v: number, n) => [v, n]}
+                  />
+                  <Pie
+                    data={[
+                      { name: 'Paid', value: stats.subscriptions?.paid ?? 0 },
+                      { name: 'Free', value: stats.subscriptions?.free ?? 0 },
+                      { name: 'Expired', value: stats.subscriptions?.expired ?? 0 },
+                    ]}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={60}
+                    outerRadius={90}
+                    paddingAngle={2}
+                    label={(e: any) => `${e.name}: ${e.value}`}
+                  >
+                    <Cell fill={BRAND} />
+                    <Cell fill={NEUTRAL} />
+                    <Cell fill={ROSE} />
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
+            )}
           </div>
-
-          {/* Chart 4: Donut — Subscriptions: Paid / Free / Expired */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-bold">Subscriptions breakdown</CardTitle>
-              <p className="text-xs text-muted-foreground/80">Paid vs free vs expired subscriptions</p>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[300px] w-full">
-                {loading || !stats ? (
-                  <Skeleton className="h-full w-full" />
-                ) : isAllZeroSubs(stats) ? (
-                  <ChartEmptyState icon={PieChartIcon} label="No data yet" hint="No subscriptions to display yet." />
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Tooltip
-                        contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                        formatter={(v: number, n) => [v, n]}
-                      />
-                      <Pie
-                        data={[
-                          { name: 'Paid', value: stats.subscriptions?.paid ?? 0 },
-                          { name: 'Free', value: stats.subscriptions?.free ?? 0 },
-                          { name: 'Expired', value: stats.subscriptions?.expired ?? 0 },
-                        ]}
-                        dataKey="value"
-                        nameKey="name"
-                        innerRadius={60}
-                        outerRadius={90}
-                        paddingAngle={2}
-                        label={(e: any) => `${e.name}: ${e.value}`}
-                      >
-                        <Cell fill={BRAND} />
-                        <Cell fill={NEUTRAL} />
-                        <Cell fill={ROSE} />
-                      </Pie>
-                    </PieChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
-              <div className="mt-2 flex flex-wrap items-center justify-center gap-4 text-xs">
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-primary" />
-                  Paid ({stats?.subscriptions?.paid ?? 0})
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/40" />
-                  Free ({stats?.subscriptions?.free ?? 0})
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />
-                  Expired ({stats?.subscriptions?.expired ?? 0})
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-        </CollapsibleContent>
-      </Collapsible>
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-4 text-xs">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-primary" />
+              Paid ({stats?.subscriptions?.paid ?? 0})
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/40" />
+              Free ({stats?.subscriptions?.free ?? 0})
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />
+              Expired ({stats?.subscriptions?.expired ?? 0})
+            </span>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* V2 — Members section (kept accessible from Dashboard; no separate tab).
           Renders the existing admin-members component which has its own
@@ -549,8 +513,6 @@ export function AdminDashboard() {
 // ============================================================
 // V3 — KpiCard — vertical layout: icon top-left, big number center,
 // label below. Uses --kpi-accent CSS var for the left accent bar.
-// V5 — adds a tiny sparkline in the bottom-right when stats is provided
-// and the metric's chart kind is one of the time-series types.
 // ============================================================
 function KpiCard({
   metric,
@@ -559,7 +521,6 @@ function KpiCard({
   onClick,
   style,
   featured,
-  stats,
 }: {
   metric: MetricDef | UserStatusDef | SubsDef
   value: string
@@ -567,28 +528,16 @@ function KpiCard({
   onClick: () => void
   style?: React.CSSProperties
   featured?: boolean
-  stats?: AdminStats | null
 }) {
   const Icon = metric.icon
   const accent = metric.accent
   const accentVar = ACCENT_VAR[accent]
   const textColor = TEXT_COLOR[accent]
 
-  // Resolve the sparkline series from the metric's chart kind
-  const chartKind = (metric as MetricDef).chart ?? 'none'
-  let sparkData: Array<{ label: string; value: number }> | null = null
-  if (stats && chartKind === 'registerData') {
-    sparkData = (stats.registerData ?? []).map((d) => ({ label: d.label, value: d.count }))
-  } else if (stats && chartKind === 'userGrowth') {
-    sparkData = (stats.userGrowth ?? []).map((d) => ({ label: d.label, value: d.value }))
-  } else if (stats && chartKind === 'salesData') {
-    sparkData = stats.salesData ?? []
-  }
-
   return (
     <button
       onClick={onClick}
-      className="kpi-card taly-card-hover animate-fade-in-up relative flex flex-col items-start gap-1.5 overflow-hidden text-left"
+      className="kpi-card taly-card-hover animate-fade-in-up flex flex-col items-start gap-1.5 text-left"
       style={{ ...(style || {}), ['--kpi-accent' as any]: accentVar }}
       aria-label={`${metric.label} — tap for details`}
     >
@@ -605,74 +554,7 @@ function KpiCard({
       </p>
       <p className="text-xs font-medium text-muted-foreground/80">{metric.label}</p>
       {hint && <p className="text-[10px] text-muted-foreground/70">{hint}</p>}
-      {/* V5 — tiny sparkline in the bottom-right corner. 30px tall, no axes. */}
-      {sparkData && sparkData.length > 1 && (
-        <div className="pointer-events-none absolute bottom-1 right-2 h-8 w-20 opacity-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={sparkData} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
-              <Line
-                type="monotone"
-                dataKey="value"
-                stroke={accentVar}
-                strokeWidth={2}
-                dot={false}
-                isAnimationActive={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      )}
     </button>
-  )
-}
-
-// ============================================================
-// V5 — helpers to detect "empty" chart data (all zeros / no rows)
-// ============================================================
-
-function isAllZeroRegister(data?: { label: string; count: number }[] | null): boolean {
-  if (!data || data.length === 0) return true
-  return data.every((d) => (d.count ?? 0) === 0)
-}
-
-function isAllZeroGrowth(data?: { label: string; value: number }[] | null): boolean {
-  if (!data || data.length === 0) return true
-  return data.every((d) => (d.value ?? 0) === 0)
-}
-
-function isAllZeroActiveInactive(stats: AdminStats): boolean {
-  const a = stats.activeVsInactive?.active ?? stats.activeInactive.active
-  const i = stats.activeVsInactive?.inactive ?? stats.activeInactive.inactive
-  return (a ?? 0) === 0 && (i ?? 0) === 0
-}
-
-function isAllZeroSubs(stats: AdminStats): boolean {
-  return (
-    (stats.subscriptions?.paid ?? 0) === 0 &&
-    (stats.subscriptions?.free ?? 0) === 0 &&
-    (stats.subscriptions?.expired ?? 0) === 0
-  )
-}
-
-// ============================================================
-// V5 — ChartEmptyState — centered empty-state placeholder for charts
-// whose data is empty (all zeros). Shows a muted icon + message.
-// ============================================================
-function ChartEmptyState({
-  icon: Icon,
-  label,
-  hint,
-}: {
-  icon: React.ComponentType<{ className?: string }>
-  label: string
-  hint?: string
-}) {
-  return (
-    <div className="dotted-bg flex h-full w-full flex-col items-center justify-center gap-2 rounded-md bg-muted/20 text-center">
-      <Icon className="h-10 w-10 text-muted-foreground/40" />
-      <p className="text-sm font-semibold text-muted-foreground">{label}</p>
-      {hint && <p className="max-w-xs text-xs text-muted-foreground/70">{hint}</p>}
-    </div>
   )
 }
 
