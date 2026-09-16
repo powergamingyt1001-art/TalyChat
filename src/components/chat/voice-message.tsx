@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { motion } from 'framer-motion'
 import { Play, Pause, Loader2 } from 'lucide-react'
 import { formatDuration } from './chat-helpers'
 import { cn } from '@/lib/utils'
@@ -9,19 +10,50 @@ interface VoiceMessageProps {
   mediaUrl: string
   voiceDuration?: number | null
   isMine: boolean
+  /** Used as a seed for deterministic waveform generation. */
+  messageId?: string
   /** Stop click propagation so the bubble's dropdown doesn't toggle on play/pause. */
   stopPropagation?: boolean
   className?: string
 }
 
+const WAVEFORM_BARS = 36
+const MIN_BAR_H = 4
+const MAX_BAR_H = 24
+
 /**
- * Renders a voice message bubble: play/pause button, progress bar, duration.
- * Uses HTML5 <audio>. Each instance has its own <audio> element and play state.
+ * Generate a deterministic pseudo-random waveform based on a seed string.
+ * Each unique seed (e.g. message ID) produces a stable, repeatable waveform
+ * so re-renders don't reshuffle the bars.
+ */
+function generateWaveform(seed: string, bars: number = WAVEFORM_BARS): number[] {
+  let hash = 0
+  for (let i = 0; i < seed.length; i++) {
+    hash = ((hash << 5) - hash) + seed.charCodeAt(i)
+    hash |= 0
+  }
+  const heights: number[] = []
+  for (let i = 0; i < bars; i++) {
+    hash = (hash * 1103515245 + 12345) & 0x7fffffff
+    const normalized = (hash % 1000) / 1000
+    // Skew toward middle-height bars (more natural looking)
+    heights.push(0.3 + normalized * 0.7)
+  }
+  return heights
+}
+
+/**
+ * Renders a voice message bubble: play/pause button, waveform visualization,
+ * and duration. Uses HTML5 <audio>. The waveform is a deterministic
+ * pseudo-random pattern based on the message ID — clicking a bar seeks
+ * to that position. Played bars are emerald; unplayed bars are muted gray.
+ * The current bar pulses subtly while playing.
  */
 export function VoiceMessage({
   mediaUrl,
   voiceDuration,
   isMine,
+  messageId,
   stopPropagation = true,
   className,
 }: VoiceMessageProps) {
@@ -32,10 +64,18 @@ export function VoiceMessage({
   const [duration, setDuration] = React.useState<number>(voiceDuration || 0)
   const [loading, setLoading] = React.useState(false)
 
+  // Seed = messageId (preferred) → fallback to mediaUrl → fallback to constant.
+  const seed = messageId || mediaUrl || 'voice-message'
+  const waveform = React.useMemo(() => generateWaveform(seed), [seed])
+
   // Resolve a full URL if mediaUrl is relative.
   const src = React.useMemo(() => {
     if (!mediaUrl) return ''
-    if (mediaUrl.startsWith('http') || mediaUrl.startsWith('blob:') || mediaUrl.startsWith('data:')) {
+    if (
+      mediaUrl.startsWith('http') ||
+      mediaUrl.startsWith('blob:') ||
+      mediaUrl.startsWith('data:')
+    ) {
       return mediaUrl
     }
     return mediaUrl
@@ -110,20 +150,25 @@ export function VoiceMessage({
     setCurrent(0)
   }
 
-  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+  // Clicking a waveform bar seeks to that bar's position.
+  const seekToBar = (index: number, e: React.MouseEvent) => {
     handleStop(e)
     const audio = audioRef.current
-    if (!audio || !duration) return
-    const rect = e.currentTarget.getBoundingClientRect()
-    const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width))
-    audio.currentTime = ratio * duration
-    setProgress(ratio)
-    setCurrent(ratio * duration)
+    if (!audio || !duration || !waveform.length) return
+    const ratio = (index + 0.5) / waveform.length
+    const clamped = Math.min(1, Math.max(0, ratio))
+    audio.currentTime = clamped * duration
+    setProgress(clamped)
+    setCurrent(clamped * duration)
   }
+
+  // Index of the bar that represents the current playback position.
+  const playedIndex = Math.floor(progress * waveform.length)
+  const activeIndex = Math.min(waveform.length - 1, playedIndex)
 
   return (
     <div
-      className={cn('flex items-center gap-2 min-w-[180px] max-w-full', className)}
+      className={cn('flex items-center gap-2 min-w-[220px] max-w-full', className)}
       onClick={handleStop}
     >
       <audio
@@ -159,22 +204,57 @@ export function VoiceMessage({
       </button>
 
       <div className="flex flex-1 flex-col gap-1">
+        {/* Waveform — clickable bars, played portion emerald, unplayed muted */}
         <div
-          className="h-1.5 w-full cursor-pointer rounded-full bg-black/20"
-          onClick={seek}
+          className="flex h-7 w-full items-center justify-between gap-[1px]"
           role="slider"
+          aria-label="Voice message progress"
           aria-valuenow={Math.round(progress * 100)}
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-valuetext={`${current} of ${duration} seconds`}
+          aria-valuetext={`${current.toFixed(1)} of ${duration} seconds`}
         >
-          <div
-            className={cn(
-              'h-full rounded-full',
-              isMine ? 'bg-white' : 'bg-primary'
-            )}
-            style={{ width: `${Math.round(progress * 100)}%` }}
-          />
+          {waveform.map((h, i) => {
+            const height = MIN_BAR_H + (MAX_BAR_H - MIN_BAR_H) * h
+            const isPlayed = i < playedIndex
+            const isActive = i === activeIndex
+            // Subtle pulse on the currently-playing bar.
+            const pulse = playing && isActive
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={(e) => seekToBar(i, e)}
+                aria-label={`Seek to ${Math.round(((i + 0.5) / waveform.length) * (duration || 0))} seconds`}
+                className="flex h-7 min-h-[28px] min-w-[6px] flex-1 cursor-pointer items-center justify-center px-[1px]"
+                tabIndex={-1}
+              >
+                <motion.span
+                  className={cn(
+                    'block w-[2px] rounded-full',
+                    isPlayed
+                      ? 'bg-emerald-500'
+                      : isMine
+                        ? 'bg-white/40'
+                        : 'bg-black/25'
+                  )}
+                  style={{ height }}
+                  // Highlight the current bar.
+                  animate={
+                    pulse
+                      ? { scaleY: [1, 1.4, 1], opacity: [1, 0.7, 1] }
+                      : { scaleY: 1, opacity: 1 }
+                  }
+                  transition={
+                    pulse
+                      ? { duration: 0.6, repeat: Infinity, ease: 'easeInOut' }
+                      : { duration: 0.15 }
+                  }
+                  // Make the active bar slightly wider/bolder via outline.
+                />
+              </button>
+            )
+          })}
         </div>
         <div
           className={cn(

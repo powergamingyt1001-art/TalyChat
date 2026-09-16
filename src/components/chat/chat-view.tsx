@@ -1723,6 +1723,7 @@ export function ChatView({
                         setActionMenu(null)
                       }
                     }}
+                    members={conversation?.members}
                   />
                 </div>
               )

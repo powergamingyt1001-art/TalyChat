@@ -2,7 +2,17 @@
 
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Check, Compass, Loader2, Lock, Users } from 'lucide-react'
+import {
+  ChevronRight,
+  Compass,
+  Loader2,
+  Lock,
+  LogOut,
+  Plus,
+  Search,
+  Users,
+  X,
+} from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
 import { CATEGORIES } from '@/components/taly/customizer-context'
@@ -128,7 +138,57 @@ function categoryBadge(cat?: string | null): string {
   }
 }
 
-export function DiscoverScreen() {
+// V12 — Category → top-of-card gradient overlay tint. Applied as a thin
+// gradient bar across the top of each group card / row to make the
+// category visually scannable at a glance. Uses subtle 10% tints so it
+// doesn't fight with the existing top-border accent.
+function categoryGradient(cat?: string | null): string {
+  switch ((cat || '').toLowerCase()) {
+    case 'gaming':
+      return 'from-violet-500/10'
+    case 'technology':
+    case 'ai':
+      return 'from-blue-500/10'
+    case 'cricket':
+    case 'sports':
+      return 'from-orange-500/10'
+    case 'entertainment':
+    case 'movies':
+    case 'music':
+      return 'from-pink-500/10'
+    case 'education':
+      return 'from-emerald-500/10'
+    case 'business':
+    case 'finance':
+    case 'jobs':
+      return 'from-yellow-500/10'
+    case 'memes':
+      return 'from-fuchsia-500/10'
+    case 'news':
+      return 'from-cyan-500/10'
+    case 'local':
+      return 'from-teal-500/10'
+    default:
+      return 'from-gray-500/10'
+  }
+}
+
+export interface DiscoverScreenProps {
+  // V12 — Called when a user taps "Open" on a joined group. Wired up in
+  // TalyApp to open the group's chat conversation.
+  onOpenChat?: (c: {
+    conversationId: string
+    name: string
+    avatar?: string
+    isGroup: boolean
+  }) => void
+  // V12 — Called when the empty-state "Create {Category} Group" button is
+  // tapped. Wired up to navigate the user to the Groups tab so they can
+  // start a community in the chosen category.
+  onCreateGroup?: (category?: string) => void
+}
+
+export function DiscoverScreen({ onOpenChat, onCreateGroup }: DiscoverScreenProps = {}) {
   const { toast } = useToast()
   const [trending, setTrending] = useState<GroupItem[]>([])
   const [popular, setPopular] = useState<GroupItem[]>([])
@@ -139,6 +199,9 @@ export function DiscoverScreen() {
   const [loading, setLoading] = useState(true)
   const [catLoading, setCatLoading] = useState(false)
   const [joining, setJoining] = useState<string | null>(null)
+  // V12 — Track the group currently being "left" (used to disable the Leave
+  // button + show a spinner during the leave API call).
+  const [leaving, setLeaving] = useState<string | null>(null)
   // joinedIds = public joined; requestedIds = private groups with sent requests
   const [joinedIds, setJoinedIds] = useState<Set<string>>(new Set())
   const [requestedIds, setRequestedIds] = useState<Set<string>>(new Set())
@@ -276,6 +339,75 @@ export function DiscoverScreen() {
     }
   }
 
+  // V12 — Open the chat for a joined group. Calls onOpenChat (wired from
+  // TalyApp) when a conversationId is linked to the group. Falls back to
+  // a friendly toast if the callback is missing (defensive — should never
+  // happen in production wiring, but avoids a no-op click).
+  const handleOpen = (g: GroupItem) => {
+    if (!g.conversationId) {
+      toast({
+        title: 'No chat linked to this group yet',
+        description: 'Please try again in a moment.',
+        variant: 'destructive',
+      })
+      return
+    }
+    if (onOpenChat) {
+      onOpenChat({
+        conversationId: g.conversationId,
+        name: g.name,
+        avatar: g.logo || undefined,
+        isGroup: true,
+      })
+    } else {
+      toast({ title: 'Open coming soon' })
+    }
+  }
+
+  // V12 — Leave a joined group. Calls POST /api/groups/[id]/leave, then
+  // removes the group id from joinedIds so the button reverts to Join.
+  const handleLeave = async (g: GroupItem) => {
+    setLeaving(g.id)
+    try {
+      await apiFetch(`/api/groups/${g.id}/leave`, { method: 'POST' })
+      toast({ title: `Left ${g.name}` })
+      setJoinedIds((prev) => {
+        const next = new Set(prev)
+        next.delete(g.id)
+        return next
+      })
+    } catch (e: any) {
+      toast({ title: e?.message || 'Failed to leave group', variant: 'destructive' })
+    } finally {
+      setLeaving(null)
+    }
+  }
+
+  // V12 — Reset the active category filter (used by the "Browse Trending
+  // instead" link in the empty state and by the active-filter banner's
+  // clear (✕) button).
+  const clearCategory = () => {
+    setActiveCategory(null)
+    setCategoryResults([])
+  }
+
+  // V12 — Handle the "Create {Category} Group" CTA in the no-results
+  // empty state. If the parent wired onCreateGroup, delegate to it
+  // (TalyApp navigates to the Groups tab). Otherwise show a friendly
+  // toast so the click is never a no-op.
+  const handleCreateGroup = () => {
+    if (onCreateGroup) {
+      onCreateGroup(activeCategory || undefined)
+    } else {
+      toast({
+        title: 'Open the Groups tab',
+        description: activeCategory
+          ? `Tap the + button there to start a ${activeCategory} community.`
+          : 'Tap the + button there to start a new community.',
+      })
+    }
+  }
+
   const totalGroups = trending.length + popular.length + newGroups.length
 
   return (
@@ -315,6 +447,25 @@ export function DiscoverScreen() {
         </div>
       </div>
 
+      {/* V12 — Active filter banner: shows below the chips row when a
+          category filter is selected, with a clear (✕) button to reset. */}
+      {activeCategory && (
+        <div className="mt-3 flex items-center justify-between gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-300">
+          <span className="truncate">
+            Showing results for{' '}
+            <span className="font-bold">&lsquo;{activeCategory}&rsquo;</span>
+          </span>
+          <button
+            type="button"
+            onClick={clearCategory}
+            aria-label="Clear category filter"
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-emerald-700 transition-colors hover:bg-emerald-500/15 dark:text-emerald-300"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Empty state — no groups loaded */}
       {!loading && totalGroups === 0 && !activeCategory && (
         <div className="dotted-bg mt-6 flex flex-col items-center justify-center rounded-2xl border border-border bg-card p-10 text-center">
@@ -338,14 +489,32 @@ export function DiscoverScreen() {
             {catLoading ? (
               <InlineLoadingRow />
             ) : categoryResults.length === 0 ? (
-              <div className="dotted-bg flex flex-col items-center justify-center rounded-2xl border border-border bg-card p-8 text-center">
-                <Compass className="h-10 w-10 text-muted-foreground/60" />
-                <p className="mt-3 text-sm font-medium text-foreground">
-                  No communities in this category yet
+              // V12 — Friendly no-results empty state: magnifying glass,
+              // "No groups found in {Category}", "Be the first to create
+              // one!" + a Create button (emerald action-btn) and a "Browse
+              // Trending instead" text link.
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card p-8 text-center">
+                <Search className="h-12 w-12 text-muted-foreground/40" />
+                <p className="mt-3 text-sm font-semibold text-foreground">
+                  No groups found in {activeCategory}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Try a different category — or check back later.
+                  Be the first to create one!
                 </p>
+                <button
+                  type="button"
+                  onClick={handleCreateGroup}
+                  className="action-btn mt-4 min-h-[44px]"
+                >
+                  <Plus className="h-4 w-4" /> Create {activeCategory} Group
+                </button>
+                <button
+                  type="button"
+                  onClick={clearCategory}
+                  className="mt-3 inline-flex min-h-[40px] items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-primary"
+                >
+                  Browse Trending instead <ChevronRight className="h-3 w-3" />
+                </button>
               </div>
             ) : (
               <ul className="space-y-2">
@@ -355,7 +524,10 @@ export function DiscoverScreen() {
                       g={g}
                       state={joinStateFor(g)}
                       joining={joining === g.id}
+                      leaving={leaving === g.id}
                       onJoin={handleJoin}
+                      onOpen={handleOpen}
+                      onLeave={handleLeave}
                       onPreview={() => setPreview(g)}
                     />
                   </li>
@@ -376,7 +548,10 @@ export function DiscoverScreen() {
             groups={trending}
             joinStateFor={joinStateFor}
             joining={joining}
+            leaving={leaving}
             onJoin={handleJoin}
+            onOpen={handleOpen}
+            onLeave={handleLeave}
             onPreview={(g) => setPreview(g)}
             delay={0.05}
           />
@@ -387,7 +562,10 @@ export function DiscoverScreen() {
             groups={popular}
             joinStateFor={joinStateFor}
             joining={joining}
+            leaving={leaving}
             onJoin={handleJoin}
+            onOpen={handleOpen}
+            onLeave={handleLeave}
             onPreview={(g) => setPreview(g)}
             delay={0.1}
           />
@@ -398,7 +576,10 @@ export function DiscoverScreen() {
             groups={newGroups}
             joinStateFor={joinStateFor}
             joining={joining}
+            leaving={leaving}
             onJoin={handleJoin}
+            onOpen={handleOpen}
+            onLeave={handleLeave}
             onPreview={(g) => setPreview(g)}
             delay={0.15}
           />
@@ -460,7 +641,10 @@ export function DiscoverScreen() {
         group={preview}
         state={preview ? joinStateFor(preview) : 'idle'}
         joining={preview ? joining === preview.id : false}
+        leaving={preview ? leaving === preview.id : false}
         onJoin={handleJoin}
+        onOpen={handleOpen}
+        onLeave={handleLeave}
         onClose={() => setPreview(null)}
       />
     </div>
@@ -474,7 +658,10 @@ function Section({
   groups,
   joinStateFor,
   joining,
+  leaving,
   onJoin,
+  onOpen,
+  onLeave,
   onPreview,
   delay = 0,
 }: {
@@ -484,7 +671,10 @@ function Section({
   groups: GroupItem[]
   joinStateFor: (g: GroupItem) => JoinState
   joining: string | null
+  leaving: string | null
   onJoin: (g: GroupItem) => void
+  onOpen: (g: GroupItem) => void
+  onLeave: (g: GroupItem) => void
   onPreview: (g: GroupItem) => void
   delay?: number
 }) {
@@ -511,7 +701,10 @@ function Section({
                 g={g}
                 state={joinStateFor(g)}
                 joining={joining === g.id}
+                leaving={leaving === g.id}
                 onJoin={onJoin}
+                onOpen={onOpen}
+                onLeave={onLeave}
                 onPreview={() => onPreview(g)}
               />
             ))}
@@ -526,13 +719,19 @@ function GroupCard({
   g,
   state,
   joining,
+  leaving,
   onJoin,
+  onOpen,
+  onLeave,
   onPreview,
 }: {
   g: GroupItem
   state: JoinState
   joining: boolean
+  leaving: boolean
   onJoin: (g: GroupItem) => void
+  onOpen: (g: GroupItem) => void
+  onLeave: (g: GroupItem) => void
   onPreview: () => void
 }) {
   // Group is considered "active" (recently messaged) if membersCount > 5 —
@@ -541,11 +740,16 @@ function GroupCard({
   const isActive = g.membersCount > 5
   return (
     <div
-      className={`group-card w-44 shrink-0 border-t-2 ${categoryTopBorder(g.category)} p-3`}
+      className={`group-card relative w-44 shrink-0 overflow-hidden border-t-2 ${categoryTopBorder(g.category)} p-3`}
     >
+      {/* V12 — Category gradient overlay tinting the top portion of the card */}
+      <div
+        aria-hidden
+        className={`pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b ${categoryGradient(g.category)} to-transparent`}
+      />
       <button
         onClick={onPreview}
-        className="flex w-full flex-col items-center text-center"
+        className="relative flex w-full flex-col items-center text-center"
       >
         <Avatar
           className={`h-14 w-14 ring-2 ${categoryRing(g.category)}`}
@@ -588,12 +792,15 @@ function GroupCard({
           </p>
         )}
       </button>
-      <div className="mt-3">
+      <div className="relative mt-3">
         <JoinButton
           state={state}
           joining={joining}
+          leaving={leaving}
           isPublic={g.isPublic}
           onClick={() => onJoin(g)}
+          onOpen={() => onOpen(g)}
+          onLeave={() => onLeave(g)}
           size="sm"
           block
         />
@@ -606,21 +813,32 @@ function GroupRow({
   g,
   state,
   joining,
+  leaving,
   onJoin,
+  onOpen,
+  onLeave,
   onPreview,
 }: {
   g: GroupItem
   state: JoinState
   joining: boolean
+  leaving: boolean
   onJoin: (g: GroupItem) => void
+  onOpen: (g: GroupItem) => void
+  onLeave: (g: GroupItem) => void
   onPreview: () => void
 }) {
   const isActive = g.membersCount > 5
   return (
-    <div className={`group-card flex items-center gap-3 border-t-2 ${categoryTopBorder(g.category)} p-3`}>
+    <div className={`group-card relative flex items-center gap-3 overflow-hidden border-t-2 ${categoryTopBorder(g.category)} p-3`}>
+      {/* V12 — Category gradient overlay tinting the top portion of the row */}
+      <div
+        aria-hidden
+        className={`pointer-events-none absolute inset-x-0 top-0 h-12 bg-gradient-to-b ${categoryGradient(g.category)} to-transparent`}
+      />
       <button
         onClick={onPreview}
-        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        className="relative flex min-w-0 flex-1 items-center gap-3 text-left"
       >
         <Avatar className={`h-12 w-12 ring-2 ${categoryRing(g.category)}`}>
           <AvatarImage src={g.logo || undefined} alt={g.name} />
@@ -665,13 +883,18 @@ function GroupRow({
           )}
         </div>
       </button>
-      <JoinButton
-        state={state}
-        joining={joining}
-        isPublic={g.isPublic}
-        onClick={() => onJoin(g)}
-        size="sm"
-      />
+      <div className="relative">
+        <JoinButton
+          state={state}
+          joining={joining}
+          leaving={leaving}
+          isPublic={g.isPublic}
+          onClick={() => onJoin(g)}
+          onOpen={() => onOpen(g)}
+          onLeave={() => onLeave(g)}
+          size="sm"
+        />
+      </div>
     </div>
   )
 }
@@ -758,28 +981,56 @@ function MiniStackedAvatars({
 function JoinButton({
   state,
   joining,
+  leaving,
   isPublic,
   onClick,
+  onOpen,
+  onLeave,
   size = 'default',
   block = false,
 }: {
   state: JoinState
   joining: boolean
+  leaving?: boolean
   isPublic: boolean
   onClick: () => void
+  onOpen?: () => void
+  onLeave?: () => void
   size?: 'sm' | 'default'
   block?: boolean
 }) {
   const btnSizeClass = size === 'sm' ? '!min-h-[36px] !px-4 !py-2 !text-xs' : '!min-h-[44px] !px-5 !py-2.5 !text-sm'
 
-  // Joined → ghost button with emerald border/text + checkmark (tactile)
+  // V12 — Joined → functional Open (primary emerald action-btn) + Leave
+  // (secondary red text link) instead of the old static "Joined ✓" pill.
+  // Layout adapts to `block`: stacked vertically (card) or inline (row).
   if (state === 'joined' && !joining) {
     return (
-      <span
-        className={`ghost-btn inline-flex items-center justify-center gap-1.5 !border-emerald-500/40 !text-emerald-700 dark:!text-emerald-400 active:scale-95 ${block ? 'w-full' : ''} ${btnSizeClass}`}
+      <div
+        className={`flex ${block ? 'flex-col items-stretch gap-1' : 'items-center gap-2'}`}
       >
-        <Check className="h-3.5 w-3.5" /> Joined
-      </span>
+        <button
+          type="button"
+          onClick={onOpen}
+          className={`action-btn active:scale-95 ${block ? 'w-full' : ''} ${btnSizeClass}`}
+        >
+          Open
+        </button>
+        <button
+          type="button"
+          onClick={onLeave}
+          disabled={leaving}
+          aria-label="Leave group"
+          className="inline-flex min-h-[32px] items-center justify-center gap-1 text-xs font-medium text-destructive/70 transition-colors hover:text-destructive hover:underline disabled:opacity-50"
+        >
+          {leaving ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <LogOut className="h-3 w-3" />
+          )}
+          Leave
+        </button>
+      </div>
     )
   }
 
@@ -853,24 +1104,62 @@ function GroupPreviewDialog({
   group,
   state,
   joining,
+  leaving,
   onJoin,
+  onOpen,
+  onLeave,
   onClose,
 }: {
   group: GroupItem | null
   state: JoinState
   joining: boolean
+  leaving: boolean
   onJoin: (g: GroupItem) => void
+  onOpen: (g: GroupItem) => void
+  onLeave: (g: GroupItem) => void
   onClose: () => void
 }) {
-  const label = () => {
-    if (joining) return <Loader2 className="h-4 w-4 animate-spin" />
-    if (state === 'joined') return (
-      <>
-        <Check className="h-4 w-4" /> Joined
-      </>
+  // V12 — When joined, the primary action becomes "Open" (instead of the
+  // disabled "Joined ✓" pill). Otherwise it stays Join / Request to Join.
+  const renderPrimaryAction = () => {
+    if (joining) {
+      return (
+        <button
+          disabled
+          className="action-btn min-h-[44px] pointer-events-none opacity-60"
+        >
+          <Loader2 className="h-4 w-4 animate-spin" />
+        </button>
+      )
+    }
+    if (state === 'joined') {
+      return (
+        <button
+          onClick={() => group && onOpen(group)}
+          className="action-btn min-h-[44px]"
+        >
+          Open chat
+        </button>
+      )
+    }
+    if (state === 'requested') {
+      return (
+        <button
+          disabled
+          className="ghost-btn min-h-[44px] pointer-events-none opacity-60"
+        >
+          Requested
+        </button>
+      )
+    }
+    return (
+      <button
+        onClick={() => group && onJoin(group)}
+        className={`min-h-[44px] ${group?.isPublic === false ? 'ghost-btn' : 'action-btn'}`}
+      >
+        {group?.isPublic === false ? 'Request to Join' : 'Join group'}
+      </button>
     )
-    if (state === 'requested') return 'Requested'
-    return group?.isPublic === false ? 'Request to Join' : 'Join group'
   }
   return (
     <Dialog open={!!group} onOpenChange={(o) => !o && onClose()}>
@@ -917,22 +1206,30 @@ function GroupPreviewDialog({
             )}
           </div>
         )}
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>
+        <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center">
+          <Button variant="ghost" onClick={onClose} className="min-h-[44px]">
             Close
           </Button>
           {group && (
-            <button
-              disabled={joining || state === 'joined' || state === 'requested'}
-              onClick={() => onJoin(group)}
-              className={`action-btn min-h-[44px] ${
-                state === 'joined' || state === 'requested' || joining
-                  ? 'pointer-events-none opacity-60'
-                  : ''
-              } ${group.isPublic === false ? 'ghost-btn' : ''}`}
-            >
-              {label()}
-            </button>
+            <>
+              {renderPrimaryAction()}
+              {/* V12 — Leave link shown only when the user is a member */}
+              {state === 'joined' && (
+                <button
+                  type="button"
+                  onClick={() => onLeave(group)}
+                  disabled={leaving}
+                  className="inline-flex min-h-[44px] items-center justify-center gap-1 text-xs font-medium text-destructive/70 transition-colors hover:text-destructive hover:underline disabled:opacity-50"
+                >
+                  {leaving ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <LogOut className="h-3.5 w-3.5" />
+                  )}
+                  Leave group
+                </button>
+              )}
+            </>
           )}
         </DialogFooter>
       </DialogContent>

@@ -18,14 +18,15 @@ import {
   Trash2,
   Pin,
   Check,
-  Eye,
+  CheckCheck,
   CornerUpLeft,
   Clock,
   SmilePlus,
 } from 'lucide-react'
-import { ChatMessage } from './chat-types'
+import { ChatMessage, ChatMember } from './chat-types'
 import { QUICK_REACTIONS, EXTENDED_REACTIONS } from './chat-types'
 import { VoiceMessage } from './voice-message'
+import { SeenByPopover } from './seen-by-popover'
 import { formatTime, messagePreview } from './chat-helpers'
 import { cn } from '@/lib/utils'
 
@@ -54,6 +55,8 @@ interface MessageBubbleProps {
   onCopy: (text: string) => void
   /** Used to find the anchor element for the action popover. */
   registerActionAnchor?: (el: HTMLElement | null, message: ChatMessage | null) => void
+  /** Conversation members — used to populate the "Seen by" popover (sent messages only). */
+  members?: ChatMember[] | null
 }
 
 interface ActionMenuState {
@@ -82,6 +85,60 @@ function bubbleStyleClass(style: string, isMine: boolean): string {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Read-receipt indicator — single check (sent, not seen) or double check (seen).
+// Clicking opens a popover listing who has seen the message (sent msgs only).
+// Touch target is at least 24px (with 8px+ padding) for accessibility.
+// ---------------------------------------------------------------------------
+interface ReadReceiptIndicatorProps {
+  seen: boolean
+  seenBy: string
+  members?: ChatMember[] | null
+  currentUserId: string
+}
+
+function ReadReceiptIndicator({
+  seen,
+  seenBy,
+  members,
+  currentUserId,
+}: ReadReceiptIndicatorProps) {
+  const trigger = (
+    <button
+      type="button"
+      aria-label={seen ? 'Seen by at least one person' : 'Sent — not seen yet'}
+      className={cn(
+        'flex min-h-[24px] min-w-[24px] items-center justify-center rounded p-1 transition-colors',
+        'hover:bg-black/5 dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
+        seen ? 'text-emerald-500' : 'text-muted-foreground/70'
+      )}
+      // Prevent the bubble's swipe/long-press handlers from firing on the button.
+      onClick={(e) => {
+        e.stopPropagation()
+      }}
+      onContextMenu={(e) => e.stopPropagation()}
+    >
+      {seen ? (
+        <CheckCheck className="h-3.5 w-3.5" />
+      ) : (
+        <Check className="h-3.5 w-3.5" />
+      )}
+    </button>
+  )
+
+  // The popover only makes sense for sent messages.
+  return (
+    <SeenByPopover
+      seenBy={seenBy}
+      members={members}
+      currentUserId={currentUserId}
+      alignEnd
+    >
+      {trigger}
+    </SeenByPopover>
+  )
+}
+
 export const MessageBubble = React.forwardRef<MessageBubbleHandle, MessageBubbleProps>(
   function MessageBubble(props, ref) {
     const {
@@ -104,6 +161,7 @@ export const MessageBubble = React.forwardRef<MessageBubbleHandle, MessageBubble
       onForward,
       onCopy,
       registerActionAnchor,
+      members,
     } = props
 
     // Refs for touch handling
@@ -143,11 +201,29 @@ export const MessageBubble = React.forwardRef<MessageBubbleHandle, MessageBubble
     }, [message.reactions, currentUserId])
 
     // ----- Read status -----
-    const seen = React.useMemo(() => {
-      const seenBy = (message.seenBy || '').split(',').map((s) => s.trim()).filter(Boolean)
-      // "Seen" if at least one non-me user has seen it.
-      return seenBy.some((id) => id !== currentUserId)
-    }, [message.seenBy, currentUserId])
+    const seenByList = React.useMemo(() => {
+      return (message.seenBy || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    }, [message.seenBy])
+
+    // Other users (excluding the sender) who have seen the message.
+    const seenByOthers = React.useMemo(() => {
+      return seenByList.filter((id) => id !== currentUserId)
+    }, [seenByList, currentUserId])
+
+    const seen = seenByOthers.length > 0
+
+    // Number of other members who haven't yet seen (group chats only).
+    const pendingCount = React.useMemo(() => {
+      if (!members || members.length === 0) return 0
+      const otherMembers = members.filter((m) => m.userId !== currentUserId)
+      return Math.max(0, otherMembers.length - seenByOthers.length)
+    }, [members, currentUserId, seenByOthers.length])
+
+    // For group chats, show "Seen by N" next to the checkmarks.
+    const showSeenCount = isGroup && seen && seenByOthers.length > 0
 
     // ----- Touch handlers -----
     const clearLongPress = () => {
@@ -430,6 +506,7 @@ export const MessageBubble = React.forwardRef<MessageBubbleHandle, MessageBubble
                     mediaUrl={message.mediaUrl}
                     voiceDuration={message.voiceDuration}
                     isMine={isMine}
+                    messageId={message.id}
                   />
                 ) : message.type === 'image' && message.mediaUrl ? (
                   <button
@@ -502,9 +579,17 @@ export const MessageBubble = React.forwardRef<MessageBubbleHandle, MessageBubble
               <span>{formatTime(new Date(message.createdAt))}</span>
               {isEdited && <span className="italic">edited</span>}
               {isMine && !isDeleted && (
-                <span aria-label={seen ? 'Seen' : 'Sent'}>
-                  {seen ? <Eye className="h-3 w-3" /> : <Check className="h-3 w-3" />}
-                </span>
+                <>
+                  {showSeenCount && (
+                    <span className="text-muted-foreground/80">· Seen by {seenByOthers.length}</span>
+                  )}
+                  <ReadReceiptIndicator
+                    seen={seen}
+                    seenBy={message.seenBy || ''}
+                    members={members}
+                    currentUserId={currentUserId}
+                  />
+                </>
               )}
             </div>
           </div>

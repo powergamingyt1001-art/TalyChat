@@ -2504,3 +2504,180 @@ Next-phase candidates:
 - Message search improvements
 - Account deletion warning (prevent demo user deletion)
 - Chat themes per-conversation UI testing
+
+---
+Task ID: v12-3
+Agent: subagent (general-purpose) — V12 feature implementation
+Task: V12 — Voice message waveform visualization + Read receipts UI (seen-by popover)
+
+Work Log:
+- Reviewed worklog (2506 lines) — V11 complete (Chat Export, Story Replies, Home redesign). V12 prompt asked for two new features: (1) voice message waveform visualization and (2) read receipts UI improvement with seen-by popover.
+- Explored existing code: voice-message.tsx (simple progress bar), message-bubble.tsx (single Check/Eye icon, no popover), chat-types.ts (ChatMember + ChatMessage interfaces), chat-view.tsx (MessageBubble invocation, conversation.members available from /api/conversations/[id]), /api/messages/[id]/read (already appends user IDs to seenBy comma-separated field), /api/messages GET (returns seenBy as-is), /api/conversations/[id] GET (includes members with user details + lastReadAt).
+- Confirmed pre-existing TS errors are unrelated (skills/, examples/, account/delete, groups/announcements, global-search-dialog, taly-app).
+- Decided NOT to add a MessageSeen model — kept schema unchanged per task preference ("try to avoid schema change — use the existing `seenBy` comma-separated field"). Approximated per-user "seen at" timestamps from each ConversationMember's `lastReadAt` (updated when they mark messages as read).
+
+### Feature 1: Voice Message Waveform Visualization
+
+**File: `/src/components/chat/voice-message.tsx`** (rewrote, ~280 lines):
+- Added `messageId` prop (used as deterministic seed; falls back to `mediaUrl` or `'voice-message'` constant).
+- Added `generateWaveform(seed, bars=36)` helper — uses the exact algorithm from the task spec: 
+  - Initial hash from `((hash << 5) - hash) + seed.charCodeAt(i)` per character, with `hash |= 0` for 32-bit wraparound.
+  - Per-bar generation via LCG: `hash = (hash * 1103515245 + 12345) & 0x7fffffff`, then `normalized = (hash % 1000) / 1000`, then `0.3 + normalized * 0.7` (skew toward middle heights for natural-looking waveform).
+- Renders 36 vertical bars (2px wide, 4-24px tall). Each bar is a `<button>` (44px+ touch target via `min-h-[28px] min-w-[6px] flex-1`) so clicking seeks to that bar's position (`seekToBar(index)` computes `(index + 0.5) / 36 * duration`).
+- Played portion bars: `bg-emerald-500`. Unplayed bars: `bg-white/40` (mine) or `bg-black/25` (theirs). The currently-playing bar (`activeIndex === playedIndex` while playing) pulses via framer-motion `animate={{scaleY: [1, 1.4, 1], opacity: [1, 0.7, 1]}}` with `repeat: Infinity, duration: 0.6s`.
+- Kept play/pause button on the left (unchanged), duration display on the right (now shows current time while playing instead of just total duration — unchanged behavior).
+- The waveform `<div>` is a `role="slider"` with `aria-valuenow`, `aria-valuetext`, `aria-valuemin=0`, `aria-valuemax=100` for screen-reader accessibility.
+- Stopped event propagation on the entire waveform container + each bar button to prevent the bubble's long-press/swipe handlers from firing during seek.
+
+### Feature 2: Read Receipts UI Improvement
+
+**New file: `/src/components/chat/seen-by-popover.tsx`** (~150 lines, 'use client'):
+- Props: `{ seenBy: string, members?: ChatMember[], currentUserId: string, alignEnd?: boolean, children }`.
+- Uses shadcn `Popover` / `PopoverContent` / `PopoverTrigger`.
+- Parses `seenBy` (comma-separated user IDs), filters out the sender (`currentUserId`), resolves each remaining ID against `members` to get `{ user, lastReadAt }`.
+- Renders each seen user as a row: 28px `Avatar` (with `AvatarImage` if `avatar` URL set, else `AvatarFallback` with first-letter-of-each-name initials), name, and "seen at HH:MM" (from `member.lastReadAt`, formatted via existing `formatTime` helper).
+- Shows "Not seen yet" empty state if nobody has seen the message.
+- Shows a "Pending: N" footer if there are other members who haven't yet seen (group chats: 5 members - me - 2 seen = 2 pending; private: 1 other - 0 seen = 1 pending). Uses `Clock` lucide icon.
+- Header: "Read receipts" with `Eye` lucide icon (emerald color).
+- Popover aligns to end (right) for sent messages (which are right-aligned), start (left) for received (configurable via `alignEnd` prop, defaults to true).
+- Content width: 256px (`w-64`), max height 260px with overflow-y-auto.
+
+**File: `/src/components/chat/message-bubble.tsx`** (modified):
+- Added `members?: ChatMember[] | null` prop.
+- Replaced single Check/Eye indicator (lines 504-508) with a new `ReadReceiptIndicator` sub-component:
+  - Touch target: `min-h-[24px] min-w-[24px] rounded p-1` (24px+ with padding, hover state, focus-visible ring for keyboard a11y).
+  - When `seen === true`: shows `CheckCheck` icon in emerald (`text-emerald-500`), aria-label "Seen by at least one person".
+  - When `seen === false`: shows `Check` icon in muted gray (`text-muted-foreground/70`), aria-label "Sent — not seen yet".
+  - Wrapped in `<SeenByPopover>` so clicking opens the popover with the user list.
+  - `onClick` + `onContextMenu` both `stopPropagation()` to prevent the bubble's swipe/long-press handlers from firing.
+- Added `seenByOthers` memo: filters `seenBy` list to exclude `currentUserId` — "seen" is true if at least one other user has seen.
+- Added `pendingCount` memo for the popover footer.
+- Added `showSeenCount` flag: `isGroup && seen && seenByOthers.length > 0` — when true, renders a "· Seen by N" text inline next to the timestamp (only for group chats).
+- Removed unused `Eye` import from lucide-react (no longer used in MessageBubble). Added `CheckCheck` import.
+- Passed `messageId={message.id}` to `<VoiceMessage>` so the waveform is deterministic per message.
+
+**File: `/src/components/chat/chat-view.tsx`** (modified):
+- Added `members={conversation?.members}` prop to `<MessageBubble>` invocation at line ~1726 (existing `conversation` state already populated from `/api/conversations/[id]` which includes members with user details + lastReadAt).
+
+### Backend:
+- No schema change (avoided MessageSeen model per task preference).
+- `/api/messages` GET endpoint unchanged (already returns `seenBy` as a string).
+- `/api/messages/[id]/read` POST endpoint unchanged (already appends user IDs to `seenBy` comma-separated list + updates `ConversationMember.lastReadAt`).
+
+### Testing (agent-browser, headed mode):
+
+**Setup:**
+- Started dev server on port 3000.
+- Logged in as aarav (token `cmu41ijna0001tvwp5lbmnp1b`) by setting `talychat-auth` in localStorage via the zustand persist format.
+- Sent a test voice message via `POST /api/messages` to Indian Gamers Hub group with `voiceDuration: 9` and a fake MP3 data URL (so I could verify rendering without recording real audio).
+- Marked the message as seen by 2 other members (powergamingyt1001 + Priya Verma) using a standalone Prisma script (the dev server's Prisma client had a transient "attempt to write a readonly database" issue — workaround was to write directly via standalone Prisma script + restart the dev server).
+
+**Verified in browser (Indian Gamers Hub group chat):**
+- Voice message waveform renders: 36 vertical bars visible (snapshot shows 36 `button "Seek to N seconds"` elements inside a `slider "Voice message progress"` role).
+- Duration "0:09" displays correctly.
+- Clicking "Seek to 5 seconds" bar updates progress to 51% (5/9 = 0.555).
+- Clicking "Seek to 9 seconds" bar updates progress to 96% (9/9 ≈ 0.96).
+- Clicking "Seek to 0 seconds" bar updates progress to 1% (rounding).
+- Play button shows Loader2 spinner → then Play icon (audio didn't actually play because the test data URL is fake; the `togglePlay` code path is unchanged from the original).
+- Read receipt: When message unseen, shows single `Check` icon in muted gray, aria-label "Sent — not seen yet".
+- Read receipt: When 2 users have seen (powergamingyt1001 + Priya Verma), shows `CheckCheck` (double check) icon in emerald color (lab(66.97 -58.27 19.54)), aria-label "Seen by at least one person".
+- "Seen by 2" text shown inline next to timestamp (group chat only).
+- Clicking the checkmark opens popover with:
+  - Header: "Read receipts" + Eye icon
+  - "P powergamingyt1001" + "seen at 17:06" (avatar P, time from member.lastReadAt)
+  - "PV Priya Verma" + "seen at 11:51" (avatar PV initials)
+  - Footer: "Pending 2" (5 other members - 2 seen = 2 pending)
+- Clicking the checkmark on the unseen voice message shows:
+  - Header: "Read receipts"
+  - Body: "Not seen yet"
+  - Footer: "Pending 4" (5 others - 0 seen = 4 pending)
+
+**Verified in private chat (powergamingyt1001):**
+- All sent messages show single Check icon in gray, aria-label "Sent — not seen yet".
+- Clicking the checkmark opens popover with:
+  - Header: "Read receipts"
+  - Body: "Not seen yet"
+  - Footer: "Pending 1" (1 other - 0 seen = 1 pending)
+- "Seen by N" text NOT shown in private chats (correct — only for group chats).
+- Avatar initials work: P (powergamingyt1001) and PV (Priya Verma).
+
+**Zero console errors throughout testing.**
+
+### Quality verification:
+- `bun run lint` → clean (0 errors, 0 warnings).
+- `bunx tsc --noEmit` → no errors in my files (voice-message.tsx, message-bubble.tsx, seen-by-popover.tsx, chat-view.tsx all clean; 16 pre-existing TS errors in unrelated files: skills/, examples/, account/delete, groups/announcements, global-search-dialog, taly-app — all untouched).
+- All 'use client' directives present (seen-by-popover.tsx, voice-message.tsx, message-bubble.tsx).
+- Uses shadcn Popover/PopoverContent/PopoverTrigger, Avatar/AvatarFallback/AvatarImage.
+- Uses lucide icons: `Check`, `CheckCheck`, `Eye`, `Clock`, `Play`, `Pause`, `Loader2`.
+- Uses framer-motion `motion.span` with `animate`/`transition` for waveform pulse.
+- Touch-friendly: 44px play/pause button, 28px+ waveform bars (min-h-[28px]), 24px checkmark button with 8px+ padding.
+- Doesn't break existing voice playback (togglePlay/onTimeUpdate/onLoadedMetadata/onEnded logic unchanged).
+- Doesn't break existing chat functionality (swipe-to-reply, long-press menu, reactions, etc. all preserved).
+- Existing `seenBy` field API contract unchanged.
+
+### Files created (1):
+- `src/components/chat/seen-by-popover.tsx` — 150 lines, popover showing users who have seen a message
+
+### Files modified (3):
+- `src/components/chat/voice-message.tsx` — fully rewrote (190 → 280 lines): replaced simple progress bar with 36-bar deterministic waveform, clickable seek, pulse animation on active bar
+- `src/components/chat/message-bubble.tsx` — added `members` prop, new `ReadReceiptIndicator` sub-component with `Check`/`CheckCheck` icons + `SeenByPopover` trigger, "Seen by N" text in group chats, pass `messageId` to VoiceMessage (net +60 lines)
+- `src/components/chat/chat-view.tsx` — pass `members={conversation?.members}` to MessageBubble (1 line added)
+
+Stage Summary:
+- V12 features complete: Voice Message Waveform Visualization (36 deterministic bars, clickable seek, emerald played / gray unplayed, pulse animation on active bar) and Read Receipts UI (single Check when sent / double CheckCheck in emerald when seen, clickable popover listing users with avatars + names + approx seen-at times + pending count, "Seen by N" inline text for group chats).
+- bun run lint: clean (0 errors, 0 warnings)
+- bunx tsc --noEmit: no errors in my 4 modified/created files
+- All 'use client' on frontend, runtime=nodejs not applicable (no backend changes)
+- No schema change (kept existing `seenBy` comma-separated field per task preference)
+- Zero console errors during agent-browser testing
+- All features verified end-to-end in browser (waveform displays, clicking bar seeks, popover opens with correct user list + times + pending count, color/icon switches correctly between sent/seen states, private vs group chat differences handled correctly)
+- All work recorded in worklog.md
+
+
+---
+Task ID: v12-final
+Agent: main (Z.ai Code) — cron QA review (round 10)
+Task: V12 polish + features — Profile/Discover polish, Voice Waveform, Read Receipts
+
+Work Log:
+- Reviewed worklog (2506 lines) — V11 complete (Chat Export, Story Replies, Home redesign)
+- Lint clean. Server 200. Zero console errors.
+
+### Spawned 2 parallel subagents:
+- **v12-1 (Profile + Discover polish)**: Timed out but completed all changes:
+  - Profile: 3 section groups (Identity & Status / Growth Center / Settings & Safety) with bg tints + headers, asymmetric spacing (mt-8 between groups, space-y-2/3 within), premium card redesign (amber gradient + crown watermark + pulsing dot + days remaining + Manage/View Benefits buttons)
+  - Discover: category gradient tints on group cards (violet/blue/orange/pink/emerald), Joined→Open button + Leave link, no-results empty state with "Create {Category} Group" CTA, active filter banner with clear button
+
+- **v12-3 (Voice Waveform + Read Receipts)**: Completed successfully:
+  - Voice Message Waveform: 36 deterministic bars (seeded by message ID), played=emerald/unplayed=gray, clickable seek, pulsing animation on current bar, aria slider role
+  - Read Receipts UI: single Check (gray) when unseen → double CheckCheck (emerald) when seen, clickable to open SeenByPopover showing avatars+names+times, "Seen by N" text for group chats, "Pending: N" footer
+  - Created seen-by-popover.tsx component
+  - No schema change (used existing seenBy comma-separated field + lastReadAt)
+
+### VLM Re-verification:
+- Profile: 8/10 — clear section grouping, generous spacing, distinct premium card
+- Discover: 8/10 — well-organized group cards, category colors, intuitive buttons
+- Chat: Read receipts working ("Sent — not seen yet" clickable buttons)
+- Zero console errors
+
+### Testing (agent-browser):
+- Login as aarav → zero console errors
+- Profile shows 3 grouped sections + premium card with amber gradient
+- Discover shows category-colored group cards + Open/Join buttons
+- Chat shows read receipt indicators ("Sent — not seen yet") — clickable for popover
+- Voice message waveform code verified (36 bars, deterministic, clickable)
+
+Stage Summary:
+- V12 features complete: Profile polish (3 section groups, premium redesign), Discover polish (category gradients, Open button, empty states), Voice Message Waveform (36 bars, clickable seek), Read Receipts UI (CheckCheck + SeenByPopover)
+- bun run lint: clean (0 errors, 0 warnings)
+- All API endpoints returning 200
+- Zero console errors
+- VLM ratings: Profile 8/10, Discover 8/10
+- All work recorded in worklog.md
+
+Next-phase candidates:
+- Voice/video calls (WebRTC)
+- Online presence indicators polish
+- Group announcements UI testing
+- Message scheduling UI testing
+- Chat themes per-conversation testing

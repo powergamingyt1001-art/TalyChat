@@ -498,7 +498,15 @@ export function ProfileScreen() {
         : 'ring-red-500/60'
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5 p-4">
+    <div className="mx-auto max-w-2xl space-y-8 p-4">
+      {/* V12 — Group 1: Identity & Status.
+          Wraps the profile header, story highlights, behavior bar, and
+          watch-behavior card into a single tinted container so the user
+          can scan their identity + behavior stats as one block. */}
+      <section className="space-y-3 rounded-2xl bg-muted/20 p-3">
+        <p className="flex items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+          <UserCheck className="h-3.5 w-3.5" /> Your Profile
+        </p>
       {/* Profile header card — V3: taly-card with shadow, larger avatar, online dot, joined date */}
       <div className="taly-card taly-card-hover animate-fade-in-up p-5" style={{ animationDelay: '0ms' }}>
         <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
@@ -596,13 +604,45 @@ export function ProfileScreen() {
           onWatchAd={handleWatchAd}
         />
       </div>
+      </section>
+
+      {/* V12 — Group 2: Growth & Rewards.
+          Premium card (or upgrade plans), redeem code, and referral
+          section — all the monetization / growth touchpoints grouped
+          under a subtle emerald/gold tint. */}
+      <section className="space-y-3 rounded-2xl bg-emerald-50/30 p-3 dark:bg-emerald-950/10">
+        <p className="flex items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-wider text-emerald-700/80 dark:text-emerald-300/70">
+          <TrendingUp className="h-3.5 w-3.5" /> Growth Center
+        </p>
 
       {/* Premium section */}
       <div className="animate-fade-in-up" style={{ animationDelay: '180ms' }}>
         <PremiumSection
           premiumActive={premiumActive}
           premiumUntil={profile.premiumUntil}
-          onChoosePlan={(plan) => setBuyPlan(plan)}
+          onChoosePlan={(plan) => {
+            // V12 — Intercept "manage" / "benefits" pseudo-plans from the
+            // redesigned premium-active card so we don't open the buy
+            // dialog (which expects a real plan with a price). These
+            // buttons are informational for now.
+            if (plan.id === 'manage') {
+              toast({
+                title: 'Manage subscription',
+                description:
+                  'Subscription management is coming soon. For now, contact support.',
+              })
+              return
+            }
+            if (plan.id === 'benefits') {
+              toast({
+                title: 'Premium benefits ✨',
+                description:
+                  'Ad-free messaging, premium avatar aura, exclusive badges, larger uploads, and more.',
+              })
+              return
+            }
+            setBuyPlan(plan)
+          }}
         />
       </div>
 
@@ -713,6 +753,16 @@ export function ProfileScreen() {
           onViewTeam={() => setTeamSheetOpen(true)}
         />
       </div>
+      </section>
+
+      {/* V12 — Group 3: Settings & Safety.
+          Privacy, scheduled messages, block list, and logout — the
+          lower-stakes / account-management block grouped under a
+          neutral tint. */}
+      <section className="space-y-2 rounded-2xl bg-muted/10 p-3">
+        <p className="flex items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+          <Shield className="h-3.5 w-3.5" /> Settings &amp; Safety
+        </p>
 
       {/* Privacy and Safety */}
       <div className="taly-card animate-fade-in-up p-5" style={{ animationDelay: '360ms' }}>
@@ -775,6 +825,7 @@ export function ProfileScreen() {
           Logout
         </button>
       </div>
+      </section>
 
       {/* Edit profile dialog */}
       <EditProfileDialog
@@ -887,25 +938,77 @@ function PremiumSection({
   }, [])
 
   if (premiumActive) {
+    // V12 — Redesigned premium active card: gradient bg + crown watermark,
+    // pulsing green dot, big "Premium Active" text, days remaining
+    // countdown, Manage + View Benefits buttons, expiry as small subtext.
+    const untilDate = premiumUntil ? new Date(premiumUntil) : null
+    const daysRemaining = untilDate
+      ? Math.max(
+          0,
+          Math.ceil((untilDate.getTime() - Date.now()) / (24 * 60 * 60 * 1000)),
+        )
+      : null
+
     return (
-      <div className="taly-card taly-card-hover animate-fade-in-up p-5">
-        <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-amber-500">
+      <div className="taly-card taly-card-hover animate-fade-in-up relative overflow-hidden border-amber-500/30 bg-gradient-to-br from-amber-50 to-yellow-50 p-5 dark:from-amber-950/20 dark:to-yellow-950/10">
+        {/* V12 — Faint crown watermark in the background */}
+        <Crown
+          className="pointer-events-none absolute -right-3 -top-3 h-28 w-28 text-amber-500/10"
+          aria-hidden
+        />
+
+        <div className="relative flex items-start gap-3">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-amber-500 shadow-md shadow-amber-500/30">
             <Crown className="h-6 w-6 text-white" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="flex items-center gap-2 text-base font-semibold">
-              Premium active
-              <span className="premium-badge">
-                <Crown className="h-3 w-3" /> Pro
+            {/* V12 — Big "Premium Active" text with pulsing green dot */}
+            <p className="flex items-center gap-2 text-lg font-bold tracking-tight text-amber-900 dark:text-amber-200">
+              <Crown className="h-4 w-4 text-amber-500" />
+              Premium Active
+              {/* Pulsing green dot — indicates active status */}
+              <span className="relative inline-flex h-2.5 w-2.5" aria-label="active">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
               </span>
             </p>
-            <p className="text-sm text-muted-foreground/80">
-              {premiumUntil
-                ? `Valid until ${format(new Date(premiumUntil), 'dd MMM yyyy')}`
-                : 'Lifetime'}
-            </p>
+
+            {/* V12 — Days remaining countdown (big + amber) */}
+            {daysRemaining !== null ? (
+              <p className="mt-1 text-sm font-semibold text-amber-700 dark:text-amber-300">
+                {daysRemaining} {daysRemaining === 1 ? 'day' : 'days'} remaining
+              </p>
+            ) : (
+              <p className="mt-1 text-sm font-semibold text-amber-700 dark:text-amber-300">
+                Lifetime access
+              </p>
+            )}
+
+            {/* V12 — Expiry date as small subtext */}
+            {untilDate && (
+              <p className="mt-0.5 text-xs text-amber-700/70 dark:text-amber-300/60">
+                Expires on {format(untilDate, 'dd MMM yyyy')}
+              </p>
+            )}
           </div>
+        </div>
+
+        {/* V12 — Action buttons: Manage Subscription (ghost) + View Benefits (secondary) */}
+        <div className="relative mt-4 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onChoosePlan({ id: 'manage', label: 'Manage', price: 0, months: 0 })}
+            className="ghost-btn min-h-[40px] !border-amber-500/30 !text-amber-700 dark:!text-amber-300 hover:!bg-amber-500/10"
+          >
+            Manage Subscription
+          </button>
+          <button
+            type="button"
+            onClick={() => onChoosePlan({ id: 'benefits', label: 'Benefits', price: 0, months: 0 })}
+            className="ghost-btn min-h-[40px]"
+          >
+            View Benefits
+          </button>
         </div>
       </div>
     )

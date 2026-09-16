@@ -307,7 +307,19 @@ export function TalyApp() {
                   onRefresh={refreshConversations}
                 />
               )}
-              {tab === 'discover' && <DiscoverScreen />}
+              {tab === 'discover' && (
+                <DiscoverScreen
+                  onOpenChat={(c) =>
+                    setOpenChat({
+                      conversationId: c.conversationId,
+                      name: c.name,
+                      avatar: c.avatar,
+                      isGroup: true,
+                    })
+                  }
+                  onCreateGroup={() => setTab('groups')}
+                />
+              )}
               {tab === 'profile' && <ProfileScreen />}
             </div>
 
