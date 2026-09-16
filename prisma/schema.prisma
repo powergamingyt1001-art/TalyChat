@@ -1,8 +1,6 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// TalyChat - Prisma schema (per PRD)
+// Database: SQLite
+// All times stored in UTC
 
 generator client {
   provider = "prisma-client-js"
@@ -13,20 +11,445 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============================================================
+// USER & AUTH
+// ============================================================
+
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String   @id @default(cuid())
+  email           String   @unique           // admin.in is stored as email field too
+  username        String   @unique
+  name            String
+  passwordHash    String?
+  phone           String?
+  avatar          String?
+  bio             String   @default("")
+  gender          String   @default("other") // male/female/other
+  dob             String?                    // ISO date (yyyy-mm-dd)
+  role            String   @default("user")   // user | admin
+  isPremium       Boolean  @default(false)
+  premiumUntil    DateTime?
+  isOnline        Boolean  @default(false)
+  lastSeen        DateTime @default(now())
+  isRestricted    Boolean  @default(false)
+  restrictedUntil DateTime?
+  isBlocked       Boolean  @default(false)
+  authProvider    String   @default("email")  // email | google | phone
+  referralCode    String?                    // who referred this user
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  sentMessages       Message[]
+  receivedConvs     ConversationMember[]  @relation("convMembers")
+  ownedGroups       Group[]              @relation("groupOwner")
+  groupMemberships  GroupMember[]
+  notifications      Notification[]
+  reportsMade       Report[]             @relation("reporter")
+  reportsReceived   Report[]             @relation("reported")
+  blocksMade        Block[]              @relation("blocker")
+  blocksReceived    Block[]              @relation("blocked")
+  preferences       UserPreference?
+  subscriptions     Subscription[]
+  referralsGiven    Referral[]           @relation("referrer")
+  referralsReceived Referral[]           @relation("referred")
+  redeemUses        RedeemUse[]
+  dailyRewards      DailyReward[]
+  adClicks          AdClick[]
+  paymentProofs      PaymentProof[]
+  talyRequests      TalyRequest[]
+  createdAds        Advertisement[]      @relation("adCreator")
+  createdCodes      RedeemCode[]
+  createdGroups     Group[]              @relation("groupCreator")
+  ownedConvs        Conversation[]       @relation("convOwner")
+
+  @@index([email])
+  @@index([username])
+  @@index([role])
 }
 
-model Post {
+// ============================================================
+// CONVERSATIONS (P2P private + Group)
+// ============================================================
+
+model Conversation {
   id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
+  type      String   @default("private") // private | group
+  name      String?
+  avatar    String?
+  ownerId   String?                       // for groups
+  groupId   String?  @unique                 // link to Group if type=group
+  wallpaper String?
+  muted     Boolean  @default(false)
+  pinned    Boolean  @default(false)
+  autoDeleteAfter Int?                    // seconds; null = no auto-delete
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner       User?                @relation("convOwner", fields: [ownerId], references: [id])
+  group       Group?               @relation("GroupConversations", fields: [groupId], references: [id])
+  members     ConversationMember[]
+  messages    Message[]
+
+  @@index([type])
+  @@index([groupId])
+}
+
+model ConversationMember {
+  id              String   @id @default(cuid())
+  conversationId  String
+  userId          String
+  role            String   @default("member") // owner | admin | moderator | member
+  lastReadAt      DateTime @default(now())
+  joinedAt        DateTime @default(now())
+
+  conversation  Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user          User         @relation("convMembers", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+// ============================================================
+// MESSAGES
+// ============================================================
+
+model Message {
+  id              String   @id @default(cuid())
+  conversationId  String
+  senderId        String
+  content         String   @default("")
+  type            String   @default("text") // text | image | voice | sticker | system
+  mediaUrl        String?
+  voiceDuration   Int?                       // seconds
+  stickerId       String?
+  replyToId       String?                    // message id being replied to
+  editedAt        DateTime?
+  deletedAt       DateTime?
+  pinnedAt        DateTime?
+  seenBy          String   @default("")      // comma-separated user IDs
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  conversation  Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender        User         @relation(fields: [senderId], references: [id])
+  replyTo       Message?     @relation("MessageReply", fields: [replyToId], references: [id])
+  replies       Message[]    @relation("MessageReply")
+  reactions     Reaction[]
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+}
+
+model Reaction {
+  id          String   @id @default(cuid())
+  messageId   String
+  userId      String
+  emoji       String
+  createdAt   DateTime @default(now())
+
+  message     Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId]) // one reaction per user per message
+  @@index([messageId])
+}
+
+// ============================================================
+// GROUPS
+// ============================================================
+
+model Group {
+  id          String   @id @default(cuid())
+  name        String
+  description String   @default("")
+  logo        String?
+  category    String   @default("Other")
+  isPublic    Boolean  @default(true)
+  inviteCode  String   @unique
+  ownerId     String
+  creatorId   String?
+  membersCount Int    @default(1)
+  pinnedMessageIds String @default("") // comma-separated
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner       User           @relation("groupOwner", fields: [ownerId], references: [id])
+  creator     User?          @relation("groupCreator", fields: [creatorId], references: [id])
+  members     GroupMember[]
+  conversation Conversation? @relation("GroupConversations")
+  reports     Report[]
+
+  @@index([category])
+  @@index([isPublic])
+}
+
+model GroupMember {
+  id        String   @id @default(cuid())
+  groupId   String
+  userId    String
+  role      String   @default("member") // owner | admin | moderator | member
+  joinedAt  DateTime @default(now())
+
+  group      Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user       User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([groupId])
+  @@index([userId])
+}
+
+// ============================================================
+// NOTIFICATIONS, REPORTS, BLOCKS
+// ============================================================
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // message | group | system | reward | referral | premium | ad
+  title     String
+  body      String
+  data      String   @default("{}") // JSON string
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user       User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+}
+
+model Report {
+  id           String   @id @default(cuid())
+  reporterId    String
+  reportedUserId String?
+  reportedGroupId String?
+  reason       String   // Spam | Harassment | Scam | Illegal | Fake | Other
+  description  String   @default("")
+  status       String   @default("pending") // pending | reviewed | resolved | dismissed
+  adminNote    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  reporter        User   @relation("reporter", fields: [reporterId], references: [id])
+  reportedUser    User?  @relation("reported", fields: [reportedUserId], references: [id])
+  reportedGroup   Group? @relation(fields: [reportedGroupId], references: [id])
+
+  @@index([status])
+  @@index([reportedUserId])
+}
+
+model Block {
+  id        String   @id @default(cuid())
+  blockerId String
+  blockedId String
+  createdAt DateTime @default(now())
+
+  blocker User @relation("blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+}
+
+// ============================================================
+// ADS
+// ============================================================
+
+model Advertisement {
+  id          String   @id @default(cuid())
+  brandName   String
+  headline    String
+  description String
+  imageUrl    String?
+  ctaText     String   @default("Learn More")
+  ctaUrl      String   @default("#")
+  placement   String   @default("in-chat") // in-chat | home | discover
+  category    String?                        // target category, null = all
+  startDate   DateTime @default(now())
+  endDate     DateTime?
+  isActive    Boolean  @default(true)
+  impressions Int      @default(0)
+  clicks      Int      @default(0)
+  creatorId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  creator     User?      @relation("adCreator", fields: [creatorId], references: [id])
+  clicksRel   AdClick[]
+
+  @@index([placement, isActive])
+  @@index([creatorId])
+}
+
+model AdClick {
+  id        String   @id @default(cuid())
+  adId      String
+  userId    String
+  createdAt DateTime @default(now())
+
+  ad        Advertisement @relation(fields: [adId], references: [id], onDelete: Cascade)
+  user      User         @relation(fields: [userId], references: [id])
+
+  @@index([adId])
+}
+
+// ============================================================
+// PREFERENCES & SUBSCRIPTIONS
+// ============================================================
+
+model UserPreference {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  theme           String   @default("system") // light | dark | system
+  wallpaper       String   @default("default")
+  messageStyle    String   @default("bubble")  // bubble | sharp | tail | none
+  fontFamily      String   @default("sans")
+  fontSize        Int      @default(14)
+  customFontUrl   String?
+  language        String   @default("en")
+  layoutMode      String   @default("auto") // auto | mobile | desktop
+  lastSeenPublic  Boolean  @default(false)
+  onlinePublic    Boolean  @default(true)
+  readReceipts    Boolean  @default(true)
+  notifMessages   Boolean  @default(true)
+  notifGroups     Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user       User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Subscription {
+  id          String   @id @default(cuid())
+  userId      String
+  plan        String   // 2mo | 6mo | 1yr
+  amount      Int      // in rupees
+  startAt     DateTime @default(now())
+  expireAt    DateTime
+  isActive    Boolean  @default(true)
+  source      String   @default("payment") // payment | redeem | referral | daily
+  createdAt   DateTime @default(now())
+
+  user       User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+}
+
+// ============================================================
+// REFERRALS & REDEEM CODES
+// ============================================================
+
+model Referral {
+  id           String   @id @default(cuid())
+  referrerId    String
+  referredId    String
+  status        String   @default("pending") // pending | active
+  tierReached   String?                       // 4 | 7 | 15
+  rewardGranted Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  activatedAt   DateTime?
+
+  referrer      User  @relation("referrer", fields: [referrerId], references: [id])
+  referred      User  @relation("referred", fields: [referredId], references: [id])
+
+  @@unique([referredId]) // one referrer per user
+  @@index([referrerId, status])
+}
+
+model RedeemCode {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  premiumMonths Int
+  note        String   @default("")
+  count       Int      @default(1)        // batch size
+  expiry      DateTime?
+  isActive    Boolean  @default(true)
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  creator       User?       @relation(fields: [createdById], references: [id])
+  redemptions   RedeemUse[]
+
+  @@index([isActive])
+}
+
+model RedeemUse {
+  id        String   @id @default(cuid())
+  codeId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  code      RedeemCode @relation(fields: [codeId], references: [id])
+  user      User       @relation(fields: [userId], references: [id])
+
+  @@unique([codeId, userId])
+}
+
+// ============================================================
+// DAILY LOGIN REWARD
+// ============================================================
+
+model DailyReward {
+  id          String   @id @default(cuid())
+  userId      String
+  dayNumber   Int      // 1-7
+  daysAwarded Int      // premium days given
+  cycleStart  DateTime
+  claimedAt   DateTime @default(now())
+
+  user       User  @relation(fields: [userId], references: [id])
+
+  @@index([userId, cycleStart])
+}
+
+// ============================================================
+// PAYMENT PROOFS (admin verification)
+// ============================================================
+
+model PaymentProof {
+  id            String   @id @default(cuid())
+  userId        String
+  plan          String   // 2mo | 6mo | 1yr
+  amount        Int
+  transactionId String
+  utrNumber     String?
+  screenshotUrl String?
+  notes         String?
+  status        String   @default("pending") // pending | approved | rejected
+  adminNote     String?
+  createdAt     DateTime @default(now())
+  reviewedAt    DateTime?
+
+  user          User  @relation(fields: [userId], references: [id])
+
+  @@index([status])
+}
+
+// ============================================================
+// TALY SUPPORT AI REQUESTS (admin approval workflow)
+// ============================================================
+
+model TalyRequest {
+  id          String   @id @default(cuid())
+  userId      String
+  chatId      String?
+  request     String
+  reason      String   @default("")
+  status      String   @default("pending") // pending | approved | rejected
+  adminNote   String?
+  createdAt   DateTime @default(now())
+  reviewedAt  DateTime?
+
+  user        User  @relation(fields: [userId], references: [id])
+
+  @@index([status])
+}
+
+// ============================================================
+// APP SETTINGS (key/value, editable by admin)
+// ============================================================
+
+model AppSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
   updatedAt DateTime @updatedAt
 }

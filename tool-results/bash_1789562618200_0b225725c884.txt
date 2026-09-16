@@ -1,0 +1,200 @@
+3. `src/components/taly/groups-screen.tsx` — Renders the PRD 6.4 groups surface. Header: "Groups" title + "Create" button (opens the create dialog). Invite-code card: uppercase `Input` + "Join" button → `POST /api/groups/join { inviteCode }`; on success shows a toast with the group name (or "You are already a member" when `alreadyMember` is returned) and calls `onRefresh()`. "Your groups" list: compact cards (`p-3`, `min-h-[60px]`) showing the group logo (10×10 rounded-lg), name, member count, and a one-line last-message preview (image/voice/sticker/deleted aware); click → `onOpenChat`. Empty state: a `Users` icon + "You haven't joined any groups. Use an invite code or create one above." Create-group dialog: logo upload via hidden file input → `apiUpload('/api/upload', file)` (shows spinner while uploading, then preview), name + description + category dropdown (16 `CATEGORIES` options) + public/private `Switch` + a live-preview card at the bottom that updates as the user types; submit → `POST /api/groups { name, description, logo, category, isPublic }`; on success, toast with the invite code (e.g., `Group created! Invite code: AB12CD`) and call `onCreated()` which closes the dialog + refreshes the parent.
+
+4. `src/components/taly/discover-screen.tsx` — Renders the PRD 7 Discover feed. Props: none (fetches its own data). On mount: three parallel `Promise.all` calls to `/api/discover?sort=trending|popular|new`, plus inherits `sponsored` from any of the discover responses. Category chips: horizontal `no-scrollbar scroll-pan-y` row of all 16 `CATEGORIES`; active chip highlighted with `bg-primary text-primary-foreground`; click → fetches `/api/discover?category=…&sort=trending` and shows inline list of matching groups (replaces the Trending/Popular/New sections while active); click again → deselect. Default sections: "Trending", "Popular", "New" — each is a horizontal scroll row of `GroupCard`s (44px-wide fixed cards: 12×12 avatar, name, category, member count, 1-line description, Join button). Join button → `POST /api/groups/join { groupId }`; on success, button becomes disabled "Joined ✓" with `Check` icon and a success toast; `alreadyMember` is handled gracefully. "Sponsored Communities" section: horizontal row of ad cards using the `ad-box` and `sponsored-label` classes; CTA opens in a new tab. Click on a group card (not the Join button) → `GroupPreviewDialog` showing avatar, name, category, member count, description, and a Join button. Loading states: pulse-skeleton cards/rows. Errors via `toast({ variant: 'destructive' })`.
+
+### Lint / Type check
+- `bunx eslint src/components/taly/home-screen.tsx src/components/taly/chats-screen.tsx src/components/taly/groups-screen.tsx src/components/taly/discover-screen.tsx --max-warnings 0` → exit 0 (clean, no output).
+- `bunx tsc --noEmit` filtered to my 4 files (`rg "taly/(home|chats|groups|discover)-screen"`) → **no TS errors**.
+- `bun run lint` (full project) → 0 errors, 6 warnings. All 6 warnings are in files owned by other agents (`src/components/chat/message-bubble.tsx`, `src/components/chat/voice-message.tsx`, `src/components/taly/profile-screen.tsx`, `src/components/taly/settings-dialog.tsx`) — none of them are in my 4 files. The pre-existing `taly-app.tsx` tsc errors (missing `@/components/chat/chat-view`, `@/components/taly/taly-support-screen`, `@/components/taly/daily-reward-dialog`, and `useMediaQuery` export) are also outside this task's scope — those modules are being built by other parallel agents and will resolve once their tasks land.
+
+### Notes / Decisions
+- **Conversation avatar fallback**: the `/api/conversations` response exposes `avatar` only when the conversation row itself has one (rare). For private chats I fall back to `otherUser.avatar`, and for groups to `group.logo`, via a small `convAvatar()` helper. This mirrors the serialization in `conversations/route.ts` and avoids showing blank avatars on the home + chats screens.
+- **Unread indicator semantics**: per spec, single red dot when `unread === 1` and a red pill with the count (capped at `99+`) when `unread > 1`. The current `/api/conversations` response does not populate `unread` (the schema tracks `lastReadAt` per `ConversationMember` instead), so when `unread` is `undefined`/`0` the indicator is simply omitted — the home "Recent Chats" red dot and the chats-screen pill both no-op gracefully until the backend starts sending `unread` counts.
+- **Search debounce**: the "Start new chat" user search debounces by 250 ms via `setTimeout` inside `useEffect`, with `cancelled` flag + `clearTimeout` cleanup so slow responses can't overwrite newer queries. The search input is auto-focused when the dialog opens.
+- **Create-group live preview**: rather than two separate "form" and "preview" layouts, the preview card sits at the bottom of the dialog and re-renders from the same `name`/`category`/`isPublic`/`logo` state the user is editing. This satisfies PRD 6.4's "live preview card" requirement without any extra state plumbing.
+- **Invite code toast**: per spec, after creating a group the invite code is shown in the toast body (e.g., `Group created! Invite code: AB12CD`) so the user can immediately share it. The code is read from `res.group.inviteCode` returned by `POST /api/groups`.
+- **Discover category replace vs. append**: PRD 7 says clicking a category chip should "show inline list of filtered groups with Join buttons (replaces the section display or appears above)". I chose the "replaces" variant because it gives the category results the full vertical space and avoids two scrolling contexts competing for the same area. Clicking the active chip again deselects and restores the Trending/Popular/New sections.
+- **Join button state**: kept client-side via a `joinedIds: Set<string>` state that's seeded from `isJoined` flags on the initial discover response and updated optimistically after a successful `POST /api/groups/join`. The button flips to "Joined ✓" disabled state without needing a refetch, matching PRD 7's "After success, button becomes Joined ✓ disabled" requirement.
+- **No horizontal overflow**: every chip/card row uses the `no-scrollbar scroll-pan-y -mx-4 px-4` pattern (negative margin to let the row span the full width of the screen while keeping the inner padding aligned with the rest of the page). Verified visually on a 375px viewport — no clipped cards.
+- **Type-only import for `ConversationSummary`**: `import type { ConversationSummary } from '@/components/taly-app'` avoids pulling the `TalyApp` component (and its 7 unresolved sibling imports) into the bundle of these screens, so the new files compile cleanly even while the chat-view / taly-support-screen / daily-reward-dialog components are still being built by other agents.
+
+### Stage Summary
+All 4 primary screens (Home, Chats, Groups, Discover) implemented per the Task 3-a spec, type-clean and lint-clean (0 errors, 0 warnings on my 4 files). The screens wire into the existing `TalyApp` shell exactly per the prop contract documented in the task. Ready for the next phase (ChatView / Taly Support / Profile / Daily Reward integration by other agents, or end-to-end visual QA).
+
+---
+
+## Task 3-d — Build Admin Panel UI
+**Agent:** general-purpose (sub agent)
+**Task:** Replace the stub `src/components/admin/admin-app.tsx` with a full TalyChat admin panel per PRD section 16 — 5 tabs (Dashboard, Members, Redeem, Reports, Settings), responsive shell (desktop sidebar + sticky header / mobile bottom nav), 12 metric cards with drill-down dialogs, Bar/Pie/Line charts via Recharts, members table with search + pagination + user detail dialog, redeem codes CRUD, reports moderation, app-settings + ads + payments + Taly Support requests + password change editor. Admin login `admin.in / Admin123` already routes to `<AdminApp />` via `src/app/page.tsx` when `user.role === 'admin'`.
+
+### Work Log
+Replaced the 12-line stub with a 7-file component tree (3,013 LOC total) split for maintainability:
+
+1. `src/components/admin/admin-app.tsx` (141 LOC) — main shell
+2. `src/components/admin/admin-shared.tsx` (387 LOC) — types + reusable UI
+3. `src/components/admin/admin-dashboard.tsx` (348 LOC) — Tab 1
+4. `src/components/admin/admin-members.tsx` (541 LOC) — Tab 2
+5. `src/components/admin/admin-redeem.tsx` (316 LOC) — Tab 3
+6. `src/components/admin/admin-reports.tsx` (299 LOC) — Tab 4
+7. `src/components/admin/admin-settings.tsx` (981 LOC) — Tab 5
+
+All files follow the project conventions:
+- `'use client'` directive
+- `apiFetch` for every API call wrapped in `try/catch` with `useToast` for error surfaces
+- Loading states use `Loader2` spinners (lucide-react) for in-flight buttons and `Skeleton` for tables/cards
+- All touch targets ≥ 44px (`min-h-[44px]` on nav buttons, `h-11` on primary actions)
+- `scroll-pan-y` on scrollable areas; `overflow-hidden` on the shell root; `truncate` on long text in table cells
+- TalyChat emerald via `text-primary` / `bg-primary` / `.btn-brand` (gradient defined in `globals.css`)
+- shadcn components used extensively: `Card`, `Button`, `Input`, `Textarea`, `Table`, `Badge`, `Avatar`, `Dialog`, `Sheet`, `Tabs`, `Select`, `Switch`, `Separator`, `Skeleton`
+- Recharts: `BarChart`, `PieChart`, `LineChart`, `ResponsiveContainer`, `Tooltip`, `XAxis`, `YAxis`, `CartesianGrid`, `Cell`, `Bar`, `Line`, `Pie` — all wrapped in `ResponsiveContainer width="100%"` with `height={300}` (cards) / `height={280}` (drill-down)
+
+#### Shell (`admin-app.tsx`)
+- Root wrapper: `min-h-[100dvh] taly-shell overflow-hidden flex flex-col` (uses the existing `.taly-shell` class from `globals.css`).
+- **Top header** (sticky, `z-40`): TalyChat Admin logo + name + admin avatar + name (hidden on `< sm`) + Logout button. The Logout button here is the same `useAuth().logout()` — also reachable from Settings tab bottom.
+- **Desktop (≥768px)**: left sidebar (`sticky top-14 h-[calc(100dvh-3.5rem)] w-60`) with the 5 nav items; active item uses `bg-primary text-primary-foreground`.
+- **Mobile (<768px)**: bottom nav with the 5 tabs, `min-h-[44px]`, `sticky bottom-0`, same pattern as the user app's `BottomNav`.
+- **Main content**: `flex-1 overflow-y-auto scroll-pan-y p-3 sm:p-5 md:p-6`, max-w-6xl container, with a mobile bottom spacer (`h-16`) so the bottom nav doesn't overlap content.
+- Tab state is local React state (`useState<AdminTab>('dashboard')`); the shell switches between `<AdminDashboard/>`, `<AdminMembers/>`, `<AdminRedeem/>`, `<AdminReports/>`, `<AdminSettings onLogout={logout}/>`.
+
+#### Tab 1 — Dashboard (`admin-dashboard.tsx`, PRD 16.2)
+- **12 metric cards** in a responsive grid (`grid-cols-2 md:grid-cols-3 xl:grid-cols-4`): Total Users, Active Now, New Today, Total Groups, Pending Reports, Restricted Users, Premium Users, Expired Plans, Revenue (₹), Ad Impressions, Ad Clicks, Reward Claims.
+- Each card is a `<button>` that opens a drill-down `Dialog` showing a chart for that metric — Bar chart for revenue, Line for users/growth, Pie for active/inactive.
+- A period `Select` (Today / 7 Days / Monthly / Quarterly) drives `GET /api/admin/stats?period=...`. The hook refetches whenever the period changes; charts and metric cards re-render from the same response (`salesData`, `userGrowth`, `activeInactive`).
+- Three always-visible charts: a Bar chart for sales, a Pie for active/inactive (with a 2-color custom legend), a Line for cumulative user growth.
+- Chart colors use the TalyChat emerald (`oklch(0.72 0.18 152)`) for primary series; axis strokes use `var(--muted-foreground)` so they adapt to light/dark themes.
+
+#### Tab 2 — Members (`admin-members.tsx`, PRD 16.2)
+- 7-card analytics summary at top: Total, Active, New Today, Male, Female, Under 18, 18+ — sourced from the `analytics` summary in `GET /api/admin/users` response.
+- Search input (with `Search` icon) debounced 350 ms into a separate `debouncedQ` state, which then resets `page` to 1 and triggers a fetch. Used a two-effect pattern: one for the debounce timer (`useEffect [q]`), one for fetching (`useEffect [debouncedQ, page, load]`) — avoids the double-fetch / wrong-page race that would happen with two effects both watching `q`.
+- Table on desktop (`shadcn Table`): avatar+name+email, username, role badge, premium 👑, joined date, online status dot. Row click opens the user detail dialog.
+- Cards on mobile (custom `MobileUserList`): tap-target rows with avatar, name, crown, role badge, online dot, joined date.
+- Pagination: 20/page (PAGE_SIZE constant). Prev/Next buttons + "Page X of N" hint. Hidden when only 1 page.
+- **User Details dialog** (Dialog on desktop, bottom-Sheet on mobile): full info (gender, DOB, premium until, restricted until, joined, bio), 4 mini-stats (chats, reports, payments, subs), and 4 action buttons: Toggle Premium (PATCH `isPremium`), Restrict/Unrestrict (PATCH `isRestricted` + `restrictedUntil` 24h default), Make/Remove Admin (PATCH `role`), Block User (DELETE — soft-block). All actions call `PATCH /api/admin/users/[id]` or `DELETE` and refresh both list and detail.
+
+#### Tab 3 — Redeem (`admin-redeem.tsx`, PRD 16.2)
+- **Create codes form**: code (optional — auto-generated `TALY-XXXXXXXX` if blank by the API), premium months (number, min 1), note (short Input + long Textarea), count (1–100). Submit → `POST /api/admin/codes`. Toast on success shows count and (for single-code) the generated code.
+- **Codes table**: code (monospace), months, note (truncated), status badge (Active/Disabled), redemptions (`n` or `n/count` for multi-code batches), created date, Disable button (calls `POST /api/admin/codes/[id]/disable`).
+- Mobile renders as `CodeCard` list — same data, stacked layout.
+
+#### Tab 4 — Reports (`admin-reports.tsx`, PRD 16.2)
+- `Tabs` filter: All / Pending / Resolved / Dismissed (drives `?status=` on `GET /api/admin/reports`).
+- Desktop: list rows with reporter (avatar+name+username), reported (user or group), reason badge (color-coded by category: Spam/Harassment/Scam/Illegal/Fake/Other), truncated description, date, status badge, Approve/Reject buttons (only when `status === 'pending'`).
+- Mobile: stacked cards with the same info.
+- Approve → `POST /api/admin/reports { id, action: 'approve' }` (backend applies 24h restriction to reported user). Reject → `action: 'reject'`. After action, the row's status is updated locally and (for filtered views) removed from the list.
+
+#### Tab 5 — Settings (`admin-settings.tsx`, PRD 16.2)
+Five sub-sections, each separated by a `Separator`, with a destructive Logout button at the bottom:
+
+1. **App settings editor**: pulls `GET /api/admin/settings` (returns `{ settings: { key: value } }`). Renders all key/value pairs as editable `Input`s in a 2-col grid. A "New" button prompts for a new key. "Save All" sends only the changed entries via `PUT /api/admin/settings` (body = `{ key: value, ... }`).
+   - **Ad controls card**: any keys matching `ads_enabled` / `ads_private_interval` / `ads_group_interval` are pulled out and rendered with a `Switch` (for `ads_enabled`) or a number `Input` — quick-toggle the most-tuned admin settings without scrolling the long flat list.
+2. **Ad management**: table of all ads (`GET /api/admin/ads`) with brand, headline, placement badge, impressions+clicks stats, active `Switch`, Edit/Delete icon buttons. "New Ad" opens an `AdEditor` Dialog (full form: brandName, headline, description, imageUrl, ctaText, ctaUrl, placement Select, category, startDate, endDate, isActive Switch). Edit reuses the same dialog pre-populated. Save calls `POST` (new) or `PATCH` (edit) `/api/admin/ads`. Delete (with confirm) calls `DELETE /api/admin/ads { id }`. Mobile renders as `AdCard` list with thumbnail + toggle + edit/delete buttons.
+3. **Change admin password**: 3 fields (current, new, confirm). Validates non-empty, match, and ≥6 chars before calling `POST /api/admin/password { currentPassword, newPassword }`.
+4. **Payment proofs**: status `Select` (Pending/Approved/Rejected), 2-col card grid. Each card shows user (avatar+name+username+email), status badge, plan, amount, txn ID, UTR, screenshot thumbnail (tappable link to open full-size in new tab), notes (truncated), submission timestamp, and Approve/Reject buttons (only when pending). Approve → `POST /api/admin/payments { id, action: 'approve' }` (backend grants premium + creates Subscription). Reject → `action: 'reject'`.
+5. **Taly Support requests**: pending requests only (`?status=pending`). Each card shows user info, request message in a muted box, timestamp, Approve/Reject buttons → `POST /api/admin/taly-requests { id, action }`. After action, the request is removed from the list.
+
+### Lint / Type check
+- `bun run lint` — **0 errors, 0 warnings** on `src/components/admin/` (verified with `bunx eslint src/components/admin --max-warnings=0`, exit 0). All remaining repo-wide warnings are in other agents' files (`chat/message-bubble.tsx`, `chat/voice-message.tsx`, `taly/*-screen.tsx`, `taly/settings-dialog.tsx`) and pre-existing — untouched here.
+- `bunx tsc --noEmit` filtered to `src/components/admin/` → **0 errors** on my files. Remaining repo-wide TS errors are pre-existing in `examples/websocket/server.ts`, `skills/*`, and `src/components/taly-app.tsx` (referencing not-yet-built chat-view / taly-support-screen / daily-reward-dialog + a renamed `useMediaQuery` export) — outside this task's scope.
+- `bunx next build` fails only on `src/components/taly-app.tsx`'s missing imports — admin module graph compiles cleanly.
+
+### Notes / Decisions
+- **File split**: 7 files instead of one giant admin-app.tsx for maintainability. The shared module (`admin-shared.tsx`) holds all the TypeScript response-shape interfaces (mirrors of the API routes' return shapes), date/INR/truncate/initials helpers, and small reusable presentational pieces (`StatCard`, `EmptyState`, `StatusBadge`, `ReportReasonBadge`, `LoadingSpinner`, `FullLoader`). Tab modules import only what they need from it.
+- **`LucideIcon` vs `React.ComponentType<{ className?: string }>`**: tab-level NAV in `admin-app.tsx` uses `LucideIcon` so the bottom-nav can pass `strokeWidth={active ? 2.5 : 2}` (matches the user app's bottom nav exactly). `StatCard` and `MiniStat` keep `React.ComponentType<{ className?: string }>` because they only render `<Icon className="..."/>` — both type-compatible since Lucide props are all optional.
+- **Search debounce done right**: the members tab uses a separate `debouncedQ` state set 350 ms after `q` changes; the fetch effect watches `[debouncedQ, page, load]`. This avoids the double-fetch race (debounced effect calls `load(q, 1)` + page effect calls `load(q, page)` on every keystroke) and the page-3-of-old-query flash that the naive "two effects both watching q" version produces.
+- **Drill-down chart selection**: dashboard cards open a dialog with the chart that best matches the metric — Bar for revenue (matches the always-visible Sales Bar), Line for total/new users (matches the always-visible Growth Line), Pie for active vs inactive (matches the always-visible Pie). The rest fall back to the user-growth Line chart so every card has a meaningful visualization.
+- **Mobile-specific layouts**: every tab has a "card" layout for `<768px` (the `useIsMobile()` breakpoint). For Members this is a button-row list; for Redeem/Reports it's `<div className="divide-y">` cards; for Ads it's an `AdCard` with thumbnail; for Payments/Taly Requests it's already a card grid that just collapses to 1 column. The user-detail dialog swaps to a bottom `Sheet` on mobile (the full-width Dialog feels cramped on phones).
+- **Sticky header + bottom nav**: header is `sticky top-0 z-40` with `bg-background/95 backdrop-blur`; mobile bottom nav is `sticky bottom-0 z-30` with the same treatment. Both stack correctly above content during scroll. Desktop sidebar is `sticky top-14 h-[calc(100dvh-3.5rem)]` so it stays put under the 56-px header.
+- **Brand consistency**: primary buttons use `.btn-brand` (emerald gradient with shadow), the active nav item uses `bg-primary text-primary-foreground`, charts use `oklch(0.72 0.18 152)` (the `--brand` value), and the premium 👑 stays amber — all matching the user app's visual language.
+- **API shape mirroring**: every interface in `admin-shared.tsx` (`AdminStats`, `AdminUsersResponse`, `AdminReport`, `AdminRedeemCode`, `AdminAd`, `AdminPayment`, `AdminTalyRequest`) was hand-derived from the actual route responses in `src/app/api/admin/*` — including the `analytics` summary fields (`total/active/newToday/male/female/under18/over18`) returned by `GET /api/admin/users`, the `redemptionCount` added by `GET /api/admin/codes`, and the `reporter`/`reportedUser`/`reportedGroup` relations included by `GET /api/admin/reports`.
+- **No backend changes**: every endpoint the panel calls (`stats`, `users`, `users/[id]`, `reports`, `codes`, `codes/[id]/disable`, `settings`, `ads`, `password`, `payments`, `taly-requests`) was already implemented in Task 2-d. The panel just consumes them per the documented contract — zero new routes created here.
+
+### Stage Summary
+The full admin panel UI is implemented per PRD section 16 and the Task 3-d spec — 5 tabs (Dashboard / Members / Redeem / Reports / Settings), all 12 dashboard metrics + 3 always-visible charts + per-card drill-downs, members table+search+pagination+detail dialog with admin actions, redeem CRUD, reports moderation with filters, settings editor + ads CRUD + password change + payment approvals + Taly Support approvals + logout. 7 files, 3,013 LOC, lint-clean (0/0) and TS-clean (0 errors) on the admin module. Admin login `admin.in / Admin123` lands straight into the panel via the existing `src/app/page.tsx` routing — no integration changes needed. Ready for end-to-end manual QA against the running API.
+
+---
+
+## Task 3-c — Build Chat View (P2P private + Group chat)
+**Agent:** general-purpose (sub agent)
+**Task:** Implement the main `ChatView` component for TalyChat — full-screen chat UI for P2P private + group chats, with swipe-to-reply, reactions, voice messages, image/sticker send, in-chat ads, realtime socket events, and the full three-dot menu per PRD sections 3, 4, 5, 10.
+
+### Work Log
+Created 10 new files in `src/components/chat/` plus a stub for `CustomizeDialog`. The chat view is split into a main orchestrator (`chat-view.tsx`) and focused sub-components to keep files readable. All components are `'use client'`, use `apiFetch`/`apiUpload` for HTTP, `useToast` for errors, shadcn `Button`/`Input`/`Popover`/`DropdownMenu`/`Dialog`/`Avatar` for UI, and Lucide icons.
+
+#### Files created
+1. `src/components/taly/customize-dialog.tsx` (52 LOC) — minimal stub `CustomizeDialog` that renders a `Dialog` titled "Customize {Chat|Group}" with a "Coming soon" message so the import path is stable. Another agent will replace this with the full wallpaper / message-style / font / font-size picker.
+2. `src/components/chat/chat-types.ts` (109 LOC) — shared types (`ChatMessage`, `ChatReaction`, `ChatConversation`, `ChatMember`, `ChatAd`, `ChatReplyTo`, `ChatUser`) and three emoji sets: `EMOJI_GRID` (150 common Unicode emojis for the picker), `QUICK_REACTIONS` (`['❤️','😂','👍','🔥','😮','😢']` for the long-press menu), and `STICKER_SET` (`['🥳','😎','🤗','🎉','💝','🌟']` for the attachment menu).
+3. `src/components/chat/chat-helpers.ts` (97 LOC) — `dateSeparatorLabel` (Today/Yesterday/`12 Sep`/`12 Sep 2024`), `formatTime` (HH:MM 24h), `formatLastSeen`, `formatDuration` (M:SS for voice), `isSameDay`, `messagePreview` (preview text for reply quotes / forward / copy), `groupStatusLine` (`N members • M online`), `autoDeleteLabel`.
+4. `src/components/chat/voice-message.tsx` (190 LOC) — voice message bubble with `<audio>` element, play/pause button (44px touch target), progress bar with click-to-seek, live duration display. Play button stops event propagation so the bubble's long-press / right-click menu doesn't toggle. Per-instance state so each voice message plays independently.
+5. `src/components/chat/emoji-picker.tsx` (64 LOC) — emoji picker shown in a `Popover`. 8-column grid of 150 Unicode emojis with 44px touch targets. Clicking an emoji calls `onPick(emoji)` and closes.
+6. `src/components/chat/chat-ad.tsx` (115 LOC) — in-chat ad box (PRD §10). Split-pane layout: left image (~35%), right content (~65%) with brand + "Sponsored" badge, headline, description, CTA button, ✕ close button. The ✕ appears after 3 seconds (per spec) and the close callback lets the parent re-schedule the next ad. Uses the existing `ad-box` and `sponsored-label` CSS classes.
+7. `src/components/chat/report-dialog.tsx` (143 LOC) — `ReportDialog` with 6 reason chips (`Spam`, `Harassment`, `Scam`, `Illegal`, `Fake`, `Other`) + optional description textarea. Submits to `POST /api/reports` with `reportedUserId` (private) or `reportedGroupId` (group).
+8. `src/components/chat/add-member-dialog.tsx` (188 LOC) — `AddMemberDialog` for group chats. Debounced (300ms) search via `GET /api/users/search?q=…`, results list with avatars + "Add" button, adds via `POST /api/groups/[id]/members { userId }`.
+9. `src/components/chat/message-bubble.tsx` (625 LOC) — `MessageBubble` and `MessageActionMenu` components.
+   - **MessageBubble**: renders a single message with:
+     - Date separator support (passed in from parent)
+     - Avatar (28×28) for received messages in group chats, hidden mid-group
+     - Sender name above bubble in groups (only at the start of a consecutive group)
+     - Reply preview above bubble (sender @username + preview text)
+     - Bubble classes: `bubble-sent` (emerald gradient, right-aligned) / `bubble-received` (card bg, left-aligned), with `bubble-sharp` / `bubble-tail-sent` / `bubble-tail-received` / `bubble-none` style variants applied based on `messageStyle` preference
+     - `bubble-content` class on the inner content div for word-break protection
+     - Voice messages via the `VoiceMessage` sub-component
+     - Image messages as clickable thumbnails that open a lightbox `Dialog`
+     - Sticker messages as large emoji text (`text-6xl`)
+     - Reactions rendered as `reaction-pill` 3D pills below the bubble, with count and "mine" ring highlight
+     - Read status: `✓` (sent, not seen) or `👁` (seen) — no double-tick
+     - Edited label, deleted message placeholder ("🚫 This message was deleted")
+     - Timestamp `HH:MM` below the bubble
+   - **Touch gestures**:
+     - `onTouchStart` records start X/Y and starts a 600ms long-press timer
+     - `onTouchMove` cancels the long-press on >8px movement, computes a horizontal swipe delta; for incoming (left-aligned) messages only rightward swipes count, for outgoing (right-aligned) only leftward. Updates a `swipeHint` to translate the bubble horizontally and shows a Reply icon
+     - `onTouchEnd`: clears timers; if `|dx| > 60px` → calls `onReply(message)` (swipe-to-reply); if two taps within 300ms on the same message → double-tap → `onReact(message, '❤️')`; otherwise records the tap for double-tap detection
+     - `onContextMenu` (desktop) → opens the action menu
+   - **MessageActionMenu**: portal-style overlay rendered above the bubble, with 6 quick-reaction emojis at the top + action items: Reply, Copy, Forward (toast only per spec), Edit (own text only), Delete (own only, destructive), Pin/Unpin.
+10. `src/components/chat/chat-view.tsx` (1635 LOC) — the main `ChatView` component exported with the exact props from the spec: `{ conversationId, name, avatar, isGroup, onBack, preferences }`. Composes all sub-components.
+
+   - **Customizer integration**: `useCustomizerSafe(preferences)` wraps `useCustomizer()` in a try/catch so the chat view still works (with sensible fallbacks) when not inside a `CustomizerProvider`. Resolves `wallpaper` → `getWallpaperStyle()` applied as inline style on the messages scroll container only (header & composer keep their normal bg), plus `fontFamily.className` and `fontSize` (px) on bubble content, and `messageStyle` ('bubble' | 'sharp' | 'tail' | 'none').
+   - **Header** (PRD §3.2): full screen — `h-14` shrink-0 with `border-b`. Back button | Avatar | Name + Status | Search icon | Three-dots menu. Status = "online" / "last seen at HH:MM" (private) or `N members • M online` (group), fetched from `GET /api/conversations/[id]`. While waiting for the fetch, a small spinner shows in place of the status. NO phone/video call buttons. While `otherTyping` is true, the status line shows `typing…` in primary color.
+   - **Message list** (PRD §3.4–3.11):
+     - Fetched from `GET /api/messages?conversationId=…&cursor=…&limit=50` (newest first), cursor pagination on scroll-to-top. On prepend, scroll position is preserved by calculating `newScrollHeight - oldScrollHeight + oldScrollTop`.
+     - Sorted oldest-first for rendering. Consecutive same-sender + same-day messages are grouped: avatar only shows on the last message of a group, sender name only on the first.
+     - Date separators (`Today`/`Yesterday`/`12 Sep`) between day groups.
+     - Empty state: small "No messages yet." text in the center; wallpaper still visible.
+     - Auto-scroll to bottom on new message if user is near bottom (within 150px); otherwise respects the user's scroll position.
+     - After the initial load, marks up to 25 received (not-mine, not-deleted) messages as seen via `POST /api/messages/[id]/read`, and emits `message:status { seen: true, userId }` over the socket so the sender's UI flips ✓ → 👁.
+   - **Composer** (PRD §3.8–3.10): sticky bottom-0 with safe-area padding, `border-t`, normal bg.
+     - Reply / Edit preview above the input with the replied-to sender @username + preview text + ✕ Cancel button.
+     - Emoji button always visible (`EmojiPicker` popover) — inserts the picked emoji at the caret.
+     - Attachment button opens a `Popover` with "Image" (triggers hidden `<input type="file" accept="image/*">` → `apiUpload('/api/upload', file)` → `POST /api/messages { type: 'image', mediaUrl }`) and a 3×2 grid of `STICKER_SET` stickers (sent as `type: 'sticker'` with `stickerId` = the emoji).
+     - Auto-grow `<textarea>` (max 4 lines). Enter sends (desktop), Shift+Enter newline. Esc cancels reply/edit.
+     - Voice record button (visible when input is empty) — tap to start, uses `navigator.mediaDevices.getUserMedia({ audio: true })` + `MediaRecorder` with auto-detected mime (`audio/webm`/`ogg`/`mp3`). While recording: shows a pulsing red dot + `M:SS / 2:00` timer + Cancel (✕) and Send buttons. Auto-stops at 2 minutes. On Send: builds a `File` from the chunks, uploads via `apiUpload`, then `POST /api/messages { type: 'voice', mediaUrl, voiceDuration }`. On Cancel: discards the chunks and stops the audio tracks. All recorder refs and timers are cleaned up on unmount.
+     - Send button (when text is present): emerald circular button with the `Send` icon. On click: `POST /api/messages`, appends the returned message, emits `message:send` over socket, clears the input.
+   - **Three-dot menu** (PRD §4.1–4.2): shadcn `DropdownMenu` with full action sets per chat type:
+     - **Private**: Search messages, Mute, Shared Media, Privacy, Customize chat, Pin Chat, Clear chat now, Clear chat after… (submenu: 1 hour / 1 day / 1 week / 1 month / Cancel), Block user, Report.
+     - **Group**: Add member, Search, Members, Shared Media, Mute, Privacy, Customize, Pin Group, Clear Chat, Clear after… (submenu), Leave Group, Report.
+     - Each action triggers the right API: `PATCH /api/conversations/[id] { muted | pinned | autoDeleteAfter }`, `POST /api/blocks { blockedId }`, `POST /api/reports`, `DELETE /api/conversations/[id]` (leave), and dialogs (`ReportDialog`, `AddMemberDialog`, `CustomizeDialog`, and three confirm dialogs for clear / leave / block). Auto-delete submenu maps `1h=3600, 1d=86400, 1w=604800, 1mo=2592000, Cancel=null` and toasts the chosen label.
+   - **Ad system** (PRD §10): on mount schedules a `setTimeout` (25s for private, 30s for group) that fetches `GET /api/ads?placement=in-chat` and shows the returned ad in a `ChatAdBox` below the last message. When the user clicks ✕ (close) or the next-ad cycle fires, the timer is restarted via `scheduleNextAd()`. The ad loops continuously while the user is in the chat. Clicking the CTA button calls `POST /api/ads/[id]/click` and opens `ctaUrl` in a new tab. All timers are cleaned up on unmount.
+   - **Realtime** (socket.io via `@/lib/socket`): uses `useSocket` with handlers for `message:new`, `reaction`, `message:edit`, `message:delete`, `message:status`, `typing`. When `connected` becomes true (or `conversationId` changes), emits `join:conversation { conversationId }`; on cleanup emits `leave:conversation { conversationId }`. On sending a message: emits `message:send { conversationId, message }` after the API returns. On reacting: emits `reaction { conversationId, messageId, reactions, emoji, userId }`. On editing: emits `message:edit`. On deleting: emits `message:delete`. Typing: on first input emit `typing { isTyping: true }` (debounced 300ms); after 1s of no input emit `typing { isTyping: false }` (debounced).
+   - **Layout**: `min-h-[100dvh] flex flex-col`; header `h-14 shrink-0`; messages `flex-1 overflow-y-auto scroll-pan-y`; composer `shrink-0 border-t p-2`. All touch targets ≥ 44px. NO horizontal overflow (`bubble-content`, `truncate`, `overflow-hidden`).
+
+### Lint / Type check
+- `bun run lint` (full project) — **0 errors, 3 warnings**. All 3 warnings are in other agents' files (`profile-screen.tsx`, `settings-dialog.tsx` from Task 3-a/3-b) — none in this task's files.
+- `bunx eslint src/components/chat/*.tsx src/components/chat/*.ts src/components/taly/customize-dialog.tsx` (my files only, default config) — **exit 0**, zero warnings, zero errors.
+- `bunx tsc --noEmit --skipLibCheck` — no errors in any of my files. The 7 remaining tsc errors are all pre-existing or from other agents' incomplete work (`examples/websocket/*`, `skills/*`, and `src/components/taly-app.tsx` which references `taly-support-screen`, `daily-reward-dialog`, and `useMediaQuery` that other agents are still building).
+
+### Notes / Decisions
+- **Safe customizer access**: `useCustomizerSafe(preferences)` wraps the throwing `useCustomizer()` hook in a try/catch. `useContext` is always called (so the React hooks rules-of-hooks order is preserved), and the throw at runtime is caught and replaced with a fallback object built from the `preferences` prop. This means the chat view works both inside `CustomizerProvider` (used by `taly-app.tsx`) and standalone in tests.
+- **Wallpaper scoping**: applied `getWallpaperStyle(wallpaper)` only on the message-list scroll container — header & composer keep the normal `bg-background` per PRD §3.7. Removed an earlier `backgroundColor: var(--background)` override (was redundant against gradient wallpapers and would hide them). The default `background-attachment: scroll` keeps image wallpapers fixed relative to the visible viewport while messages scroll.
+- **Voice play & event propagation**: the `VoiceMessage` play button calls `stopPropagation` on its click handler so it doesn't bubble up to the message-bubble's long-press / right-click trigger. The `bubble-content` class wraps the inner text so word-break is consistent across message styles.
+- **Double-tap vs swipe vs long-press**: implemented entirely in `MessageBubble`'s touch handlers — no global gesture library. Long-press (600ms) is cancelled on any >8px move. Swipe-to-reply (60px threshold) is restricted to the "natural" direction (incoming → right, outgoing → left) and shows a Reply icon + bubble translate during the swipe. Double-tap (2 taps within 300ms on the same message, no movement) fires a ❤️ reaction. Single taps are recorded for double-tap detection but don't trigger anything (per spec "one tap on mobile = single click").
+- **Reactions**: `MessageActionMenu` shows the 6 quick reactions in a pill row at the top of the popover; clicking one calls `POST /api/messages/[id]/reaction { emoji }` and emits `reaction` over the socket. Existing reactions on a message render as 3D `reaction-pill` pills below the bubble with a count and a ring highlight if mine. Clicking an existing pill toggles it (server treats same-emoji as remove).
+- **Pin chat / pin message**: chat-level pin uses `PATCH /api/conversations/[id] { pinned }`; per-message pin is local-only for now (no `pinnedAt` column in `Message` per current schema — the server can be extended later).
+- **Clear chat**: per the spec "just hide locally", clears the local messages array and shows a toast. A future bulk-delete endpoint can be wired in later — sending N `DELETE /api/messages/[id]` calls would be inefficient.
+- **Search**: opens a search bar in the header; filters messages client-side by content/sender name/username. Good enough for in-chat search; a server-side `GET /api/messages?search=` can be added later.
+- **Ad loop robustness**: `scheduleNextAd` clears any existing timer before scheduling the next, so close (✕) → next-ad cycles don't pile up. If `GET /api/ads?placement=in-chat` returns `null` (no ads), the ad slot stays empty and the timer fires again at the next interval — silent fail in the catch.
+- **`useCustomizerSafe` fallback**: when used without a provider, returns `WALLPAPERS[0]` (default emerald gradient), `FONT_OPTIONS[0]` (system sans), `messageStyle: 'bubble'`, `fontSize: 14`. The user's `preferences` prop is honored whenever it has explicit values.
+- **Stub for `CustomizeDialog`**: kept minimal so the import in `chat-view.tsx` resolves. The full wallpaper / message-style / font / font-size picker dialog will be implemented by another agent — they just replace `src/components/taly/customize-dialog.tsx` with the full version keeping the same props `{ open, onOpenChange, conversationId?, isGroup? }`.
+
+### Stage Summary
+The full Chat View (P2P private + Group) is implemented per PRD sections 3, 4, 5, 10 and the Task 3-c spec — 10 files, 3,218 LOC, lint-clean (0/0) and TS-clean (0 errors) on the chat module. Plugs straight into `taly-app.tsx`'s `<ChatView conversationId={…} name={…} avatar={…} isGroup={…} onBack={…} preferences={…} />` API. Realtime via `useSocket`, wallpaper via `useCustomizer`, voice via `MediaRecorder`, ads via the existing `/api/ads` routes — all wired end-to-end. Ready for integration testing against the running API once the remaining Task 3 sibling components (`taly-support-screen`, `daily-reward-dialog`, `useMediaQuery`, etc.) are in place.
+
+---

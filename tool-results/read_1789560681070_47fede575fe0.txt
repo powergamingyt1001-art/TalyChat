@@ -1,0 +1,338 @@
+     1→# TalyChat — Worklog
+     2→
+     3→## Project Overview
+     4→Building **TalyChat** — a full-featured chat/social app per PRD (`upload/TalyChat-PRD-FINAL.md`).
+     5→- Founder: Omkar Panday
+     6→- Tagline: Chat. Connect. Mingle.
+     7→- Stack: Next.js 16 (App Router) + TypeScript + Tailwind 4 + shadcn/ui + Prisma (SQLite) + Socket.io mini-service + z-ai-web-dev-sdk (Taly Support AI)
+     8→
+     9→## Assets Inventory (already placed)
+    10→
+    11→### Logos
+    12→- `/public/logo.png` — main app icon (from `upload/icon TalyChat.png`)
+    13→- `/public/icons/logo.png` — duplicate for flexible import
+    14→
+    15→### Fonts (10 decorative, in `/public/fonts/`)
+    16→1. AlfaSlabOne-Regular.ttf
+    17→2. Creepster-Regular.ttf
+    18→3. DoppioOne-Regular.ttf
+    19→4. Estonia-Regular.ttf
+    20→5. LeagueGothic-Regular.ttf
+    21→6. LobsterTwo-Regular.ttf
+    22→7. Quattrocento-Regular.ttf
+    23→8. Sacramento-Regular.ttf
+    24→9. SyneTactile-Regular.ttf
+    25→10. Yuyu-Regular.ttf
+    26→
+    27→> Note: PRD also mentions NotoColorEmoji.ttf, Aaradhana/Akkal/Himalli (Hindi fonts). These were NOT in the upload — will use system emoji + Google Fonts Hindi fallback (Noto Sans Devanagari) unless provided later.
+    28→
+    29→### Wallpapers (25 images, in `/public/wallpapers/`)
+    30→- wp_01.png … wp_25.jpg
+    31→- Sourced from `theam my projt.zip` (DCIM/Screenshots + Download + Pictures folders)
+    32→- PRD wants 26 total — 12 visible + 14 behind "More" button. We have 25; will add 1 CSS-gradient-only "default" entry to reach 26.
+    33→
+    34→### Payment
+    35→- UPI ID: `9897186065@fam`
+    36→- QR code: `/public/payment/qr-code.png` (from `Screenshot_2026_0907_185837_com.fampay.in.png`)
+    37→- Payee name: TalyChat
+    38→
+    39→### Firebase (configured in `.env.local`)
+    40→- Project: talychat-296c6
+    41→- API Key: AIzaSyBUZRbkkzORrgzTYza5drsFFafcgAGJo3U
+    42→- App ID: 1:410813408724:android:874e2a84bf6cee76f5a241
+    43→- Sender ID: 410813408724
+    44→- Auth domain: talychat-296c6.firebaseapp.com
+    45→- Storage bucket: talychat-296c6.firebasestorage.app
+    46→- ⚠️ google-services.json is the **Android** variant. Web OAuth client ID is the same (client_type 3). Phone OTP should also work on this project — will verify during dev.
+    47→
+    48→## Environment (.env.local)
+    49→```
+    50→NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyBUZRbkkzORrgzTYza5drsFFafcgAGJo3U
+    51→NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=talychat-296c6.firebaseapp.com
+    52→NEXT_PUBLIC_FIREBASE_PROJECT_ID=talychat-296c6
+    53→NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=talychat-296c6.firebasestorage.app
+    54→NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=410813408724
+    55→NEXT_PUBLIC_FIREBASE_APP_ID=1:410813408724:android:874e2a84bf6cee76f5a241
+    56→PAYMENT_UPI_ID=9897186065@fam
+    57→NEXT_PUBLIC_PAYMENT_UPI_ID=9897186065@fam
+    58→NEXT_PUBLIC_PAYMENT_QR=/payment/qr-code.png
+    59→NEXT_PUBLIC_APP_NAME=TalyChat
+    60→NEXT_PUBLIC_APP_TAGLINE=Chat. Connect. Mingle.
+    61→NEXT_PUBLIC_FOUNDER=Omkar Panday
+    62→NEXT_PUBLIC_APP_DOMAIN=talychat.app
+    63→```
+    64→DATABASE_URL (existing): `file:/home/z/my-project/db/custom.db`
+    65→
+    66→## Tech Decisions
+    67→- **Database**: Prisma + SQLite (per project rule), NOT in-memory JSON (deviates from PRD section 21.1 for better persistence — SQLite is fine and already configured).
+    68→- **Realtime**: Socket.io mini-service on port 3003 (per project gateway rules).
+    69→- **AI (Taly Support)**: `z-ai-web-dev-sdk` (already installed) instead of external LLM.
+    70→- **Auth**: NextAuth.js v4 is available, but PRD uses simple `x-user-id` header + localStorage + bcryptjs. Will implement custom lightweight auth per PRD (admin.in / Admin123 works as admin identifier, not email).
+    71→- **State**: Zustand (client) + TanStack Query (server).
+    72→- **Charts (admin)**: Recharts (already installed).
+    73→
+    74→## Pending Items (waiting on user confirmation before coding)
+    75→- ✅ Wallpapers, Fonts, Logo, Firebase, UPI/QR — all received
+    76→- ❓ Sticker packs — none provided; will use emoji-based placeholder stickers
+    77→- ❓ Demo users/groups — will auto-generate Indian names + DiceBear avatars
+    78→- ❓ Language translations — will use a small i18n dictionary (English/Hindi primary, others machine-translated)
+    79→- ❓ Domain — placeholder `talychat.app` used per PRD
+    80→- ❓ Ad creatives — will create dummy ads, admin can add real ones later
+    81→
+    82→## Next Step
+    83→Waiting for user's final "go" signal to start coding Phase 1 (auth + home shell).
+    84→
+    85→---
+    86→
+    87→## Task 2-b — Build Groups & Discover API Routes
+    88→**Agent:** general-purpose (sub agent)
+    89→**Task:** Implement Next.js 16 App Router API routes for groups (CRUD, join/leave, members) and discover feed, per spec in Task 2-b.
+    90→
+    91→### Work Log
+    92→Created 8 new route files under `src/app/api/`. All follow the project conventions:
+    93→- `runtime = 'nodejs'`
+    94→- `await ensureSeed()` at the start of every route handler
+    95→- `requireAuth(req)` for auth, `ok(data)` / `jsonError(status, msg)` for responses
+    96→- `try/catch` wrapping with `e.status === 401` short-circuit
+    97→- Dynamic params awaited (`const { id } = await params`) per Next.js 16
+    98→- `.json().catch(() => ({}))` for body parsing (no crash on missing body)
+    99→- `passwordHash` never serialized; user serialization helper omits it
+   100→- Composite `groupId_userId` unique lookups for member checks
+   101→
+   102→#### Files created
+   103→1. `src/app/api/groups/route.ts` — `GET` lists the current user's groups with `membersCount`, their `groupMember.role`, and last message (via group's `Conversation`). `POST` creates a group: generates a unique 6-char uppercase `inviteCode`, creates `Group`, `GroupMember` (owner), `Conversation` (`type='group'`, `groupId`, `name`), and `ConversationMember` (owner). Returns the group with `conversationId` and `inviteCode`.
+   104→2. `src/app/api/groups/[id]/route.ts` — `GET` returns group details + members list with roles + user info. Private groups reject non-members (403). `PATCH` (owner/admin) updates allowed fields (`name`, `description`, `logo`, `category`, `isPublic`) and keeps the conversation name in sync via `conversation.updateMany`.
+   105→3. `src/app/api/groups/join/route.ts` — `POST` joins via `inviteCode` or `groupId`. Idempotent: returns `alreadyMember: true` and existing role if already in. Otherwise creates `GroupMember` + `ConversationMember`, increments `membersCount`.
+   106→4. `src/app/api/groups/[id]/leave/route.ts` — `POST` removes `GroupMember` + `ConversationMember`. Decrements `membersCount`. If the owner leaves, transfers ownership to oldest admin (else longest-tenured member); updates `Group.ownerId` and the linked `Conversation.ownerId` + `ConversationMember.role`. If no members remain, deletes the group (cascade).
+   107→5. `src/app/api/groups/[id]/invite/regenerate/route.ts` — `POST` (owner/admin) generates a new unique 6-char code, updates the group, returns the new code.
+   108→6. `src/app/api/discover/route.ts` — `GET` returns up to 50 public groups filtered by optional `category`, sorted by `trending` (default: `membersCount * 2 + recentMsgCount(7d)`), `popular` (`membersCount` desc), or `new` (`createdAt` desc). Each group includes `isJoined: boolean` for the current user. Also returns `sponsored` ads from `Advertisement` where `placement='discover'` and `isActive=true`.
+   109→7. `src/app/api/groups/[id]/members/route.ts` — `GET` lists members (public groups open to all; private groups require membership). `POST` (owner/admin) adds a member by `userId`: idempotent if already a member; otherwise creates `GroupMember` + `ConversationMember`, increments `membersCount`.
+   110→8. `src/app/api/groups/[id]/members/[userId]/route.ts` — `PATCH` (owner/admin) changes a member's `role` to `admin | moderator | member`. Refuses to change the owner's role and prevents admins from modifying other admins. Syncs the role on the linked `ConversationMember`. `DELETE` (owner/admin) kicks a member; refuses to kick the owner or (for admins) another admin. Removes both `GroupMember` and `ConversationMember`, decrements `membersCount`.
+   111→
+   112→### Lint / Type check
+   113→- `bunx eslint src/app/api/groups src/app/api/discover --max-warnings 0` → exit 0 (clean)
+   114→- `bunx tsc --noEmit` produces 6 errors **all pre-existing** (in `examples/websocket/*`, `skills/*`, `src/app/api/admin/ads/route.ts`, `src/lib/seed.ts` — all unrelated to this task and predate the groups work). None of my new files produce any tsc or eslint error.
+   115→- The remaining `bun run lint` failure in `src/app/page.tsx` (`react-hooks/set-state-in-effect`) is pre-existing and outside this task's scope.
+   116→
+   117→### Notes / Decisions
+   118→- Reused the `genCode()` helper inline in the two routes that need it (`groups/route.ts` create + `groups/[id]/invite/regenerate/route.ts`) to avoid introducing a new shared util file (matches the spec's snippet).
+   119→- For trending score: used messages created within the last 7 days in the group's conversation as the "recent message count" approximation (simple, single-query, deterministic).
+   120→- For discover's `isJoined`: fetched the current user's `groupMember` rows in a single query and built a `Set` for O(1) lookup — avoids N+1 queries.
+   121→- Leave route: when transferring ownership, both `Group.ownerId` and the linked `Conversation.ownerId` are updated, and the new owner's `ConversationMember.role` is bumped to `owner`. If no members remain, the group is deleted entirely (cascade cleans up conversation & members).
+   122→- Kicking / role-change guards: owner role is immutable; admins cannot affect other admins (only owner can).
+   123→
+   124→### Stage Summary
+   125→All 8 groups & discover API routes implemented per the Task 2-b spec, type-clean, lint-clean. Ready for the next phase (frontend integration or messaging routes).
+   126→
+   127→---
+   128→
+   129→## Task 2-d — Build Admin Panel API Routes
+   130→**Agent:** general-purpose (sub agent)
+   131→**Task:** Implement Next.js 16 App Router admin API routes (AppSettings, users, groups, reports, ads, redeem codes, payments, Taly requests, stats dashboard, password change) — all guarded by `requireAdmin`.
+   132→
+   133→### Work Log
+   134→Created 12 new route files under `src/app/api/admin/`. All follow the project conventions:
+   135→- `export const runtime = 'nodejs'`
+   136→- `await ensureSeed()` at the start of every handler
+   137→- `requireAdmin(req)` for admin access (throws `HttpError(401|403)` on failure)
+   138→- `ok(data)` / `jsonError(status, msg)` helpers for responses
+   139→- `try/catch` with `e.status === 401 || e.status === 403` short-circuit
+   140→- Dynamic params awaited (`const { id } = await ctx.params`) per Next.js 16 (typed as `Promise<{ id: string }>`)
+   141→- `.json().catch(() => ({}))` for body parsing — never crashes on missing body
+   142→- `passwordHash` always stripped from responses
+   143→
+   144→#### Files created
+   145→1. `src/app/api/admin/stats/route.ts` — `GET` returns the dashboard metrics (totalUsers, activeUsers, newToday, totalGroups, reports, restricted, premium, expiredPlans, revenue, adImpressions, adClicks, rewardClaims) plus three period-aware chart series for `?period=today|7days|monthly|quarterly`: `salesData` (revenue per bucket), `userGrowth` (cumulative user count), `activeInactive` (today's active vs. inactive). Bucket strategy: today=24 hourly, 7days=daily by weekday+day, monthly=weekly, quarterly=monthly. Revenue = sum of approved PaymentProof amounts + sum of Subscription amounts where source='payment'.
+   146→2. `src/app/api/admin/users/route.ts` — `GET` paginated list (`?q=search&page=1&limit=20`) returning 12 admin-facing fields plus `joinedAt` and `lastSeen`. Also returns analytics summary (total, active, newToday, male, female, under18, over18 — `under18` calculated by comparing dob string against the 18-years-ago ISO cutoff). Separates `total` (all users, for analytics) from `filteredTotal` (post-search, for pagination).
+   147→3. `src/app/api/admin/users/[id]/route.ts` — `GET` returns full user details (all fields except `passwordHash`) plus preferences, conversations, reports made/received, payment proofs, subscriptions, referrals given/received. `PATCH` updates `isPremium`, `premiumUntil`, `isRestricted`, `restrictedUntil`, `role` (only `admin`/`user`). `DELETE` soft-blocks (sets `isBlocked=true`, `isOnline=false`); refuses to block `admin.in` or the current admin themselves.
+   148→4. `src/app/api/admin/groups/route.ts` — `GET` paginated list with `owner` info and `_count.members`/`_count.reports`. Supports `?q=search&placement=` filters.
+   149→5. `src/app/api/admin/reports/route.ts` — `GET` lists reports with reporter + reported user + reported group, filterable by `?status=`. `POST` reviews a report: `approve` → status='resolved' and (if a user was reported and not already restricted) applies a 24h restriction. `reject` → status='dismissed'. Both save `adminNote`.
+   150→6. `src/app/api/admin/ads/route.ts` — `GET` lists all ads with creator info. `POST` creates ad (brandName, headline, description, imageUrl, ctaText, ctaUrl, placement, category, startDate, endDate, isActive) and sets `creatorId` from the authenticated admin. `PATCH` updates any subset of those fields. `DELETE` removes the ad by `id`.
+   151→7. `src/app/api/admin/codes/route.ts` — `GET` lists all redeem codes with redemption count (`_count.redemptions`). `POST` creates code(s): accepts `code?`, `months`, `note`, `count=1`, `expiry?`. If `code` omitted, auto-generates an 8-char `TALY-XXXXXXXX` code (uses unambiguous alphabet, retries on collision). If `count>1` and a `code` was provided, generates suffixed variants `CODE-1`, `CODE-2`, …; if no code provided, generates `count` unique random codes. Capped at 100 per request.
+   152→8. `src/app/api/admin/codes/[id]/disable/route.ts` — `POST` sets `isActive=false` for a code by id.
+   153→9. `src/app/api/admin/settings/route.ts` — `GET` lists all AppSettings as a flat key→value map (plus the raw rows). `PUT` upserts each `{ key: value }` pair in the body (values coerced to string).
+   154→10. `src/app/api/admin/password/route.ts` — `POST` changes admin password: verifies `currentPassword` against the stored `passwordHash` with `bcrypt.compare`, enforces 6+ char `newPassword`, then `bcrypt.hash(newPassword, 10)` and updates. Refuses OAuth-only admin accounts (no `passwordHash`).
+   155→11. `src/app/api/admin/payments/route.ts` — `GET` lists all PaymentProofs with user info, filterable by `?status=pending|approved|rejected`. `POST` approves/rejects: `reject` → status='rejected' + reviewedAt. `approve` → status='approved' + reviewedAt, sets user `isPremium=true` and extends `premiumUntil` from max(now, current premiumUntil) by 2/6/12 months per plan (2mo→2, 6mo→6, 1yr→12), creates an active `Subscription` with `source='payment'` and matching `plan`/`amount`/`expireAt`.
+   156→12. `src/app/api/admin/taly-requests/route.ts` — `GET` lists all TalyRequest records with user info, filterable by `?status=`. `POST` approves/rejects: sets status to 'approved'/'rejected', saves `adminNote` + `reviewedAt`.
+   157→
+   158→### Schema fix (Prisma)
+   159→While wiring `admin/ads/route.ts` I uncovered a pre-existing schema bug: `Advertisement.creator` was declared as `@relation("adCreator", fields: [id], references: [id])` — i.e., the ad's own PK was used as a foreign key, which made `creatorId` (used in `src/lib/seed.ts` and required by the new admin POST) invalid at the Prisma client level. Fixed minimally:
+   160→- Added `creatorId String?` field (plus `@@index([creatorId])`) to `Advertisement`
+   161→- Changed the relation to `creator User? @relation("adCreator", fields: [creatorId], references: [id])`
+   162→- Ran `bunx prisma db push --accept-data-loss` then `bunx prisma generate` — sync succeeded in 44ms, no data loss needed (additive column add).
+   163→
+   164→### Lint / Type check
+   165→- `bunx eslint src/app/api/admin` → clean (exit 0, no output)
+   166→- `bunx eslint src/lib` → clean
+   167→- `bunx tsc --noEmit` — all errors in `src/` are gone. Remaining errors are pre-existing in `examples/websocket/*` (missing `socket.io-client`/`socket.io` modules) and `skills/*` (stock-analysis-skill, image-edit) — outside this task's scope and excluded by eslint config.
+   168→- `bun run lint` reports only one error: `src/app/page.tsx` line 19 (`react-hooks/set-state-in-effect`) — pre-existing from Task 2-a/auth shell work, not touched by this task.
+   169→
+   170→### Notes / Decisions
+   171→- Stats bucketing helper: rather than reaching for SQL date truncation (which SQLite doesn't support natively), I fetch the raw rows for the period and bucket them in JS via a small `Bucket { label, start, end }` and `bucketContains(b, d)` helper. Avoids `prisma.$queryRaw` and keeps the query layer fully typed.
+   172→- Stats `revenue` is a single combined sum (PaymentProof approved + Subscription source='payment') for the headline number, AND the per-bucket `salesData` series is also combined from both sources for consistency.
+   173→- Stats `expiredPlans`: counted as users where `premiumUntil IS NOT NULL AND premiumUntil < now` (matches the spec's "Simple" definition).
+   174→- Admin users `under18`: stored as `dob` String (ISO yyyy-mm-dd). Lexicographic comparison via `dob > cutoffStr` works correctly for ISO-format dates and is what Prisma emits to SQLite.
+   175→- Admin users `over18 = total - under18Count` — using the overall (unfiltered) total so the summary is stable across searches.
+   176→- Reports approve action: applies a 24h `restrictedUntil` window by default when restricting a previously-unrestricted reported user. Admin can override later via `PATCH /api/admin/users/[id]`.
+   177→- Payments approve action: subscription `startAt=now`, `expireAt=newPremiumUntil`, `plan` and `amount` copied from the PaymentProof. The user's `premiumUntil` extends from the latest of `now` or their existing `premiumUntil` (so renewals stack).
+   178→- Redeem code auto-generation uses an unambiguous alphabet (no `0/O`, `1/I`) for readability over the phone / share-text.
+   179→- Schema fix was unavoidable — the prior `fields: [id]` mapping made the existing seed.ts broken too (TS error in `src/lib/seed.ts` line 188, which Task 2-b had also flagged as "pre-existing"). My fix resolves both my new code and the seed.
+   180→- All admin routes return errors via the same `jsonError` shape used by the rest of the API (`{ error: message }`), so the client-side `apiFetch` keeps working unchanged.
+   181→
+   182→### Stage Summary
+   183→All 12 admin panel API routes implemented per the Task 2-d spec, type-clean, lint-clean. Bonus: fixed a latent Prisma schema bug (`Advertisement.creator`) that had been silently breaking the seed since Task 2-b. Ready for the next phase (admin UI wiring / frontend integration).
+   184→
+   185→---
+   186→
+   187→## Task 2-a — Build Chat & Conversations API Routes
+   188→**Agent:** general-purpose (sub agent)
+   189→**Task:** Implement Next.js 16 App Router API routes for conversations (list/create/get/patch/leave) and messages (list/send/edit/delete/react/read), per spec in Task 2-a. Privacy is paramount — users can only see messages of conversations they're a member of, and blocked users cannot message each other.
+   190→
+   191→### Work Log
+   192→Created 6 new route files under `src/app/api/`. All follow the project conventions:
+   193→- `export const runtime = 'nodejs'`
+   194→- `await ensureSeed()` at the start of every handler
+   195→- `requireAuth(req)` for auth (throws `HttpError(401)` on failure)
+   196→- `ok(data)` / `jsonError(status, msg)` helpers for responses
+   197→- `try/catch` with `e.status === 401` short-circuit
+   198→- Dynamic params awaited (`const { id } = await ctx.params`) per Next.js 16 (typed `ctx: { params: Promise<{ id: string }> }`)
+   199→- `.json().catch(() => ({}))` for body parsing — never crashes on missing body
+   200→- `passwordHash` never serialized; user `select` projections always omit it
+   201→- Composite unique lookups (`conversationId_userId`, `groupId_userId`, `messageId_userId`) used for membership / reaction checks
+   202→
+   203→#### Files created
+   204→1. `src/app/api/conversations/route.ts`
+   205→   - `GET` — lists every conversation the current user is a member of, ordered by `updatedAt desc`. Each row is populated with: the latest message (with sender), the "other user" (for private), the linked `Group` summary (for group), and the full member list. Members are serialized without `passwordHash`.
+   206→   - `POST` — creates a new conversation.
+   207→     - **private**: requires `participantId`; rejects self-conversations, missing participants, and either-direction blocks (queries the `Block` model in both directions). Returns the existing private conversation if one already exists between these two users (using the `findFirst` with `AND: [{ members: { some: { userId: me } } }, { members: { some: { userId: them } } }]` pattern from the spec). Re-adds the current user as a member if they had previously left but the conversation still exists.
+   208→     - **group**: if `groupId` is supplied, looks up the `Group`, verifies membership via `groupMember`, finds (or creates) the group's conversation, and ensures the current user is in `conversationMember`. If no `groupId`, creates a brand-new `Group` + `Conversation` (owner-only) with a unique 6-char `inviteCode`.
+   209→
+   210→2. `src/app/api/conversations/[id]/route.ts`
+   211→   - `GET` — fetches a conversation (must be a member; 403 otherwise). Returns members (with avatars/names/bio/isOnline/lastSeen/isPremium), the linked group (if any), and the last message.
+   212→   - `PATCH` — members-only update of `muted`, `pinned`, `wallpaper`, `autoDeleteAfter` (the last accepts `null` to disable). All fields are optional / coerced.
+   213→   - `DELETE` — leaves the conversation (removes the user's `conversationMember` row). If no members remain, the conversation is deleted entirely (cascade cleans up messages + reactions + remaining members). For group conversations, also leaves the linked `Group` (deletes `groupMember`, decrements `membersCount`).
+   214→
+   215→3. `src/app/api/messages/route.ts`
+   216→   - `GET` — paginated message list. Query: `?conversationId=...&cursor=<iso>&limit=50`. Must be a member (403 otherwise). Returns messages newest-first with `take: limit + 1` to detect `hasMore`; `nextCursor` is the oldest item's `createdAt`. Each message includes `reactions`, `sender`, and a `replyTo` preview (with the original sender's id/username/name/avatar).
+   217→   - `POST` — send a message. Body: `{ conversationId, content, type: 'text'|'image'|'voice'|'sticker', mediaUrl?, voiceDuration?, stickerId?, replyToId? }`. Validates membership, type, and (if `replyToId` is set) that the replied-to message belongs to the same conversation. Restricts users with `isRestricted=true` (and unexpired `restrictedUntil`) from sending in group conversations (403). After insert: bumps `conversation.updatedAt`, then creates `notification` rows for the other member (private) or all other members (group, only if `conversation.muted === false`). Returns the full message with `sender` populated.
+   218→
+   219→4. `src/app/api/messages/[id]/route.ts`
+   220→   - `PUT` — sender-only edit; updates `content` and stamps `editedAt = now`. Refuses to edit deleted messages.
+   221→   - `DELETE` — soft delete (sets `deletedAt = now`). Sender only **or** admin (`user.role === 'admin'`). Idempotent for already-deleted messages.
+   222→
+   223→5. `src/app/api/messages/[id]/reaction/route.ts`
+   224→   - `POST` — toggles a reaction. Body: `{ emoji }`. Schema's `@@unique([messageId, userId])` enforces one reaction per user per message: if the same emoji already exists for the user, remove it (toggle off); if a different emoji exists, replace it; otherwise create. Must be a conversation member. Returns the full reaction list (with each reactor's `id/username/name/avatar` resolved via a separate `user.findMany` since the `Reaction` model has no `user` relation).
+   225→
+   226→6. `src/app/api/messages/[id]/read/route.ts`
+   227→   - `POST` — marks a message as seen by appending the current user's id to the comma-separated `seenBy` column (idempotent). Also bumps the `conversationMember.lastReadAt` to `now` so the conversation-level unread indicator can be computed. Members only.
+   228→
+   229→### Lint / Type check
+   230→- `bunx eslint src/app/api/conversations src/app/api/messages` → clean (no output, exit 0).
+   231→- `bunx tsc --noEmit` filtered to my new files (`rg "src/app/api/(conversations|messages)/"`) → no errors. Initially had one TS error in the reaction route (`Reaction` has no `user` relation) — fixed by resolving users via a separate `db.user.findMany` + `Map` lookup. Remaining tsc errors in the repo (`examples/websocket/*`, `skills/*`, `src/app/api/admin/ads/route.ts`, `src/lib/seed.ts`) are all pre-existing from earlier tasks and outside this task's scope.
+   232→- `bun run lint` reports only one error: `src/app/page.tsx` line 19 (`react-hooks/set-state-in-effect`) — pre-existing from the auth-shell task, untouched here.
+   233→
+   234→### Notes / Decisions
+   235→- Privacy enforcement is the core invariant: every read path (`GET /messages`, `GET /conversations/:id`, `POST /messages/:id/reaction`, `POST /messages/:id/read`) re-checks membership via `conversationMember.findUnique({ where: { conversationId_userId: { … } } })` and returns 403 if not a member. `GET /conversations` (list) is naturally scoped via the `members: { some: { userId } }` filter — no extra check needed.
+   236→- Block check on conversation creation queries `Block` in both directions (`blockerId=me, blockedId=them` OR `blockerId=them, blockedId=me`) so either side blocking the other prevents new private chats. The existing `POST /api/blocks` route already deletes any shared private conversations when a block is created, so this check is the only new logic needed here.
+   237→- For private conversation dedup, used exactly the spec's pattern: `db.conversation.findFirst({ where: { type: 'private', AND: [{ members: { some: { userId: me } } }, { members: { some: { userId: them } } }] } })`. This correctly handles the case where the current user had previously left a private conversation (the query simply won't match and a new conversation is created) and re-adds them if the other user is still a member.
+   238→- Group conversation creation: chose to delegate group-conversation creation to the canonical `POST /api/groups` route's logic (which already creates the conversation alongside the group) and only **adopt** an existing group conversation from `POST /api/conversations` when `groupId` is supplied. This avoids two competing code paths that both create group conversations and keeps the data model consistent (the `Group → Conversation` 1-to-1 link stays intact). If a `groupId` is supplied but the group's conversation doesn't yet exist (e.g., older groups pre-Task 2-b), it's created on demand with all current `groupMember` rows enrolled.
+   239→- Restriction check: only enforced for **group** conversations per spec (`if user.isRestricted → block sending in group conversations with 403`). Private conversations are unaffected (so a restricted user can still DM support/admin). Honors `restrictedUntil` — once it expires, the user can send again without admin intervention.
+   240→- Notifications: emitted with `type: 'message'` and a `data` JSON string carrying `conversationId`, `messageId`, `senderId`, `conversationType`, and `groupName` (for groups). For private conversations, the single other member is always notified. For groups, notifications are only sent if the conversation itself is not muted (the schema currently tracks `muted` on `Conversation`, not per-member; a future per-member muted flag would slot in here).
+   241→- Bump-on-write: every new message calls `db.conversation.update({ where: { id }, data: { updatedAt: new Date() } })` so the conversation list naturally re-orders to the top after activity (matches the `GET /conversations` `orderBy: { updatedAt: 'desc' }`).
+   242→- Reaction route: `Reaction` has no `user` relation in the schema (only `message`), so I resolved user info with a single `db.user.findMany({ where: { id: { in: userIds } } })` + `Map` lookup instead of trying to use `include`. Keeps the response shape consistent with the rest of the API while staying within the schema's constraints.
+   243→- Read/seen tracking: `seenBy` is a comma-separated string per the schema; the read route splits, dedupes, and rejoins it. Also updates `conversationMember.lastReadAt` so unread counts can be computed per member without scanning all messages.
+   244→
+   245→### Stage Summary
+   246→All 6 chat & conversations API routes implemented per the Task 2-a spec, type-clean, lint-clean, with privacy enforced on every read/react/read-mark path and blocks preventing new private conversations. Ready for the next phase (Socket.io mini-service wiring or frontend chat UI).
+   247→
+   248→---
+   249→
+   250→## Task 2-c — Build User-Facing Misc API Routes
+   251→**Agent:** general-purpose (sub agent)
+   252→**Task:** Implement Next.js 16 App Router user-facing misc API routes — notifications, users (search, profile, me), ads, reports, blocks, premium plans, me/premium, referral, redeem, payment proof submit, Taly Support AI chat (z-ai-web-dev-sdk), daily reward, file upload — per spec in Task 2-c.
+   253→
+   254→### Work Log
+   255→Created 17 new route files under `src/app/api/`. All follow the project conventions:
+   256→- `export const runtime = 'nodejs'`
+   257→- `await ensureSeed()` at the start of every handler
+   258→- `requireAuth(req)` / `requireAdmin(req)` for auth (throws `HttpError(401|403)` on failure)
+   259→- `ok(data)` / `jsonError(status, msg)` helpers for responses
+   260→- `try/catch` with `e.status === 401` (and 403 for admin routes) short-circuit
+   261→- Dynamic params awaited (`const { id } = await params`) per Next.js 16 (typed `{ params: Promise<{ id: string }> }`)
+   262→- `.json().catch(() => ({}))` for body parsing — never crashes on missing body
+   263→- `passwordHash` and other sensitive fields never serialized; explicit `select` projections used
+   264→- Settings read via `db.appSetting.findUnique({ where: { key } })` with sensible defaults when missing (per task rules)
+   265→
+   266→#### Files created
+   267→1. `src/app/api/notifications/route.ts` — `GET` lists the current user's notifications newest-first (limit 50), filtered by `?unreadOnly=true`, and returns `unreadCount`. `POST` (admin only) creates a system notification (`{ userId, type, title, body }`) for an existing target user.
+   268→2. `src/app/api/notifications/read/route.ts` — `POST` marks a notification as read. Body `{ id? }`: if `id` is provided, marks that single notification (with ownership check, 403 otherwise); otherwise marks all of the user's unread notifications as read via `updateMany`.
+   269→3. `src/app/api/users/search/route.ts` — `GET ?q=...` searches users by `username` (starts-with) OR `name` (contains). Excludes the current user and blocked users in either direction (queries `Block` both ways and builds an `excludeIds` set for O(1) filtering via Prisma `notIn`). Returns `{ id, name, username, avatar, isOnline, isPremium }`, limit 20.
+   270→4. `src/app/api/users/[id]/route.ts` — `GET` returns a public profile. Selects only `id, name, username, avatar, bio, isPremium, isOnline, lastSeen, createdAt, preferences`. `lastSeen` is returned only if the target's `preferences.lastSeenPublic === true` (otherwise `null`). No email/phone/passwordHash leaks.
+   271→5. `src/app/api/users/me/route.ts` — `GET` returns the current user's full profile (excluding `passwordHash`) plus upserted `UserPreference`. `PATCH` updates a subset of `name, bio, avatar, username, gender, dob`. Username change re-checks uniqueness (409 on collision). Avatar accepts base64 string OR empty string. Gender validated to one of `male/female/other`; `dob` accepts ISO date string or `null/""` to clear.
+   272→6. `src/app/api/ads/route.ts` — `GET ?placement=in-chat|home|discover`. For `in-chat`: picks one random active ad (or `{ ad: null }` if none) and increments its `impressions`. For `home`/`discover`: returns all active ads for that placement and increments `impressions` on each (Promise.all of `update` calls). Validates `placement` against the allowed enum (400 otherwise). No auth required (ads are public).
+   273→7. `src/app/api/ads/[id]/click/route.ts` — `POST` records an ad click. Requires auth. Verifies the ad exists (404) and `isActive` (400 otherwise). Then in a single `$transaction`: increments `clicks` and creates an `AdClick` record (`adId, userId`). Returns `{ ok: true }`.
+   274→8. `src/app/api/reports/route.ts` — `GET` (admin only) lists all reports, filterable by `?status=pending|reviewed|resolved|dismissed`, with reporter + reported user + reported group included. `POST` creates a report: validates `reason` against `Spam|Harassment|Scam|Illegal|Fake|Other` and requires at least one of `reportedUserId` or `reportedGroupId`. Enforces idempotency per `(reporter, reportedUser|Group)` — refuses duplicate reports unless the previous one is `dismissed` (409). After save: counts pending reports against the reported user; if the count ≥ `report_restriction_threshold` setting (default 5), auto-restricts the user for `report_restriction_duration_hours` setting hours (default 24).
+   275→9. `src/app/api/blocks/route.ts` — `GET` lists users I blocked (with the blocked user's public fields + `blockedAt`). `POST` blocks a user (`{ blockedId }`): refuses self-block (400), refuses blocking admins (403), uses `upsert` for idempotency, then deletes any private `Conversation` shared between the two users (cascade cleans up members + messages). `DELETE` unblocks via `deleteMany` (idempotent).
+   276→10. `src/app/api/premium/plans/route.ts` — `GET` returns the three plans from `AppSetting` (with hardcoded fallbacks: 2mo=₹49, 6mo=₹99, 1yr=₹189). Each plan includes `label`, `durationMonths`, `price`, `perMonth` (rounded to 2 decimals). Also returns `offer` info (`offerPrice`, `regularPrice`, `deadlineMinutes`, `loopHours`) sourced from `premium_1yr_offer_price` / `premium_1yr_regular_price` / `premium_offer_duration_minutes` / `premium_offer_loop_hours` settings.
+   277→11. `src/app/api/me/premium/route.ts` — `GET` returns the current user's premium status: `{ isPremium (recomputed from premiumUntil vs now), premiumUntil, daysLeft, subscriptions }`. Subscriptions list is filtered to `isActive=true`, ordered by `createdAt desc`.
+   278→12. `src/app/api/referral/me/route.ts` — `GET` returns the current user's referral data. `code = user.username`. Counts only `status='active'` referrals (per task spec). `recent` = up to 20 most recent referrals with `referred` user info. `tierReached` derived from count: `>=15 → '15'`, `>=7 → '7'`, `>=4 → '4'`, otherwise `null`. `progress` formatted as `"x/15"`.
+   279→13. `src/app/api/redeem/route.ts` — `POST` redeems a code (`{ code }`). Validates: code exists (404), `isActive` (400), not expired (400), not already redeemed by user via `RedeemUse` unique constraint check (409), and not exhausted (`count > 0 && redemptions >= count` → 400). On success, in a `$transaction`: creates `RedeemUse`, updates user (`isPremium=true`, `premiumUntil = max(current, now) + premiumMonths`), creates `Subscription` (`source='redeem'`, `amount=0`, `plan='${months}mo'`), and deactivates the code if `count <= newRedemptionCount`. Returns `{ ok: true, premiumUntil }`.
+   280→14. `src/app/api/payment/submit/route.ts` — `POST` submits a payment proof (`{ plan, amount, transactionId, utrNumber?, screenshotUrl?, notes? }`). Validates `plan` against `2mo|6mo|1yr` (400) and requires `transactionId` + numeric `amount`. Creates a `PaymentProof` with `status='pending'`. Returns `{ ok: true, id }`.
+   281→15. `src/app/api/taly-support/route.ts` — `POST` Taly Support AI chat (`{ message, conversationId?, history? }`). In-memory rate limit per `userId`: 5 requests / 60s (configurable via `_rateLimitInfo` export). If exceeded → `429` with `{ error, retryAfter: 60 }`. If the user's message contains "unlock" or "approve" (case-insensitive), creates a `TalyRequest` with `status='pending'`. Calls `zai.chat.completions.create({ messages: [systemPrompt, ...safeHistory(last 10), userMessage] })` via `ZAI.create()` from `z-ai-web-dev-sdk`. Returns `{ reply, conversationId, requestCreated }`. System prompt encodes TalyChat's identity (Founder: Omkar Panday) and instructs the assistant to reply in the user's language (English/Hindi/Hinglish) and be concise.
+   282→16. `src/app/api/daily-reward/route.ts` — `GET` returns `{ dayNumber (1-7), nextClaimAt, todayRewardDays, canClaim, cycleStart }`. Reward table per PRD: day1=5d, day2=5d, day3=7d, day4=8d, day5=10d, day6=10d, day7=15d. `nextClaimAt = lastClaim.claimedAt + 24h`; if never claimed, `nextClaimAt = null` and `canClaim = true`. `POST` claims today's reward: enforces 24h cooldown (429 otherwise), computes the next day number (wraps from 7 → 1 with a fresh `cycleStart`), and in a `$transaction`: creates `DailyReward`, extends `premiumUntil` by the awarded days (stacks on existing premium), and creates a `Subscription` with `source='daily'`, `plan='daily-${dayNumber}'`. Returns `{ dayNumber, daysAwarded, premiumUntil, cycleReset }`.
+   283→17. `src/app/api/upload/route.ts` — `POST` accepts `multipart/form-data` with a `file` field. Enforces 5MB max (413), validates extension against `jpg, jpeg, png, gif, webp, mp3, wav, ogg, ttf, otf` (400). Resolves extension from filename first, then content-type fallback. Ensures `/public/uploads` exists (`mkdir -p`). Writes the file to `/public/uploads/<cuid>.<ext>` where `cuid = crypto.randomUUID().replace(/-/g,'').slice(0,24)`. Returns `{ url: '/uploads/xxx.ext', filename, size }`.
+   284→
+   285→### Lint / Type check
+   286→- `bunx tsc --noEmit` filtered to my new files → **no TS errors** in any of the 17 new route files.
+   287→- The Prisma schema bug (`Advertisement.creator` was `fields: [id]`) was already fixed by Task 2-d (added `creatorId String?` + correct relation mapping), so my `ads/route.ts` and `ads/[id]/click/route.ts` work against the proper schema without needing any schema edits.
+   288→- `bun run lint` reports only one pre-existing error: `src/app/page.tsx` line 19 (`react-hooks/set-state-in-effect`) — from the Task 2-a auth shell, untouched here.
+   289→- Remaining `tsc` errors are all pre-existing in `examples/websocket/*` (missing `socket.io-client`/`socket.io` modules) and `skills/*` (stock-analysis-skill, image-edit) — outside this task's scope.
+   290→
+   291→### Smoke testing
+   292→All 17 routes were smoke-tested by importing each module (verifies HTTP method exports) and invoking each handler with mock `NextRequest` objects:
+   293→- `GET /api/premium/plans` → 200, returns 3 plans + offer info
+   294→- `GET /api/notifications` (admin) → 200 with `notifications[]` + `unreadCount`
+   295→- `POST /api/notifications` (admin) → 201 with created notification
+   296→- `POST /api/notifications/read` → 200 `{ ok: true }` (both by-id and mark-all)
+   297→- `GET /api/users/search?q=aarav` → 200, returns matching user
+   298→- `GET /api/users/[id]` (public profile) → 200, returns public fields, `lastSeen: null` when `lastSeenPublic=false`
+   299→- `GET /api/users/me` → 200, returns full profile + preferences
+   300→- `PATCH /api/users/me` (bio update) → 200, returns updated user
+   301→- `GET /api/ads?placement=home` → 200, returns `{ ads: [...] }` (empty when no seeded ads)
+   302→- `GET /api/ads?placement=in-chat` → 200, returns `{ ad: null }` when none available
+   303→- `POST /api/ads/[id]/click` (nonexistent) → 404 `Ad not found`
+   304→- `POST /api/reports` → 201 with `status: 'pending'`, auto-restrict logic guarded by threshold setting
+   305→- `POST /api/blocks` → 201 with blockerId/blockedId; shared private conversations deleted
+   306→- `DELETE /api/blocks` → 200
+   307→- `POST /api/redeem` (invalid code) → 404 `Invalid code`
+   308→- `POST /api/payment/submit` → 200 with new proof id
+   309→- `POST /api/taly-support` (missing message) → 400 `message is required`
+   310→- `POST /api/taly-support` (rate limit) → first 5 requests succeed (200), 6th and 7th return 429
+   311→- `POST /api/taly-support` (real message "Hello, what is TalyChat?") → 200 with a real AI-generated reply from ZAI SDK (confirmed working end-to-end)
+   312→- `POST /api/taly-support` (message containing "unlock") → 200 with `requestCreated: true` and a `TalyRequest` row in DB
+   313→- `GET /api/daily-reward` → 200 with `dayNumber: 1, todayRewardDays: 5, canClaim: true`
+   314→- `POST /api/daily-reward` (claim) → 200 with `dayNumber: 1, daysAwarded: 5, premiumUntil: ...`
+   315→- `POST /api/upload` (real PNG via `new File([...], 'test.png', { type: 'image/png' })`) → 200, file saved to `/public/uploads/<cuid>.png`, returns `{ url, filename, size }`, cleanup verified
+   316→- `POST /api/upload` (no auth) → 401 `Unauthorized`
+   317→- `POST /api/upload` (`.txt` rejected) → 400 (extension not allowed)
+   318→
+   319→### Notes / Decisions
+   320→- **Settings with defaults**: per the task rules, `premium/plans`, `reports` (auto-restrict thresholds), and other settings-reading routes use `db.appSetting.findUnique({ where: { key } })` and fall back to hardcoded defaults (49/99/189, threshold=5, duration=24h). This makes the routes resilient to partial-seed states.
+   321→- **Taly Support rate limit**: simple in-memory `Map<userId, { count, resetAt }>` keyed by `user.id`. Default 5 req / 60s. The map is per-process (acceptable for a single-node deployment; multi-node would need Redis). The constants are exported as `_rateLimitInfo` for easy tuning/testing.
+   322→- **Taly Support unlock/approve keyword**: case-insensitive `includes()` check on the user's message. Creates the `TalyRequest` BEFORE calling the LLM (so the request is recorded even if the LLM call fails). The admin can then act on it via `POST /api/admin/taly-requests` (Task 2-d).
+   323→- **Daily reward cycle reset**: when `lastClaim.dayNumber === 7`, the next claim starts a fresh cycle (day 1, new `cycleStart = now`). The 24h cooldown is enforced via `lastClaim.claimedAt + 24h > now` → 429. Premium days stack on existing `premiumUntil` (or now if expired/none).
+   324→- **Reports auto-restrict**: the threshold (`report_restriction_threshold`, default 5) and duration (`report_restriction_duration_hours`, default 24) are both read from `AppSetting` so the admin can tune them via `PUT /api/admin/settings` (Task 2-d) without code changes. Auto-restriction sets `isRestricted=true` + `restrictedUntil = now + hours` on the reported user when their pending-report count crosses the threshold.
+   325→- **Blocks side effect**: deleting a user-block also wipes any private `Conversation` between the two users (cascade cleans up messages and members). Group conversations are intentionally not touched — blocking only affects 1:1 chat.
+   326→- **Upload**: uses Node's built-in `File` class (Node 20+) for the `instanceof File` check, which works with Next.js 16's `formData()` parser. The cuid-style filename is generated via `crypto.randomUUID()` (no extra dep). Allowed extensions are enforced AFTER attempting to extract from filename, with a content-type fallback for clients that don't send filenames.
+   327→- **Redeem**: the "deactivate if exhausted" check uses `count <= newRedemptionCount` (where `newRedemptionCount = redemptions + 1` after this redeem). If `count = 1` and this is the first redeem, the code is deactivated (single-use). If `count = 100` and this is the 100th redeem, also deactivated. The transaction includes the deactivation update unconditionally (using `{}` data when not deactivating) to keep the `$transaction` array shape uniform.
+   328→- **Referral tier**: per PRD, tiers are at 4 / 7 / 15 active referrals. Returns the highest tier the user has reached (or `null` if < 4). The `progress` is `"<count>/15"` capped at 15.
+   329→- **Users search**: the excludeIds set is built from `me.id` + users I blocked + users who blocked me. Then a single `user.findMany({ where: { id: { notIn: excludeIds }, OR: [...] } })` does the work — no N+1.
+   330→- **Premium plans perMonth**: `Math.round((price / months) * 100) / 100` to round to 2 decimal places (e.g., ₹49/2 = ₹24.5, ₹99/6 = ₹16.5, ₹189/12 = ₹15.75).
+   331→- **Public profile privacy**: the `users/[id]` route reads `preferences.lastSeenPublic` via the `include: { preferences: true }` projection (Prisma returns the related `UserPreference` or `null`). `lastSeen` is included in the response only when that flag is true.
+   332→
+   333→### Stage Summary
+   334→All 17 user-facing misc API routes implemented per the Task 2-c spec, type-clean, lint-clean, and verified end-to-end with smoke tests (including a real ZAI SDK call for Taly Support). Built on top of the schema fix from Task 2-d (`Advertisement.creatorId`) — no schema changes needed in this task. Ready for the next phase (frontend integration / Socket.io mini-service).
+   335→
+   336→---
+   337→
+   338→
