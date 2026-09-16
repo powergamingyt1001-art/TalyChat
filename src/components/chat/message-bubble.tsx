@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { motion } from 'framer-motion'
 import { PremiumAvatar } from '@/components/premium-avatar'
+import { LocationMessage } from './location-message'
 import {
   Dialog,
   DialogContent,
@@ -446,6 +447,13 @@ export const MessageBubble = React.forwardRef<MessageBubbleHandle, MessageBubble
                   <div className="select-none py-1 text-center text-6xl leading-none">
                     {message.stickerId || message.content || '🎨'}
                   </div>
+                ) : message.type === 'location' && message.lat != null && message.lng != null ? (
+                  <LocationMessage
+                    lat={message.lat}
+                    lng={message.lng}
+                    isMine={isMine}
+                    expiresAt={null}
+                  />
                 ) : (
                   <span className="whitespace-pre-wrap break-words">
                     {message.content || ''}

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { apiFetch } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/lib/auth-store'
+import { usePushNotifications } from '@/hooks/use-push-notifications'
 import {
   Sheet,
   SheetContent,
@@ -249,10 +250,12 @@ export function SettingsDialog({ open, onClose }: Props) {
               {/* Notifications */}
               <SettingsSection icon={<Bell className="h-4 w-4 text-primary" />} title="Notifications">
                 <div className="space-y-1">
+                  {/* V8 — Push notifications toggle (browser Notification API + Push API) */}
+                  <PushNotificationsRow />
                   <SwitchRow
                     icon={<MessageSquare className="h-4 w-4" />}
                     label="Direct messages"
-                    desc="Push notifications for new 1:1 messages"
+                    desc="In-app notifications for new 1:1 messages"
                     checked={prefs.notifMessages !== false}
                     saving={savingKey === 'notifMessages'}
                     onToggle={(v) => save({ notifMessages: v })}
@@ -260,7 +263,7 @@ export function SettingsDialog({ open, onClose }: Props) {
                   <SwitchRow
                     icon={<Users className="h-4 w-4" />}
                     label="Group messages"
-                    desc="Push notifications for new group messages"
+                    desc="In-app notifications for new group messages"
                     checked={prefs.notifGroups !== false}
                     saving={savingKey === 'notifGroups'}
                     onToggle={(v) => save({ notifGroups: v })}
@@ -506,3 +509,93 @@ function DeleteAccount() {
     </AlertDialog>
   )
 }
+
+// ============================================================
+// V8 — Push notifications toggle (browser Notification API + Push API)
+// ============================================================
+
+function PushNotificationsRow() {
+  const { toast } = useToast()
+  const {
+    supported,
+    pushSupported,
+    permission,
+    status,
+    subscribe,
+    unsubscribe,
+  } = usePushNotifications()
+
+  // "Enabled" means we've actually created a subscription. Falls back to
+  // "permission granted" for browsers that don't support the Push API
+  // (e.g. iOS Safari) — those still get local notifications.
+  const isChecked =
+    !supported
+      ? false
+      : status === 'subscribed' ||
+        (permission === 'granted' && !pushSupported)
+
+  const [busy, setBusy] = useState(false)
+
+  let statusLabel = 'Disabled'
+  if (!supported) statusLabel = 'Not supported'
+  else if (permission === 'denied') statusLabel = 'Permission denied'
+  else if (isChecked) statusLabel = 'Enabled'
+  else statusLabel = 'Disabled'
+
+  const handleToggle = async (v: boolean) => {
+    setBusy(true)
+    try {
+      if (v) {
+        if (!supported) {
+          toast({
+            title: 'Notifications not supported',
+            description: 'This browser does not support desktop notifications.',
+            variant: 'destructive',
+          })
+          return
+        }
+        const ok = await subscribe()
+        if (ok) {
+          toast({ title: 'Notifications enabled' })
+        } else {
+          toast({
+            title: 'Could not enable notifications',
+            description:
+              permission === 'denied'
+                ? 'Permission was denied. Update your browser settings to allow notifications.'
+                : 'We could not create a push subscription. You will still get in-app alerts.',
+            variant: 'destructive',
+          })
+        }
+      } else {
+        await unsubscribe()
+        toast({ title: 'Notifications disabled' })
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex min-h-[44px] items-center gap-3 py-2">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <Bell className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium">Desktop notifications</p>
+        <p className="text-xs text-muted-foreground">{statusLabel}</p>
+      </div>
+      {busy ? (
+        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+      ) : (
+        <Switch
+          checked={isChecked}
+          onCheckedChange={handleToggle}
+          disabled={!supported}
+          aria-label="Enable desktop notifications"
+        />
+      )}
+    </div>
+  )
+}
+

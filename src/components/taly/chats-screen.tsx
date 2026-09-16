@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
+import type { ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import {
   Loader2,
@@ -11,6 +12,11 @@ import {
   Check,
   Bell,
   MessageSquare,
+  Image as ImageIcon,
+  Mic,
+  Palette,
+  Clock,
+  MapPin,
 } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
@@ -73,13 +79,42 @@ function relativeTime(iso?: string): string {
   return d.toLocaleDateString('en', { day: 'numeric', month: 'short' })
 }
 
-function messagePreview(last: any): string {
-  if (!last) return 'Say hi 👋'
-  if (last.deletedAt) return '🚫 Message deleted'
-  if (last.type === 'image') return '📷 Photo'
-  if (last.type === 'voice') return '🎤 Voice message'
-  if (last.type === 'sticker') return '😊 Sticker'
-  return last.content || 'Say hi 👋'
+function formatDuration(sec?: number | null): string {
+  if (!sec || sec < 1) return '0:00'
+  const m = Math.floor(sec / 60)
+  const s = Math.floor(sec % 60)
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
+// Returns a React node with a semantic icon + descriptive text for the
+// last message in a conversation. Falls back to plain text for regular
+// text messages.
+function formatMessagePreview(last: any): {
+  icon: ReactNode | null
+  text: string
+} {
+  if (!last) return { icon: null, text: 'Say hi 👋' }
+  if (last.deletedAt) return { icon: null, text: '🚫 Message deleted' }
+  switch (last.type) {
+    case 'image':
+      return { icon: <ImageIcon className="h-3.5 w-3.5 shrink-0" />, text: 'Photo' }
+    case 'voice':
+      return {
+        icon: <Mic className="h-3.5 w-3.5 shrink-0" />,
+        text: `Voice message (${formatDuration(last.voiceDuration)})`,
+      }
+    case 'sticker':
+      return { icon: <Palette className="h-3.5 w-3.5 shrink-0" />, text: 'Sticker' }
+    case 'location':
+      return { icon: <MapPin className="h-3.5 w-3.5 shrink-0" />, text: 'Location' }
+    case 'scheduled':
+      return {
+        icon: <Clock className="h-3.5 w-3.5 shrink-0" />,
+        text: last.content || 'Scheduled message',
+      }
+    default:
+      return { icon: null, text: last.content || 'Say hi 👋' }
+  }
 }
 
 const FILTERS: { id: FilterTab; label: string }[] = [
@@ -260,7 +295,23 @@ export function ChatsScreen({ conversations, onOpenChat, onRefresh }: ChatsProps
         <div className="segmented-control w-full">
           {FILTERS.map((f) => {
             const active = filter === f.id
-            const showBadge = f.id === 'requests' && requests.length > 0
+            // V8 — tab badges: All (total), Unread (red pill), Requests (red pill)
+            const totalCount = conversations.length
+            const unreadCount = conversations.filter(
+              (c) => c.unread && c.unread > 0,
+            ).length
+            const reqCount = requests.length
+            const badgeCount =
+              f.id === 'all'
+                ? totalCount
+                : f.id === 'unread'
+                  ? unreadCount
+                  : reqCount
+            const showBadge =
+              (f.id === 'requests' || f.id === 'unread') && badgeCount > 0
+            // All-tab badge shows count when there are conversations (grey pill,
+            // less attention-grabbing than the red unread/requests badges).
+            const showAllBadge = f.id === 'all' && badgeCount > 0
             return (
               <button
                 key={f.id}
@@ -271,7 +322,12 @@ export function ChatsScreen({ conversations, onOpenChat, onRefresh }: ChatsProps
                 {f.label}
                 {showBadge && (
                   <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                    {requests.length > 9 ? '9+' : requests.length}
+                    {badgeCount > 9 ? '9+' : badgeCount}
+                  </span>
+                )}
+                {showAllBadge && !showBadge && (
+                  <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-muted-foreground/20 px-1 text-[10px] font-semibold text-foreground">
+                    {badgeCount > 99 ? '99+' : badgeCount}
                   </span>
                 )}
               </button>
@@ -280,12 +336,12 @@ export function ChatsScreen({ conversations, onOpenChat, onRefresh }: ChatsProps
         </div>
       </motion.div>
 
-      {/* Search bar — rounded-full with bg-muted + icon */}
+      {/* Search bar — rounded-full with bg-muted + primary icon + clear button */}
       {filter !== 'requests' && (
         <div className="relative mt-3 animate-fade-in-up">
-          <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
           <Input
-            placeholder="Search by name…"
+            placeholder="Search messages or contacts..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="h-11 rounded-full border-border bg-muted/60 pl-10 pr-10 text-sm focus-visible:bg-card focus-visible:ring-2 focus-visible:ring-primary/40"
@@ -293,7 +349,7 @@ export function ChatsScreen({ conversations, onOpenChat, onRefresh }: ChatsProps
           {query && (
             <button
               onClick={() => setQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground transition-colors hover:bg-accent"
+              className="absolute right-3 top-1/2 h-7 w-7 -translate-y-1/2 rounded-full p-0 flex items-center justify-center bg-muted-foreground/10 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
               aria-label="Clear search"
             >
               <X className="h-4 w-4" />
@@ -405,13 +461,18 @@ export function ChatsScreen({ conversations, onOpenChat, onRefresh }: ChatsProps
                 const last = c.lastMessage
                 const isOnline = !!(c.otherUser as any)?.isOnline
                 const hasUnread = !!(c.unread && c.unread > 0)
+                // V8 — timestamp recency: <1h = dark gray, older = muted
+                const tsIso = last?.createdAt || c.updatedAt
+                const isRecent =
+                  !!tsIso && Date.now() - new Date(tsIso).getTime() < 60 * 60 * 1000
+                const preview = formatMessagePreview(last)
                 return (
                   <li key={c.id} className="animate-fade-in-up">
                     <button
                       onClick={() => onOpenChat(c)}
                       className={`chat-list-item taly-card taly-card-hover w-full border-none !p-2.5 text-left ${
                         hasUnread
-                          ? '!bg-emerald-50 dark:!bg-emerald-950/20'
+                          ? '!bg-emerald-50/50 dark:!bg-emerald-950/10'
                           : ''
                       }`}
                     >
@@ -438,19 +499,26 @@ export function ChatsScreen({ conversations, onOpenChat, onRefresh }: ChatsProps
                               c.otherUser?.username ||
                               'Unnamed'}
                           </span>
-                          <span className="shrink-0 text-[10px] font-light text-muted-foreground">
-                            {relativeTime(last?.createdAt || c.updatedAt)}
+                          <span
+                            className={`shrink-0 text-right text-[10px] ${
+                              isRecent
+                                ? 'font-medium text-foreground/70'
+                                : 'font-light text-muted-foreground'
+                            }`}
+                          >
+                            {relativeTime(tsIso)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-2">
                           <p
-                            className={`mt-0.5 truncate text-xs ${
+                            className={`mt-0.5 flex min-w-0 items-center gap-1 truncate text-xs ${
                               hasUnread
                                 ? 'font-medium text-foreground'
                                 : 'font-normal text-muted-foreground'
                             }`}
                           >
-                            {messagePreview(last)}
+                            {preview.icon}
+                            <span className="truncate">{preview.text}</span>
                           </p>
                           {hasUnread ? (
                             <span className="unread-badge shrink-0">

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { ok, jsonError, requireAuth } from '@/lib/auth'
 import { ensureSeed } from '@/lib/seed'
+import { sendPushToUser } from '@/lib/push'
 
 export const runtime = 'nodejs'
 
@@ -91,6 +92,8 @@ export async function GET(req: NextRequest) {
         mediaUrl: m.mediaUrl,
         voiceDuration: m.voiceDuration,
         stickerId: m.stickerId,
+        lat: m.lat,
+        lng: m.lng,
         replyToId: m.replyToId,
         replyTo: m.replyTo
           ? {
@@ -143,6 +146,8 @@ export async function POST(req: NextRequest) {
       stickerId,
       replyToId,
       forwardedFromId,
+      lat,
+      lng,
     } = body || {}
 
     if (!conversationId) {
@@ -194,8 +199,21 @@ export async function POST(req: NextRequest) {
     }
 
     const msgType = type || 'text'
-    if (!['text', 'image', 'voice', 'sticker', 'system'].includes(msgType)) {
+    if (!['text', 'image', 'voice', 'sticker', 'system', 'location'].includes(msgType)) {
       return jsonError(400, 'Invalid message type')
+    }
+
+    // V8 — Location messages require lat/lng
+    let locationLat: number | null = null
+    let locationLng: number | null = null
+    if (msgType === 'location') {
+      const latN = Number(lat)
+      const lngN = Number(lng)
+      if (!Number.isFinite(latN) || !Number.isFinite(lngN)) {
+        return jsonError(400, 'lat and lng are required for location messages')
+      }
+      locationLat = latN
+      locationLng = lngN
     }
 
     // Validate replyToId if provided
@@ -261,6 +279,8 @@ export async function POST(req: NextRequest) {
             ? Number(voiceDuration)
             : null,
         stickerId: forwardedPayload ? forwardedPayload.stickerId : (stickerId || null),
+        lat: forwardedPayload ? null : locationLat,
+        lng: forwardedPayload ? null : locationLng,
         replyToId: forwardedPayload ? null : (replyToId || null),
         forwardedFromId: forwardedFromId || null,
       },
@@ -335,6 +355,21 @@ export async function POST(req: NextRequest) {
           }),
         },
       })
+      // V8 — Fire a browser push notification to the recipient's device(s).
+      // Wrap in try/catch so a push failure never blocks the message send.
+      // (We don't await the result — push delivery can be slow.)
+      try {
+        void sendPushToUser(uid, {
+          title: `${user.name || user.username}`,
+          body: preview,
+          conversationId,
+          messageId: message.id,
+          senderId: user.id,
+          tag: `conv:${conversationId}`,
+        })
+      } catch {
+        // Ignore — push must not break message sending.
+      }
     }
 
     return ok(
@@ -349,6 +384,8 @@ export async function POST(req: NextRequest) {
           mediaUrl: message.mediaUrl,
           voiceDuration: message.voiceDuration,
           stickerId: message.stickerId,
+          lat: message.lat,
+          lng: message.lng,
           replyToId: message.replyToId,
           replyTo: message.replyTo
             ? {
@@ -396,6 +433,8 @@ function buildPreview(content: string, type: string): string {
       return '🎨 Sticker'
     case 'system':
       return content || 'System message'
+    case 'location':
+      return '📍 Location'
     default:
       return content || 'New message'
   }

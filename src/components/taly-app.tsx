@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '@/lib/auth-store'
 import { apiFetch } from '@/lib/api'
 import { useSocket } from '@/lib/socket'
@@ -18,6 +18,8 @@ import { DailyRewardDialog } from '@/components/taly/daily-reward-dialog'
 import { CreateStoryDialog } from '@/components/taly/create-story-dialog'
 import { useMediaQuery } from '@/hooks/use-mobile'
 import { useSound } from '@/hooks/use-sound'
+import { usePushNotifications } from '@/hooks/use-push-notifications'
+import { showLocalNotification } from '@/lib/push-notifications'
 import { cn } from '@/lib/utils'
 import { CustomizerProvider } from '@/components/taly/customizer-context'
 import { FloatingAIAgent } from '@/components/floating-ai-agent'
@@ -46,6 +48,11 @@ export function TalyApp() {
   const { user } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 1024px)')
   const { play: soundManager } = useSound()
+  // V8 — Push notifications hook (auto-subscribes after login if granted).
+  // We don't read state from it here; we just want the auto-subscribe side
+  // effect. `showLocalNotification` is called directly from the socket
+  // handler below.
+  usePushNotifications()
   const [tab, setTab] = useState<TalyTab>('home')
   const [openChat, setOpenChat] = useState<null | {
     conversationId: string
@@ -59,6 +66,16 @@ export function TalyApp() {
   const [storiesSignal, setStoriesSignal] = useState(0)
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [preferences, setPreferences] = useState<any>(null)
+
+  // V8 — Keep a ref of the currently open chat so the socket `message:new`
+  // handler (which is captured once per login) always sees the latest
+  // active conversation. This lets us decide whether to fire a desktop
+  // notification or skip it (because the user is already viewing that
+  // chat in the foreground).
+  const openChatRef = useRef(openChat)
+  useEffect(() => {
+    openChatRef.current = openChat
+  }, [openChat])
 
   // Load preferences
   useEffect(() => {
@@ -134,6 +151,29 @@ export function TalyApp() {
       const senderId = payload?.message?.senderId
       if (senderId && senderId !== currentUserId) {
         soundManager.playMessage()
+        // V8 — Show a local desktop notification only if the document is
+        // hidden (tab in background) OR the user is on a different
+        // conversation. We never autoplay notifications on page load.
+        const sender =
+          payload?.message?.sender?.name ||
+          payload?.message?.sender?.username ||
+          'New message'
+        const preview = buildIncomingPreview(payload?.message)
+        const activeConvId = openChatRef.current?.conversationId
+        const isOnThisChat = activeConvId === conv && !document.hidden
+        if (!isOnThisChat) {
+          showLocalNotification(sender, preview, () => {
+            setOpenChat({
+              conversationId: conv,
+              name:
+                payload?.message?.conversation?.name ||
+                payload?.conversationName ||
+                sender,
+              avatar: undefined,
+              isGroup: payload?.message?.conversationType === 'group',
+            })
+          })
+        }
       }
       setConversations((prev) => {
         const existing = prev.find((c) => c.id === conv)
@@ -290,4 +330,25 @@ export function TalyApp() {
       />
     </CustomizerProvider>
   )
+}
+
+// V8 — Build a short preview string for an incoming message to use in
+// the desktop notification body. Mirrors the backend buildPreview but
+// for client-side socket events.
+function buildIncomingPreview(message: any): string {
+  if (!message) return 'New message'
+  switch (message.type) {
+    case 'image':
+      return '📷 Photo'
+    case 'voice':
+      return '🎤 Voice message'
+    case 'sticker':
+      return '🎨 Sticker'
+    case 'location':
+      return '📍 Location'
+    case 'system':
+      return message.content || 'System message'
+    default:
+      return message.content || 'New message'
+  }
 }

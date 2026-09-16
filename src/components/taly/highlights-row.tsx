@@ -37,7 +37,13 @@ interface HighlightsRowProps {
   onCreateHighlight?: () => void
   /** Called after a highlight is deleted (so parent can refetch). */
   onHighlightsChanged?: () => void
+  /** V8 — "View All" action: optional callback to open a full list of highlights. */
+  onViewAll?: () => void
 }
+
+// V8 — enlarge highlight tiles to 72px (was 60px) for a bolder presence.
+const TILE_SIZE = 72
+const TILE_INNER = 64
 
 const RING_GRADIENT = 'linear-gradient(135deg, #ec4899, #8b5cf6 50%, #3b82f6)'
 
@@ -48,6 +54,7 @@ export function HighlightsRow({
   onOpenHighlight,
   onCreateHighlight,
   onHighlightsChanged,
+  onViewAll,
 }: HighlightsRowProps) {
   const { toast } = useToast()
   const [deletingId, setDeletingId] = React.useState<string | null>(null)
@@ -87,24 +94,40 @@ export function HighlightsRow({
           <Bookmark className="h-4 w-4 text-primary" /> Highlights
         </h2>
         {highlights.length > 0 && isOwn && (
-          <button
-            type="button"
-            onClick={onCreateHighlight}
-            className="flex min-h-[36px] items-center gap-1 rounded-full px-3 py-1 text-xs font-medium text-primary hover:bg-primary/10"
-          >
-            <Plus className="h-3.5 w-3.5" /> New
-          </button>
+          <div className="flex items-center gap-1">
+            {/* V8 — "View All" text link (left of "+ New") */}
+            {onViewAll && (
+              <button
+                type="button"
+                onClick={onViewAll}
+                className="flex min-h-[36px] items-center gap-1 rounded-full px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                View All
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onCreateHighlight}
+              className="flex min-h-[36px] items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold text-primary hover:bg-primary/10"
+            >
+              <Plus className="h-3.5 w-3.5" /> New
+            </button>
+          </div>
         )}
       </div>
 
-      <div className="no-scrollbar mt-2 flex items-start gap-3 overflow-x-auto pb-1">
+      {/* V8 — Gradient overlays on left/right edges to hint scrollability. */}
+      <div className="relative mt-2">
+        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-gradient-to-r from-background to-transparent" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-background to-transparent" />
+        <div className="no-scrollbar flex items-start gap-3 overflow-x-auto pb-1">
         {loading ? (
           [0, 1, 2].map((i) => (
             <div
               key={i}
               className="flex w-[72px] shrink-0 flex-col items-center gap-1"
             >
-              <div className="h-[60px] w-[60px] animate-pulse rounded-full bg-muted" />
+              <div className="animate-pulse rounded-full bg-muted" style={{ height: TILE_SIZE, width: TILE_SIZE }} />
               <span className="mt-0.5 h-3 w-12 animate-pulse rounded bg-muted" />
             </div>
           ))
@@ -115,7 +138,10 @@ export function HighlightsRow({
             className="flex w-[72px] shrink-0 flex-col items-center gap-1 text-center"
             aria-label="Create a new highlight"
           >
-            <span className="flex h-[60px] w-[60px] items-center justify-center rounded-full border-2 border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary">
+            <span
+              className="flex items-center justify-center rounded-full border-2 border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary"
+              style={{ height: TILE_SIZE, width: TILE_SIZE }}
+            >
               <Plus className="h-5 w-5" />
             </span>
             <span className="mt-0.5 block max-w-[64px] truncate text-[11px] font-medium text-muted-foreground">
@@ -144,7 +170,10 @@ export function HighlightsRow({
                     className="block rounded-full p-[3px]"
                     style={{ background: h.coverColor || RING_GRADIENT }}
                   >
-                    <span className="block h-[60px] w-[60px] overflow-hidden rounded-full border-2 border-background bg-background">
+                    <span
+                      className="block overflow-hidden rounded-full border-2 border-background bg-background"
+                      style={{ height: TILE_INNER, width: TILE_INNER }}
+                    >
                       {firstStory ? (
                         firstStory.type === 'image' ? (
                           <img
@@ -191,7 +220,10 @@ export function HighlightsRow({
                 className="flex w-[72px] shrink-0 flex-col items-center gap-1 text-center"
                 aria-label="Create a new highlight"
               >
-                <span className="flex h-[60px] w-[60px] items-center justify-center rounded-full border-2 border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary">
+                <span
+                  className="flex items-center justify-center rounded-full border-2 border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary"
+                  style={{ height: TILE_SIZE, width: TILE_SIZE }}
+                >
                   <Plus className="h-5 w-5" />
                 </span>
                 <span className="mt-0.5 block max-w-[64px] truncate text-[11px] font-medium text-muted-foreground">
@@ -201,6 +233,7 @@ export function HighlightsRow({
             )}
           </>
         )}
+        </div>
       </div>
 
       {/* Delete-confirmation popover (inline, simple) */}

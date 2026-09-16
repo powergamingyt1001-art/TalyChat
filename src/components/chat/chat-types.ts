@@ -41,10 +41,13 @@ export interface ChatMessage {
   senderId: string
   sender?: ChatUser | null
   content: string
-  type: 'text' | 'image' | 'voice' | 'sticker' | 'system'
+  type: 'text' | 'image' | 'voice' | 'sticker' | 'system' | 'location'
   mediaUrl?: string | null
   voiceDuration?: number | null
   stickerId?: string | null
+  // V8 — Location message coordinates (when type='location')
+  lat?: number | null
+  lng?: number | null
   replyToId?: string | null
   replyTo?: ChatReplyTo | null
   forwardedFromId?: string | null

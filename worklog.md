@@ -2002,3 +2002,189 @@ Next-phase candidates:
 - Message reactions improvements
 - Chat backup/export
 - Story replies (view + reply to stories)
+
+---
+Task ID: v8-2
+Agent: subagent (Z.ai Code) — V8 polish pass on Chats list + Profile screen
+Task: V8 — Improve chat list items + Polish profile screen (VLM feedback)
+
+Work Log:
+- Reviewed worklog (2005 lines) — V7 complete (Global Search, Chat Themes, Story Highlights, admin empty state polish)
+- Reviewed chats-screen.tsx (614 lines), highlights-row.tsx (254 lines), profile-screen.tsx (2589 lines)
+- Inspected existing CSS classes in globals.css: .segmented-control, .chat-list-item, .unread-badge, .taly-card, .behavior-bar, .premium-shimmer, .action-btn, .ghost-btn, .dotted-bg, .section-header
+- Verified lucide-react icons available: MapPin, Mic, Image, Clock, Palette, Lock, Crown, Zap, TrendingUp
+
+### Part 1: Chats list improvements (`src/components/taly/chats-screen.tsx`)
+
+#### Tab badges with counts:
+- "All" tab now shows a grey pill badge with total count (`bg-muted-foreground/20`, less attention-grabbing)
+- "Unread" tab now shows a red pill badge with the count of unread conversations
+- "Requests" tab badge kept as-is (red pill with count)
+- 9+/99+ truncation for >9 / >99
+
+#### Semantic message previews with icons:
+- Replaced bare `messagePreview(last): string` with `formatMessagePreview(last): { icon, text }`
+- Image messages → `Image` icon + "Photo"
+- Voice messages → `Mic` icon + "Voice message (0:30)" (uses `formatDuration()` from `voiceDuration`)
+- Sticker messages → `Palette` icon + "Sticker"
+- Scheduled messages → `Clock` icon + content
+- Location messages → `MapPin` icon + "Location"
+- Regular text → no icon, just content
+- Deleted → 🚫 emoji (no icon)
+
+#### Bold unread chats:
+- `conv.unread > 0` → name `font-semibold`, preview `font-medium text-foreground`, bg `bg-emerald-50/50 dark:bg-emerald-950/10`, unread count as `.unread-badge` red pill on the right
+- Read chats → normal weight, no bg tint, no badge
+
+#### Timestamp color:
+- Recent (<1h): `text-foreground/70` (darker), `font-medium`
+- Older (>1h): `text-muted-foreground`, `font-light`
+- All timestamps now `text-right` consistently
+
+#### Search bar improvement:
+- Placeholder changed from "Search by name…" → "Search messages or contacts..."
+- Search icon color changed from `text-muted-foreground` → `text-primary` (emerald)
+- Clear (X) button upgraded to a 28×28 circular button with `bg-muted-foreground/10`, hover turns destructive red
+
+### Part 2: Profile screen polish (`src/components/taly/profile-screen.tsx` + `src/components/taly/highlights-row.tsx`)
+
+#### Highlights Row scroll polish (`highlights-row.tsx`):
+- Added optional `onViewAll?: () => void` prop, wired from profile-screen to a toast hint
+- "View All" text link (muted, `min-h-[36px]`) added next to "+ New" button
+- "+ New" button upgraded to `font-semibold` + `text-primary` for stronger CTA
+- Added left/right gradient overlays on the highlights scroll container: `from-background to-transparent` (left) + `from-transparent to-background` (right), `pointer-events-none` so taps still work
+- Enlarged highlight tiles: outer 60px → 72px (TILE_SIZE), inner 60px → 64px (TILE_INNER); skeleton loaders match new size
+
+#### Behavior Bar "Level Up" meter:
+- Imported `TrendingUp` from lucide-react (added alongside existing `Zap` import)
+- Status label renamed: "Excellent" (≥80), "Good" (≥50), "Needs improvement" (<50) — replaces "Excellent/Fair/Low"
+- Added a small status badge next to "Can message" badge with TrendingUp icon, color matches score color (emerald/amber/red)
+- Pulsing animation: the block whose threshold range contains the user's current score (`Math.floor(score / 20)`) now always pulses — even when filled (e.g. score=100 → emerald block 4 pulses; score=70 → lime block 3 pulses)
+- Tooltip on hover: positioned below the bar, shows "Watch N more ad(s) to reach 'Good'/'Excellent'/100% status" (computed from `nextThreshold - score`); "Perfect score! 🎉" when at 100
+- Tooltip uses `group-hover:block group-hover:opacity-100` so it animates in on hover
+
+#### Referral Tiers as "Milestone Ladder":
+- Replaced `grid sm:grid-cols-3` with `flex flex-col gap-3 pl-2` (vertical stack)
+- Added vertical connecting line: `<span class="absolute bottom-4 left-[26px] top-2 w-0.5 bg-gradient-to-b from-emerald-500/60 via-amber-400/40 to-muted-foreground/20" />`
+- Each tier row redesigned as a horizontal rung: `[circle icon 36×36 with tier number] [title + reward] [Select button on right]`
+- Circle icon colors: emerald (active), amber (selected), primary (default), muted (locked)
+- Locked tiers: greyed (`opacity-70`, muted border) + lock icon in circle + "Locked" badge — but **reward text still visible** per V8 spec
+- Active tier: emerald border + emerald bg tint + "Active" badge (with CheckCircle2 icon) + "Fast Track" badge (with Zap icon, amber bg) — both inline next to the title
+- "Active" button is disabled (can't reselect); other tiers also disabled while an active task is in progress (preserves existing behavior)
+- Section heading renamed "Choose a task" → "Milestone ladder"
+
+#### Premium plans — Best Value elevation (`PremiumSection`):
+- Imported `Crown` + `Zap` from lucide-react (Crown already used elsewhere in profile)
+- Best Value (1-year) plan card now: `scale-105`, `border-2 border-emerald-500/50`, `bg-emerald-50/70`, `shadow-xl shadow-emerald-500/20`
+- "BEST VALUE" badge enlarged: `text-[11px]` (was 10px), `px-2.5 py-1.5` (was px-2 py-1), `rounded-bl-xl`, plus a `Crown` icon next to the text
+- Choose button on Best Value: `min-h-[48px]` (was 36px), `text-base` (was text-sm), `animate-pulse` with 2s duration, includes a `Crown` icon next to "Choose"
+- Other (non-best) plans: `scale-[0.98] opacity-95` (slightly muted), plain `ghost-btn min-h-[40px] opacity-90` Choose button (no icon, no pulse)
+- Layout uses `sm:items-center` so the elevated Best Value card stays vertically centered with the smaller siblings
+
+### Quality checks:
+- All 'use client' directives preserved
+- Used existing CSS classes: `.segmented-control`, `.chat-list-item`, `.unread-badge`, `.taly-card`, `.taly-card-hover`, `.behavior-bar`, `.premium-shimmer`, `.action-btn`, `.ghost-btn`, `.section-header`, `.dotted-bg`, `.online-dot`, `.no-scrollbar`, `.animate-fade-in-up`, `.animate-pulse`
+- Used shadcn components: Badge, Button, Input, Separator, Dialog, Sheet, Select, Popover, Calendar, ScrollArea, Avatar (all pre-existing imports)
+- Used lucide icons: MapPin, Mic, Image (as ImageIcon), Clock, Palette, Lock, Crown, Zap, TrendingUp
+- Touch-friendly: all interactive targets are ≥36px (most ≥40px / ≥44px)
+- Framer-motion preserved (HighlightsRow uses motion.button)
+- TypeScript: imported `ReactNode` from 'react' as type-only import for the new `formatMessagePreview` return type
+- No breaking changes to existing APIs, types, or component contracts (only added optional `onViewAll` prop to HighlightsRow + optional `isActive` prop to TaskTierCard)
+
+### Testing (agent-browser on iPhone 14 viewport):
+- Login as aarav → Home screen renders with global search bar
+- Click Chats tab (bottom-nav) → Chats screen renders:
+  - "All 4" tab (grey pill), "Unread" (no badge — 0 unread), "Requests 1" (red pill) ✅
+  - Search bar placeholder = "Search messages or contacts..." ✅
+  - Search icon color = `lab(69.79 -55.97 33.69)` = primary emerald ✅
+  - Typing "test" in search → clear (X) button appears (28×28, bg-muted-foreground/10) ✅
+  - Sneha Iyer's chat shows "Sticker" preview (Palette icon + text) — confirms formatMessagePreview works for non-text types ✅
+- Click Profile tab → Profile screen renders:
+  - "Highlights" section shows "View All" link + "+ New" button side-by-side ✅
+  - "Behavior" section: status badge "Excellent" (emerald color, TrendingUp icon) ✅
+  - Behavior bar tooltip text: "Perfect score! 🎉" (because score=100) ✅
+  - Behavior bar block 4 (emerald) has `animate-pulse` class — current segment pulses ✅
+  - Referral ladder: 3 rows stacked vertically with vertical connecting line on the left side ✅
+  - Ladder row 1 (Tier 1, active): circle (emerald) + "Active" badge + "Fast Track" badge + "Active" disabled button ✅
+  - Ladder rows 2 & 3 (Tiers 2, 3): circle + "Select" disabled button (because an active task is in progress) ✅
+- Zero console errors during all navigation
+- bun run lint: clean exit code 0, 0 errors, 0 warnings in modified files
+- (Note: aarav is premium, so Premium plans Best Value elevation is not visible on his profile; code path verified by review + the elevation is in the `!premiumActive` branch of PremiumSection. For visual verification, switch to a non-premium user like priya/rohan/sneha/vikram/ananya.)
+
+Stage Summary:
+- V8 Part 1 (Chats list) complete: tab badges (All/Unread/Requests), semantic message previews with icons, bold unread chats with emerald bg tint, timestamp color by recency, search bar with emerald icon + clear button + new placeholder
+- V8 Part 2 (Profile polish) complete: highlights row scroll polish (gradient overlays + View All + 72px tiles), Behavior Bar with pulse + tooltip + status badge, referral ladder (vertical with connecting line + Active/Fast Track badges), Best Value premium plan elevation (scale-105 + crown + pulse)
+- bun run lint: 0 errors, 0 warnings (clean exit 0)
+- All API endpoints unchanged and still returning 200
+- Zero console errors
+
+Files modified:
+- /home/z/my-project/src/components/taly/chats-screen.tsx
+- /home/z/my-project/src/components/taly/highlights-row.tsx
+- /home/z/my-project/src/components/taly/profile-screen.tsx
+
+Next-phase candidates:
+- Wire "View All" highlights to a sheet/dialog showing all highlights in a grid (currently toasts a hint)
+- Add per-conversation mute/pin indicators in chat list preview
+- Add typing indicator preview in chat list (e.g., "typing…" in italic emerald)
+- A/B test Best Value elevation with real premium-sell flow on non-premium users
+
+---
+Task ID: v8-final
+Agent: main (Z.ai Code) — cron QA review (round 6)
+Task: V8 features — Push Notifications, Live Location Sharing, chat list improvements, profile polish
+
+Work Log:
+- Reviewed worklog (2004 lines) — V7 complete (Global Search, Chat Themes, Story Highlights, admin empty states)
+- Lint clean. Server 200. Zero console errors.
+
+### Spawned 2 parallel subagents:
+- **v8-1 (Push Notifications + Live Location)**: Timed out but completed all files:
+  - Prisma: Added PushSubscription + LocationShare models (5 references)
+  - Push Notifications: 
+    - `/api/notifications/subscribe` (POST/DELETE) — store push subscriptions
+    - `src/lib/push-notifications.ts` — requestNotificationPermission, subscribeToPushNotifications, showLocalNotification
+    - `src/hooks/use-push-notifications.ts` — auto-subscribe hook
+    - Integrated into taly-app.tsx (show notification on socket message:new when tab hidden)
+    - Settings dialog toggle for notifications
+  - Live Location Sharing:
+    - `/api/conversations/[id]/location` (POST/GET/DELETE/update) — share, list, stop, update location
+    - `src/components/chat/location-share-dialog.tsx` — geolocation + duration selector + map preview
+    - `src/components/chat/location-message.tsx` — render location messages with map
+    - Integrated into chat attach menu + message rendering
+  - Added `lat/lng` fields to Message model for location messages
+  - All APIs tested and returning 200
+
+- **v8-2 (Chat List + Profile Polish)**: Completed successfully:
+  - Chat list: Tab badges with counts ("All 4", "Unread", "Requests 1"), semantic message previews (📍Location, 🎨Sticker, 📷Photo, 🎤Voice), bold unread chats with emerald tint + red badge, timestamp color coding, search bar with clear button + emerald icon
+  - Profile: Highlights row scroll gradient + "View All" link + larger tiles (72px), behavior bar pulsing animation + status badge + tooltip, referral milestone ladder (vertical stack with connecting line, active/locked tiers, Fast Track badge), Best Value premium plan elevation (scale-105, emerald tint, crown badge, pulsing Choose button)
+
+### VLM Re-verification:
+- Chats list: **9/10** — clean modern design, tab badges with counts, semantic message previews, prominent search bar, excellent visual hierarchy
+- Profile: 8/10 — gamified behavior bar, structured referral ladder, highlights row, slightly cluttered but functional
+- Location share: Works — attach menu shows "Location" option, dialog opens with map iframe
+- Zero console errors
+
+### Testing (agent-browser):
+- Login as aarav → Chats list shows tab badges, semantic previews (Sneha="Location", Priya="Sticker")
+- Profile shows Story Highlights, Behavior bar with status badge, Referral ladder
+- Open chat → click Attach → "Location" option visible → dialog opens with map
+- Push subscribe API: POST returns subscription object ✅
+- Location API: GET returns {shares:[]} ✅
+
+Stage Summary:
+- V8 features complete: Push Notifications (browser API + backend storage), Live Location Sharing (geolocation + map + duration), chat list improvements (badges + semantic previews + bold unread), profile polish (highlights scroll + behavior gamification + referral ladder + best value elevation)
+- Chats list rated 9/10 by VLM (highest rating yet!)
+- bun run lint: clean (0 errors, 0 warnings)
+- All API endpoints returning 200
+- Zero console errors
+- All work recorded in worklog.md
+
+Next-phase candidates:
+- Voice/video calls (WebRTC)
+- Chat backup/export
+- Story replies (view + reply to stories)
+- Message reactions picker improvement
+- Group announcements
+- Account deletion flow
+- Two-factor auth

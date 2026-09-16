@@ -36,6 +36,7 @@ import {
   Copy,
   ChevronUp,
   ChevronDown,
+  MapPin,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-store'
 import { apiFetch, apiUpload } from '@/lib/api'
@@ -89,6 +90,7 @@ import { ForwardDialog } from './forward-dialog'
 import { PinnedMessagesDialog } from './pinned-messages-dialog'
 import { ScheduleMessageDialog } from './schedule-message-dialog'
 import { SharedMediaDialog } from './shared-media-dialog'
+import { LocationShareDialog } from './location-share-dialog'
 import {
   ChatMessage,
   ChatConversation,
@@ -223,6 +225,9 @@ export function ChatView({
     open: boolean
     message: ChatMessage | null
   }>({ open: false, message: null })
+
+  // V8 — Live location share dialog state (opened from the paperclip menu)
+  const [locationShareOpen, setLocationShareOpen] = React.useState(false)
 
   // Schedule-message dialog state (V6). initialContent lets the dialog
   // pre-fill with text the user had typed into the composer when they
@@ -1812,6 +1817,16 @@ export function ChatView({
                   >
                     <ImageIcon className="h-4 w-4" /> Image
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAttachmentOpen(false)
+                      setLocationShareOpen(true)
+                    }}
+                    className="flex min-h-[44px] items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                  >
+                    <MapPin className="h-4 w-4" /> Location
+                  </button>
                   <div className="my-1 h-px bg-border" />
                   <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
                     Stickers
@@ -2005,6 +2020,13 @@ export function ChatView({
       <SharedMediaDialog
         open={sharedMediaOpen}
         onClose={() => setSharedMediaOpen(false)}
+        conversationId={conversationId}
+      />
+
+      {/* V8 — Live location share dialog (paperclip → Location) */}
+      <LocationShareDialog
+        open={locationShareOpen}
+        onClose={() => setLocationShareOpen(false)}
         conversationId={conversationId}
       />
 

@@ -66,6 +66,8 @@ import {
   UserCheck,
   Edit,
   Trash2,
+  TrendingUp,
+  Zap,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { SettingsDialog } from '@/components/taly/settings-dialog'
@@ -572,6 +574,12 @@ export function ProfileScreen() {
           onOpenHighlight={(h) => setActiveHighlight(h)}
           onCreateHighlight={() => setCreateHighlightOpen(true)}
           onHighlightsChanged={loadHighlights}
+          onViewAll={() =>
+            toast({
+              title: 'Scroll horizontally',
+              description: 'Swipe the highlights row to see all of them.',
+            })
+          }
         />
       </div>
 
@@ -931,45 +939,66 @@ function PremiumSection({
           Offer ended — 1-year plan is back to ₹{REGULAR_PRICE}
         </p>
       )}
-      <div className="grid gap-3 sm:grid-cols-3">
-        {plans.map((p) => (
-          <div
-            key={p.id}
-            className={`taly-card taly-card-hover relative flex flex-col gap-1 overflow-hidden p-4 ${
-              p.best
-                ? 'border border-emerald-500/40 bg-emerald-50 shadow-lg shadow-emerald-500/10 dark:bg-emerald-950/20'
-                : ''
-            }`}
-          >
-            {/* Best value ribbon + shimmer overlay */}
-            {p.best && (
-              <>
-                <div className="premium-shimmer pointer-events-none absolute inset-0 opacity-60" />
-                <span className="absolute right-0 top-0 rounded-bl-lg bg-gradient-to-r from-amber-400 to-amber-500 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">
-                  Best Value
-                </span>
-              </>
-            )}
-            <p className="text-xs font-medium text-muted-foreground/80">{p.label}</p>
-            <p className={`text-2xl font-bold ${p.best ? 'text-emerald-600 dark:text-emerald-400' : 'text-primary'}`}>₹{p.price}</p>
-            <p className="text-[10px] text-muted-foreground/80">
-              ₹{Math.round((p.price / p.months) * 100) / 100}/mo
-            </p>
-            <button
-              onClick={() => onChoosePlan(p)}
-              className={`mt-2 min-h-[36px] text-sm font-semibold ${
-                p.best
-                  ? 'action-btn relative overflow-hidden'
-                  : 'ghost-btn'
+      <div className="grid gap-3 sm:grid-cols-3 sm:items-center">
+        {plans.map((p) => {
+          // V8 — Best Value elevation: scale-105, emerald bg tint, larger
+          // BEST VALUE badge with crown icon, larger pulsing Choose button.
+          // Other plans: slightly smaller, more muted, ghost button.
+          const isBest = p.best
+          return (
+            <div
+              key={p.id}
+              className={`taly-card relative flex flex-col gap-1 overflow-hidden p-4 transition-all ${
+                isBest
+                  ? 'taly-card-hover scale-105 border-2 border-emerald-500/50 bg-emerald-50/70 shadow-xl shadow-emerald-500/20 dark:bg-emerald-950/30'
+                  : 'taly-card-hover opacity-95 scale-[0.98] border-border bg-card'
               }`}
             >
-              {p.best && (
-                <span className="premium-shimmer pointer-events-none absolute inset-0 opacity-40" />
+              {/* Best value ribbon + shimmer overlay (larger + crown icon) */}
+              {isBest && (
+                <>
+                  <div className="premium-shimmer pointer-events-none absolute inset-0 opacity-60" />
+                  <span className="absolute right-0 top-0 inline-flex items-center gap-1 rounded-bl-xl bg-gradient-to-r from-amber-400 to-amber-500 px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white shadow-md">
+                    <Crown className="h-3.5 w-3.5" /> Best Value
+                  </span>
+                </>
               )}
-              <span className="relative">Choose</span>
-            </button>
-          </div>
-        ))}
+              <p
+                className={`text-xs font-medium ${
+                  isBest ? 'text-emerald-700 dark:text-emerald-300' : 'text-muted-foreground/70'
+                }`}
+              >
+                {p.label}
+              </p>
+              <p
+                className={`text-2xl font-bold ${
+                  isBest ? 'text-emerald-600 dark:text-emerald-400' : 'text-primary'
+                }`}
+              >
+                ₹{p.price}
+              </p>
+              <p className="text-[10px] text-muted-foreground/80">
+                ₹{Math.round((p.price / p.months) * 100) / 100}/mo
+              </p>
+              <button
+                onClick={() => onChoosePlan(p)}
+                className={`mt-2 text-sm font-semibold ${
+                  isBest
+                    ? 'action-btn relative min-h-[48px] overflow-hidden animate-pulse text-base'
+                    : 'ghost-btn min-h-[40px] opacity-90'
+                }`}
+                style={isBest ? { animationDuration: '2s' } : undefined}
+              >
+                {isBest && (
+                  <span className="premium-shimmer pointer-events-none absolute inset-0 opacity-40" />
+                )}
+                <span className="relative flex items-center gap-1">
+                  {isBest && <Crown className="h-4 w-4" />} Choose
+                </span>
+              </button>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -1557,19 +1586,43 @@ function BehaviorBar({ behavior }: { behavior: BehaviorData | null }) {
   const maxAdsPerDay = behavior?.maxAdsPerDay ?? 10
   const canMessage = behavior?.canMessage ?? true
 
-  // V3 — semantic thresholds: green≥80, amber≥50, red<50
+  // V8 — semantic thresholds: green≥80, amber≥50, red<50
   const colorClass =
     score >= 80
       ? 'text-emerald-600 dark:text-emerald-400'
       : score >= 50
         ? 'text-amber-600 dark:text-amber-400'
         : 'text-red-600 dark:text-red-400'
-  const label =
+  // V8 — clearer status labels (Excellent / Good / Needs improvement)
+  const statusLabel =
+    score >= 80 ? 'Excellent' : score >= 50 ? 'Good' : 'Needs improvement'
+  // V8 — status badge color matches score color
+  const statusBadgeClass =
     score >= 80
-      ? 'Excellent'
+      ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:text-emerald-400'
       : score >= 50
-        ? 'Fair'
-        : 'Low'
+        ? 'bg-amber-500/10 text-amber-600 border-amber-500/30 dark:text-amber-400'
+        : 'bg-red-500/10 text-red-600 border-red-500/30 dark:text-red-400'
+
+  // V8 — calculate ads-to-next-level for the tooltip. Each ad = +1 score
+  // point (clamped at 100). Thresholds: 50 (Good), 80 (Excellent).
+  const nextThreshold = score < 50 ? 50 : score < 80 ? 80 : 100
+  const nextLabel = score < 50 ? "'Good'" : score < 80 ? "'Excellent'" : '100%'
+  const adsToNext = Math.max(0, nextThreshold - score)
+
+  // V8 — segmented bar: 5 blocks (20% each). The block at the user's CURRENT
+  // score segment pulses to indicate active progress.
+  const blocks = [
+    { color: 'bg-red-500', filled: score >= 20, threshold: 20 },
+    { color: 'bg-orange-500', filled: score >= 40, threshold: 40 },
+    { color: 'bg-amber-400', filled: score >= 60, threshold: 60 },
+    { color: 'bg-lime-400', filled: score >= 80, threshold: 80 },
+    { color: 'bg-emerald-500', filled: score >= 100, threshold: 100 },
+  ]
+  // The "current" block is the segment whose threshold range contains the
+  // user's current score (e.g. score 70 → block 3 [60, 80); score 100 → block 4).
+  // It pulses to highlight where the user is on the ladder right now.
+  const currentIdx = Math.min(4, Math.max(0, Math.floor(score / 20)))
 
   return (
     <div className="taly-card animate-fade-in-up p-5">
@@ -1577,16 +1630,26 @@ function BehaviorBar({ behavior }: { behavior: BehaviorData | null }) {
         <div className="section-header">
           <Target className="h-4 w-4 text-primary" /> Behavior
         </div>
-        <Badge
-          variant={canMessage ? 'default' : 'destructive'}
-          className={`${
-            canMessage
-              ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
-              : 'bg-red-500/10 text-red-600 border-red-500/30'
-          } border`}
-        >
-          {canMessage ? 'Can message' : 'Blocked'}
-        </Badge>
+        <div className="flex items-center gap-2">
+          {/* V8 — status label badge */}
+          <span
+            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${statusBadgeClass}`}
+            title={`Status: ${statusLabel}`}
+          >
+            <TrendingUp className="h-3 w-3" />
+            {statusLabel}
+          </span>
+          <Badge
+            variant={canMessage ? 'default' : 'destructive'}
+            className={`${
+              canMessage
+                ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+                : 'bg-red-500/10 text-red-600 border-red-500/30'
+            } border`}
+          >
+            {canMessage ? 'Can message' : 'Blocked'}
+          </Badge>
+        </div>
       </div>
 
       {/* Big score number + descriptive label + ads watched */}
@@ -1594,7 +1657,7 @@ function BehaviorBar({ behavior }: { behavior: BehaviorData | null }) {
         <div className="flex items-baseline gap-2">
           <span className={`text-2xl font-bold tabular-nums ${colorClass}`}>{score}%</span>
           <span className={`text-xs font-semibold uppercase tracking-wide ${colorClass}`}>
-            {label}
+            {statusLabel}
           </span>
         </div>
         <span className="text-xs text-muted-foreground/80">
@@ -1602,24 +1665,35 @@ function BehaviorBar({ behavior }: { behavior: BehaviorData | null }) {
         </span>
       </div>
 
-      {/* V5 — gamified behavior bar: 5 segmented blocks (20% each) with
+      {/* V8 — gamified behavior bar: 5 segmented blocks (20% each) with
           red → orange → amber → light-green → green color ramp.
-          Filled blocks are tinted, empty blocks are muted. Trophy icon
-          marks the 100% goal. */}
-      <div className="relative mt-2">
+          Filled blocks are tinted, empty blocks are muted. The block at
+          the user's CURRENT progress position pulses to indicate where
+          they are on the ladder. Trophy icon marks the 100% goal.
+          A tooltip on hover tells them how many ads they need to watch
+          to reach the next level. */}
+      <div className="group relative mt-2">
         <div className="behavior-bar flex gap-1 px-0" style={{ height: '14px' }}>
-          {[
-            { color: 'bg-red-500', filled: score >= 20 },
-            { color: 'bg-orange-500', filled: score >= 40 },
-            { color: 'bg-amber-400', filled: score >= 60 },
-            { color: 'bg-lime-400', filled: score >= 80 },
-            { color: 'bg-emerald-500', filled: score >= 100 },
-          ].map((block, i) => (
-            <div
-              key={i}
-              className={`flex-1 rounded-full transition-colors duration-500 ${block.filled ? block.color : 'bg-muted-foreground/15'}`}
-            />
-          ))}
+          {blocks.map((block, i) => {
+            const isCurrent = i === currentIdx
+            return (
+              <div
+                key={i}
+                className={`flex-1 rounded-full transition-colors duration-500 ${
+                  block.filled ? block.color : 'bg-muted-foreground/15'
+                } ${isCurrent ? 'animate-pulse' : ''}`}
+              />
+            )
+          })}
+        </div>
+        {/* V8 — tooltip overlay on hover */}
+        <div
+          className="pointer-events-none absolute left-1/2 top-full z-20 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-foreground px-2.5 py-1 text-[11px] font-medium text-background opacity-0 shadow-md transition-opacity duration-150 group-hover:block group-hover:opacity-100"
+          role="tooltip"
+        >
+          {score >= 100
+            ? 'Perfect score! 🎉'
+            : `Watch ${adsToNext} more ad${adsToNext === 1 ? '' : 's'} to reach ${nextLabel} status`}
         </div>
         {/* Trophy marker at the 100% position */}
         <span
@@ -1886,12 +1960,19 @@ function ReferralSection({
         <ActiveTaskCard task={activeTask} onClaim={onClaimTask} />
       )}
 
-      {/* Task tier selection — disabled while an active task is in progress */}
+      {/* Task tier selection — disabled while an active task is in progress.
+          V8 — redesigned as a vertical "Milestone Ladder" with a connecting
+          line on the left side linking the tier circles. */}
       <div className="mt-4">
         <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground/80">
-          {hasActiveTask ? 'Available tasks (locked)' : 'Choose a task'}
+          {hasActiveTask ? 'Available tasks (locked)' : 'Milestone ladder'}
         </p>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="relative flex flex-col gap-3 pl-2">
+          {/* V8 — vertical connecting line on the left side */}
+          <span
+            className="pointer-events-none absolute bottom-4 left-[26px] top-2 w-0.5 bg-gradient-to-b from-emerald-500/60 via-amber-400/40 to-muted-foreground/20"
+            aria-hidden="true"
+          />
           {tiers.map((t) => {
             // V5 — locked state: Tier 2 (rewardMonths 3–6) requires
             // completing a Tier 1 task; Tier 3 (rewardMonths ≥7) requires
@@ -1901,13 +1982,15 @@ function ReferralSection({
             const tier1Done = completed.some((c) => c.rewardMonths <= 2 && c.completedAt)
             const tier2Done = completed.some((c) => c.rewardMonths <= 6 && c.rewardMonths > 2 && c.completedAt)
             const locked = tierNum === 2 ? !tier1Done : tierNum === 3 ? !tier2Done : false
+            const isActive = activeTask?.tier === t.tier
             return (
               <TaskTierCard
                 key={t.tier}
                 tier={t}
                 disabled={hasActiveTask}
-                selected={activeTask?.tier === t.tier}
+                selected={isActive}
                 locked={locked && !hasActiveTask}
+                isActive={isActive}
                 onSelect={onSelectTask}
               />
             )
@@ -1988,7 +2071,10 @@ function ReferralSection({
 }
 
 // ============================================================
-// Task tier card — Select button + reward display
+// Task tier card — V8 redesigned as a horizontal "ladder rung":
+// [circle icon with number] [title + reward] [Select button on right]
+// Locked tiers: greyed with lock icon, reward text still visible.
+// Active tier: emerald border + Active + Fast Track badges.
 // ============================================================
 
 function TaskTierCard({
@@ -1996,98 +2082,109 @@ function TaskTierCard({
   disabled,
   selected,
   locked,
+  isActive,
   onSelect,
 }: {
   tier: TaskTier
   disabled: boolean
   selected: boolean
   locked?: boolean
+  isActive?: boolean
   onSelect: (tier: string) => void
 }) {
   const tierNum = tier.rewardMonths <= 2 ? '1' : tier.rewardMonths <= 6 ? '2' : '3'
+  // V8 — circle icon color reflects tier state
+  const circleClass = isActive
+    ? 'bg-emerald-500 text-white border-emerald-500 shadow-md shadow-emerald-500/40'
+    : locked
+      ? 'bg-muted text-muted-foreground border-border'
+      : selected
+        ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/40'
+        : 'bg-primary/10 text-primary border-primary/30'
+
   return (
     <div
-      className={`taly-card taly-card-hover relative flex flex-col gap-1.5 p-4 transition-all ${
-        selected
-          ? 'ring-2 ring-emerald-500/60 bg-emerald-50/50 dark:bg-emerald-950/20'
-          : disabled
-            ? 'opacity-60'
+      className={`relative flex items-center gap-3 rounded-xl border p-3 transition-all ${
+        isActive
+          ? 'border-emerald-500/60 bg-emerald-50/50 shadow-md shadow-emerald-500/10 dark:bg-emerald-950/20'
+          : selected
+            ? 'border-amber-500/50 bg-amber-50/40 dark:bg-amber-950/10'
             : locked
-              ? 'opacity-70 ring-1 ring-dashed ring-muted-foreground/30'
-              : ''
+              ? 'border-muted-foreground/20 bg-muted/20 opacity-70'
+              : 'border-border bg-card hover:border-primary/40'
       }`}
     >
-      {/* Selected checkmark badge top-right */}
-      {selected && (
-        <span className="absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm">
-          <CheckCircle2 className="h-3.5 w-3.5" />
-        </span>
-      )}
-
-      {/* Locked overlay — lock icon + hint */}
-      {locked && (
-        <span className="absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted text-muted-foreground ring-1 ring-border">
-          <Lock className="h-3 w-3" />
-        </span>
-      )}
-
-      {/* Tier label */}
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-muted-foreground/80">
-          Tier {tierNum}
+      {/* V8 — Circle icon (the rung node on the ladder line) */}
+      <div className="relative z-10 flex shrink-0 items-center justify-center">
+        <span
+          className={`flex h-9 w-9 items-center justify-center rounded-full border-2 text-sm font-bold ${circleClass}`}
+        >
+          {locked ? <Lock className="h-4 w-4" /> : tierNum}
         </span>
       </div>
 
-      {locked ? (
-        // V5 — hide specifics until unlocked
-        <div className="space-y-1.5 py-1">
-          <p className="flex items-center gap-1 text-sm font-bold text-muted-foreground/80">
-            <Lock className="h-3.5 w-3.5" /> Locked
+      {/* Title + reward — always visible (even when locked) */}
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <p className="text-sm font-semibold">
+            {tier.requiredCount} members · {tier.windowDays}d
           </p>
-          <p className="text-xs text-muted-foreground/80">
-            Complete Tier {Number(tierNum) - 1} to unlock.
-          </p>
-          <div className="mt-1 rounded-md bg-muted/40 px-2 py-1 text-[10px] italic text-muted-foreground">
-            ??? members · ??? days
-          </div>
-          <button
-            disabled
-            className="ghost-btn mt-2 min-h-[36px] w-full cursor-not-allowed opacity-60"
-          >
-            <Lock className="mr-1 h-3.5 w-3.5" /> Locked
-          </button>
+          {isActive && (
+            <>
+              <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                <CheckCircle2 className="h-3 w-3" /> Active
+              </span>
+              <span
+                className="inline-flex items-center gap-0.5 rounded-full bg-amber-400/90 px-1.5 py-0.5 text-[10px] font-bold text-amber-950 shadow-sm"
+                title="Fast Track — selected to complete for premium reward"
+              >
+                <Zap className="h-3 w-3" /> Fast Track
+              </span>
+            </>
+          )}
+          {locked && !isActive && (
+            <span className="inline-flex items-center gap-0.5 rounded-full bg-muted-foreground/15 px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+              <Lock className="h-3 w-3" /> Locked
+            </span>
+          )}
         </div>
-      ) : (
-        <>
-          {/* Required count */}
-          <p className="flex items-center gap-1 text-sm font-bold">
-            <Target className="h-3.5 w-3.5 text-primary" />
-            {tier.requiredCount} members
-          </p>
-          <p className="flex items-center gap-1 text-xs text-muted-foreground/80">
-            <Hourglass className="h-3 w-3" />
-            in {tier.windowDays} days
-          </p>
+        {/* Reward — visible even when locked (per V8 spec) */}
+        <p
+          className={`mt-0.5 flex items-center gap-1 text-xs ${
+            locked && !isActive ? 'text-muted-foreground/80' : 'text-amber-600 dark:text-amber-400'
+          }`}
+        >
+          <Trophy className="h-3 w-3" />
+          Reward: {tier.rewardMonths} months premium
+        </p>
+      </div>
 
-          {/* Reward */}
-          <div className="mt-1 flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-1 text-xs font-semibold text-amber-600">
-            <Trophy className="h-3 w-3" />
-            {tier.rewardMonths} months premium
-          </div>
-
-          <button
-            disabled={disabled}
-            onClick={() => onSelect(tier.tier)}
-            className={`mt-2 min-h-[36px] text-sm font-semibold disabled:opacity-60 ${
-              selected
+      {/* Select / Locked button on the right */}
+      <button
+        disabled={disabled || locked || isActive}
+        onClick={() => onSelect(tier.tier)}
+        className={`min-h-[40px] shrink-0 rounded-lg px-4 text-sm font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
+          isActive
+            ? 'ghost-btn'
+            : locked
+              ? 'ghost-btn cursor-not-allowed'
+              : selected
                 ? 'ghost-btn'
                 : 'action-btn'
-            }`}
-          >
-            {selected ? 'Selected ✓' : 'Select'}
-          </button>
-        </>
-      )}
+        }`}
+      >
+        {isActive ? (
+          'Active'
+        ) : locked ? (
+          <span className="flex items-center gap-1">
+            <Lock className="h-3.5 w-3.5" /> Locked
+          </span>
+        ) : selected ? (
+          'Selected ✓'
+        ) : (
+          'Select'
+        )}
+      </button>
     </div>
   )
 }

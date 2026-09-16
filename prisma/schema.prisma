@@ -83,6 +83,10 @@ model User {
   highlights           StoryHighlight[]
   // Scheduled messages (V6)
   scheduledMessages    ScheduledMessage[]
+  // V8 — Browser push subscriptions (Notification API + Push API)
+  pushSubscriptions    PushSubscription[]
+  // V8 — Live location shares
+  locationShares       LocationShare[]
 
   @@index([email])
   @@index([username])
@@ -112,6 +116,8 @@ model Conversation {
   group       Group?               @relation("GroupConversations", fields: [groupId], references: [id])
   members     ConversationMember[]
   messages    Message[]
+  // V8 — live location shares for this conversation
+  locationShares LocationShare[]
 
   @@index([type])
   @@index([groupId])
@@ -141,10 +147,13 @@ model Message {
   conversationId  String
   senderId        String
   content         String   @default("")
-  type            String   @default("text") // text | image | voice | sticker | system
+  type            String   @default("text") // text | image | voice | sticker | system | location
   mediaUrl        String?
   voiceDuration   Int?                       // seconds
   stickerId       String?
+  // V8 — Location message support (when type='location')
+  lat             Float?
+  lng             Float?
   replyToId       String?                    // message id being replied to
   forwardedFromId String?                    // original message id (if this message was forwarded)
   editedAt        DateTime?
@@ -619,4 +628,44 @@ model StoryHighlight {
   user        User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// ============================================================
+// V8 — BROWSER PUSH SUBSCRIPTIONS (Web Push API)
+// ============================================================
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   // the FCM/Mozilla push endpoint URL
+  p256dh    String   // client public key (base64url)
+  auth      String   // auth secret (base64url)
+  createdAt DateTime @default(now())
+
+  user      User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([endpoint])
+}
+
+// ============================================================
+// V8 — LIVE LOCATION SHARING
+// ============================================================
+
+model LocationShare {
+  id             String   @id @default(cuid())
+  conversationId String
+  userId         String
+  lat            Float
+  lng            Float
+  expiresAt      DateTime
+  isLive         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, isLive])
+  @@index([userId])
+  @@index([expiresAt])
 }

@@ -71,6 +71,8 @@ export function messagePreview(message: {
       return '🎤 Voice message'
     case 'sticker':
       return '🎨 Sticker'
+    case 'location':
+      return '📍 Location'
     case 'system':
       return message.content || 'System'
     default:
