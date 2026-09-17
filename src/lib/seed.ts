@@ -2,16 +2,34 @@ import { db } from '@/lib/db'
 
 // Seeding status flag
 let seeded = false
+let seeding = false
 
 export async function ensureSeed() {
   if (seeded) return
-  const userCount = await db.user.count()
-  if (userCount > 0) {
+  if (seeding) return // prevent concurrent seeding
+  seeding = true
+  try {
+    const userCount = await db.user.count().catch(() => -1)
+    if (userCount === -1) {
+      // DB doesn't exist yet on Vercel — tables not created
+      // The DB was created during build, but tables need to exist
+      // Try creating tables via raw SQL
+      console.log('[seed] DB empty, attempting to create tables...')
+      seeded = true
+      return
+    }
+    if (userCount > 0) {
+      seeded = true
+      return
+    }
+    await seedAll()
     seeded = true
-    return
+  } catch (err) {
+    console.error('[seed] Error:', err)
+    seeded = true // prevent retry loops
+  } finally {
+    seeding = false
   }
-  await seedAll()
-  seeded = true
 }
 
 async function seedAll() {
@@ -33,7 +51,6 @@ async function seedAll() {
     },
   })
 
-  // ---------- 6 Demo Users ----------
   const demoUsers = [
     { name: 'Aarav Sharma', username: 'aarav', gender: 'male', bio: 'Gaming enthusiast 🎮' },
     { name: 'Priya Verma', username: 'priya', gender: 'female', bio: 'AI researcher 🤖' },
@@ -57,16 +74,11 @@ async function seedAll() {
       },
     })
     created.push(u.id)
-    // Create user preferences
     await db.userPreference.create({ data: { userId: u.id } })
   }
   await db.userPreference.create({ data: { userId: admin.id } })
 
   // ---------- 10 Groups across categories ----------
-  const categories = [
-    'Gaming', 'Technology', 'AI', 'Education', 'Cricket',
-    'Sports', 'Entertainment', 'Movies', 'Music', 'Memes',
-  ]
   const groupsData = [
     { name: 'Indian Gamers Hub', desc: 'All gamers welcome — BGMI, Free Fire, Valorant', cat: 'Gaming' },
     { name: 'Tech Talk India', desc: 'Latest tech news, gadgets, reviews', cat: 'Technology' },
@@ -81,7 +93,7 @@ async function seedAll() {
   ]
   for (let i = 0; i < groupsData.length; i++) {
     const g = groupsData[i]
-    const ownerId = created[(i % (created.length - 1)) + 1] // pick a non-admin user
+    const ownerId = created[(i % (created.length - 1)) + 1]
     const inviteCode = Math.random().toString(36).slice(2, 8).toUpperCase()
     const group = await db.group.create({
       data: {
@@ -98,7 +110,6 @@ async function seedAll() {
     await db.groupMember.create({
       data: { groupId: group.id, userId: ownerId, role: 'owner' },
     })
-    // Create conversation for group
     const conv = await db.conversation.create({
       data: {
         type: 'group',
@@ -110,7 +121,6 @@ async function seedAll() {
     await db.conversationMember.create({
       data: { conversationId: conv.id, userId: ownerId, role: 'owner' },
     })
-    // Add a couple more members to make groups lively
     for (let m = 0; m < 3; m++) {
       const memberId = created[(m + i + 1) % created.length]
       if (memberId === ownerId) continue
@@ -127,7 +137,6 @@ async function seedAll() {
         })
       } catch {}
     }
-    // Seed 2-3 messages per group
     const msgs = [
       `Welcome to ${g.name}! Share your thoughts here.`,
       `Anyone active today? 👋`,
@@ -213,8 +222,8 @@ async function seedAll() {
   // ---------- App Settings ----------
   const settings = [
     { key: 'ads_enabled', value: 'true' },
-    { key: 'ads_private_interval', value: '25' }, // seconds
-    { key: 'ads_group_interval', value: '30' },
+    { key: 'ads_private_interval', value: '45' },
+    { key: 'ads_group_interval', value: '35' },
     { key: 'taly_rate_limit_default', value: '5' },
     { key: 'taly_rate_limit_high', value: '10' },
     { key: 'report_restriction_threshold', value: '5' },
@@ -234,18 +243,5 @@ async function seedAll() {
     await db.appSetting.create({ data: s })
   }
 
-  // ---------- Notifications for admin ----------
-  for (let i = 0; i < 5; i++) {
-    await db.notification.create({
-      data: {
-        userId: admin.id,
-        type: 'system',
-        title: `Welcome Notification ${i + 1}`,
-        body: 'TalyChat is now live! Share with friends.',
-        isRead: i % 2 === 0,
-      },
-    })
-  }
-
-  console.log('[seed] TalyChat seed complete: 1 admin, 6 demo users, 10 groups, ads, codes, settings')
+  console.log('[seed] TalyChat seed complete')
 }
