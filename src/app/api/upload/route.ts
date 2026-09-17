@@ -1,0 +1,51 @@
+import { NextRequest } from 'next/server'
+import { ok, jsonError, requireAuth } from '@/lib/auth'
+import { ensureSeed } from '@/lib/seed'
+import { writeFile, mkdir } from 'fs/promises'
+import { existsSync } from 'fs'
+import path from 'path'
+import { randomUUID } from 'crypto'
+
+export const runtime = 'nodejs'
+
+const MAX_SIZE = 5 * 1024 * 1024 // 5MB
+const ALLOWED = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp3', 'wav', 'ogg', 'ttf', 'otf']
+
+export async function POST(req: NextRequest) {
+  await ensureSeed()
+  try {
+    const user = await requireAuth(req)
+    const formData = await req.formData()
+    const file = formData.get('file') as File | null
+    if (!file) return jsonError(400, 'No file provided')
+    
+    if (file.size > MAX_SIZE) return jsonError(413, 'File too large (max 5MB)')
+    
+    const ext = file.name.split('.').pop()?.toLowerCase() || ''
+    if (!ALLOWED.includes(ext)) return jsonError(400, `File type .${ext} not allowed`)
+    
+    // On Vercel, use /tmp. On local, use public/uploads
+    const isVercel = !!process.env.VERCEL
+    const uploadDir = isVercel ? '/tmp/uploads' : path.join(process.cwd(), 'public', 'uploads')
+    
+    if (!existsSync(uploadDir)) {
+      await mkdir(uploadDir, { recursive: true })
+    }
+    
+    const filename = `${Date.now()}-${randomUUID().slice(0, 8)}.${ext}`
+    const filepath = path.join(uploadDir, filename)
+    const buffer = Buffer.from(await file.arrayBuffer())
+    await writeFile(filepath, buffer)
+    
+    // On Vercel, we can't serve from /tmp directly. Return a data URL for images.
+    if (isVercel) {
+      const dataUrl = `data:${file.type || 'image/' + ext};base64,${buffer.toString('base64')}`
+      return ok({ url: dataUrl, filename })
+    }
+    
+    return ok({ url: `/uploads/${filename}`, filename })
+  } catch (e: any) {
+    if (e.status === 401) return jsonError(401, e.message)
+    return jsonError(500, e.message)
+  }
+}
