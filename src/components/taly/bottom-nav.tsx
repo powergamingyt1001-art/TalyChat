@@ -20,7 +20,7 @@ interface BottomNavProps {
 export function BottomNav({ active, onChange, unread }: BottomNavProps) {
   return (
     <nav
-      className="sticky bottom-0 z-30 flex w-full items-center justify-around border-t bg-background/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/80"
+      className="fixed bottom-0 left-0 right-0 z-50 flex w-full items-center justify-around border-t bg-background/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-lg shadow-[0_-4px_12px_rgba(0,0,0,0.08)] supports-[backdrop-filter]:bg-background/80"
       aria-label="Bottom navigation"
     >
       {NAV_ITEMS.map((item) => {

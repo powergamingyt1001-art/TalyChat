@@ -1,0 +1,1004 @@
+     1→'use client'
+     2→
+     3→import * as React from 'react'
+     4→import {
+     5→  Dialog,
+     6→  DialogContent,
+     7→  DialogDescription,
+     8→  DialogHeader,
+     9→  DialogTitle,
+    10→} from '@/components/ui/dialog'
+    11→import { Button } from '@/components/ui/button'
+    12→import { Slider } from '@/components/ui/slider'
+    13→import { ScrollArea } from '@/components/ui/scroll-area'
+    14→import {
+    15→  Loader2,
+    16→  Lock,
+    17→  MoreHorizontal,
+    18→  Sparkles,
+    19→  Upload,
+    20→  Check,
+    21→  Palette,
+    22→  RotateCcw,
+    23→} from 'lucide-react'
+    24→import { useAuth } from '@/lib/auth-store'
+    25→import { apiFetch, ApiError } from '@/lib/api'
+    26→import { useToast } from '@/hooks/use-toast'
+    27→import {
+    28→  useCustomizer,
+    29→  WALLPAPERS,
+    30→  FONT_OPTIONS,
+    31→  MESSAGE_STYLES,
+    32→  getWallpaperStyle,
+    33→} from '@/components/taly/customizer-context'
+    34→import { cn } from '@/lib/utils'
+    35→
+    36→interface CustomizeDialogProps {
+    37→  open: boolean
+    38→  /** Canonical close handler (V2 spec). */
+    39→  onClose?: () => void
+    40→  /** Backward-compat: shadcn-style open-change handler. Falls back to onClose. */
+    41→  onOpenChange?: (open: boolean) => void
+    42→  conversationId?: string
+    43→  /** Optional label flag — kept for backward-compat with the existing ChatView call. */
+    44→  isGroup?: boolean
+    45→  /** V13 — per-conversation theme color (chat background). Null = default. */
+    46→  currentThemeColor?: string | null
+    47→  /** V13 — callback when user picks a new chat background color. */
+    48→  onApplyThemeColor?: (color: string | null) => void
+    49→}
+    50→
+    51→// ---------------------------------------------------------------------------
+    52→// V13 — Chat background color presets (4 swatches, available to ALL users).
+    53→// These map directly to per-conversation `themeColor` overrides.
+    54→// ---------------------------------------------------------------------------
+    55→const CHAT_BG_PRESETS: { key: string; label: string; hex: string }[] = [
+    56→  { key: 'emerald', label: 'Emerald', hex: '#10b981' },
+    57→  { key: 'blue', label: 'Blue', hex: '#3b82f6' },
+    58→  { key: 'purple', label: 'Purple', hex: '#8b5cf6' },
+    59→  { key: 'pink', label: 'Pink', hex: '#ec4899' },
+    60→]
+    61→
+    62→// V13 — Bubble color presets (sent + received). Available to ALL users.
+    63→// Selecting null resets to default.
+    64→const BUBBLE_COLOR_PRESETS: { key: string; label: string; hex: string | null }[] = [
+    65→  { key: 'default', label: 'Default', hex: null },
+    66→  { key: 'emerald', label: 'Emerald', hex: '#10b981' },
+    67→  { key: 'blue', label: 'Blue', hex: '#3b82f6' },
+    68→  { key: 'purple', label: 'Purple', hex: '#8b5cf6' },
+    69→  { key: 'pink', label: 'Pink', hex: '#ec4899' },
+    70→  { key: 'orange', label: 'Orange', hex: '#f97316' },
+    71→  { key: 'amber', label: 'Amber', hex: '#f59e0b' },
+    72→  { key: 'rose', label: 'Rose', hex: '#f43f5e' },
+    73→  { key: 'teal', label: 'Teal', hex: '#14b8a6' },
+    74→]
+    75→
+    76→// ---------------------------------------------------------------------------
+    77→// Helpers
+    78→// ---------------------------------------------------------------------------
+    79→
+    80→const FONT_SIZE_MIN = 12
+    81→const FONT_SIZE_MAX = 18
+    82→
+    83→function useCustomizerSafe() {
+    84→  try {
+    85→    return useCustomizer()
+    86→  } catch {
+    87→    // No provider — return null and let the caller handle.
+    88→    return null
+    89→  }
+    90→}
+    91→
+    92→// Apply a theme on the document root (light/dark/system)
+    93→function applyTheme(theme: string) {
+    94→  if (typeof document === 'undefined') return
+    95→  const root = document.documentElement
+    96→  const isDark =
+    97→    theme === 'dark' ||
+    98→    (theme === 'system' &&
+    99→      typeof window !== 'undefined' &&
+   100→      window.matchMedia('(prefers-color-scheme: dark)').matches)
+   101→  root.classList.toggle('dark', isDark)
+   102→}
+   103→
+   104→// Bubble preview style (for message-style cards and live preview)
+   105→function previewBubbleClass(style: string, isMine: boolean): string {
+   106→  switch (style) {
+   107→    case 'sharp':
+   108→      return 'rounded-none'
+   109→    case 'tail':
+   110→      return isMine
+   111→        ? 'rounded-2xl rounded-br-md'
+   112→        : 'rounded-2xl rounded-bl-md'
+   113→    case 'none':
+   114→      return 'rounded-none bg-transparent border-0 shadow-none'
+   115→    default:
+   116→      return 'rounded-2xl'
+   117→  }
+   118→}
+   119→
+   120→// Determine readable text color (white/black) for a given hex bubble background.
+   121→function readableTextOn(hex: string | null): string {
+   122→  if (!hex) return ''
+   123→  const m = /^#([0-9a-fA-F]{6})$/.exec(hex.trim())
+   124→  if (!m) return ''
+   125→  const r = parseInt(m[1].slice(0, 2), 16)
+   126→  const g = parseInt(m[1].slice(2, 4), 16)
+   127→  const b = parseInt(m[1].slice(4, 6), 16)
+   128→  // YIQ contrast formula
+   129→  const yiq = (r * 299 + g * 587 + b * 114) / 1000
+   130→  return yiq >= 140 ? '#111111' : '#ffffff'
+   131→}
+   132→
+   133→// ---------------------------------------------------------------------------
+   134→// Sub-components
+   135→// ---------------------------------------------------------------------------
+   136→
+   137→function SectionTitle({ children }: { children: React.ReactNode }) {
+   138→  return (
+   139→    <h3 className="text-sm font-semibold text-foreground">{children}</h3>
+   140→  )
+   141→}
+   142→
+   143→function ThemeSegmented({
+   144→  value,
+   145→  onChange,
+   146→}: {
+   147→  value: string
+   148→  onChange: (v: string) => void
+   149→}) {
+   150→  const options = ['light', 'dark', 'system'] as const
+   151→  return (
+   152→    <div className="inline-flex w-full rounded-lg border border-border bg-card p-0.5">
+   153→      {options.map((opt) => (
+   154→        <button
+   155→          key={opt}
+   156→          type="button"
+   157→          onClick={() => onChange(opt)}
+   158→          className={cn(
+   159→            'flex-1 rounded-md px-3 py-1.5 text-sm font-medium capitalize transition-colors min-h-[36px]',
+   160→            value === opt
+   161→              ? 'bg-primary text-primary-foreground'
+   162→              : 'text-foreground hover:bg-accent'
+   163→          )}
+   164→        >
+   165→          {opt}
+   166→        </button>
+   167→      ))}
+   168→    </div>
+   169→  )
+   170→}
+   171→
+   172→// V13 — Chat background color picker. 4 swatches + reset.
+   173→function ChatBackgroundPicker({
+   174→  selected,
+   175→  onSelect,
+   176→}: {
+   177→  selected: string | null
+   178→  onSelect: (hex: string | null) => void
+   179→}) {
+   180→  return (
+   181→    <div className="space-y-3">
+   182→      <div className="grid grid-cols-4 gap-3">
+   183→        {CHAT_BG_PRESETS.map((t) => {
+   184→          const isActive = selected?.toLowerCase() === t.hex.toLowerCase()
+   185→          return (
+   186→            <button
+   187→              key={t.key}
+   188→              type="button"
+   189→              onClick={() => onSelect(t.hex)}
+   190→              aria-pressed={isActive}
+   191→              aria-label={t.label}
+   192→              className="flex flex-col items-center gap-1.5 focus:outline-none"
+   193→            >
+   194→              <span
+   195→                className={cn(
+   196→                  'flex h-12 w-12 min-h-[44px] min-w-[44px] items-center justify-center rounded-full shadow-sm transition-transform hover:scale-105',
+   197→                  isActive && 'ring-2 ring-offset-2 ring-offset-background'
+   198→                )}
+   199→                style={{
+   200→                  backgroundColor: t.hex,
+   201→                  // @ts-expect-error CSS var for ring color
+   202→                  '--tw-ring-color': t.hex,
+   203→                }}
+   204→              >
+   205→                {isActive && <Check className="h-5 w-5 text-white drop-shadow" />}
+   206→              </span>
+   207→              <span className="text-[10px] font-medium text-muted-foreground">
+   208→                {t.label}
+   209→              </span>
+   210→            </button>
+   211→          )
+   212→        })}
+   213→      </div>
+   214→
+   215→      <button
+   216→        type="button"
+   217→        onClick={() => onSelect(null)}
+   218→        aria-pressed={selected === null}
+   219→        className={cn(
+   220→          'flex w-full items-center justify-center gap-2 rounded-lg border-2 px-3 py-2 text-sm font-medium transition-all min-h-[44px]',
+   221→          selected === null
+   222→            ? 'border-primary bg-primary/5 text-primary'
+   223→            : 'border-border text-muted-foreground hover:border-primary/40'
+   224→        )}
+   225→      >
+   226→        <RotateCcw className="h-4 w-4" />
+   227→        Reset to default
+   228→      </button>
+   229→    </div>
+   230→  )
+   231→}
+   232→
+   233→// V13 — Bubble color picker for sent/received messages.
+   234→function BubbleColorPicker({
+   235→  label,
+   236→  selected,
+   237→  onSelect,
+   238→  isMine,
+   239→}: {
+   240→  label: string
+   241→  selected: string | null
+   242→  onSelect: (hex: string | null) => void
+   243→  isMine: boolean
+   244→}) {
+   245→  return (
+   246→    <div className="space-y-2">
+   247→      <div className="flex items-center justify-between">
+   248→        <span className="text-xs font-medium text-foreground">{label}</span>
+   249→        {selected && (
+   250→          <button
+   251→            type="button"
+   252→            onClick={() => onSelect(null)}
+   253→            className="text-[11px] text-muted-foreground hover:text-foreground"
+   254→          >
+   255→            Reset
+   256→          </button>
+   257→        )}
+   258→      </div>
+   259→      <div className="grid grid-cols-5 gap-2 sm:grid-cols-9">
+   260→        {BUBBLE_COLOR_PRESETS.map((c) => {
+   261→          const isActive =
+   262→            (selected || null) === (c.hex || null) ||
+   263→            (!!selected && !!c.hex && selected.toLowerCase() === c.hex.toLowerCase())
+   264→          return (
+   265→            <button
+   266→              key={c.key}
+   267→              type="button"
+   268→              onClick={() => onSelect(c.hex)}
+   269→              aria-pressed={isActive}
+   270→              aria-label={c.label}
+   271→              title={c.label}
+   272→              className="flex h-9 w-9 min-h-[36px] min-w-[36px] items-center justify-center rounded-full border-2 transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+   273→              style={{
+   274→                backgroundColor: c.hex || 'transparent',
+   275→                borderColor: isActive
+   276→                  ? 'var(--primary)'
+   277→                  : c.hex
+   278→                    ? 'transparent'
+   279→                    : 'var(--border)',
+   280→                backgroundImage: !c.hex
+   281→                  ? 'linear-gradient(135deg, var(--muted) 0%, var(--card) 100%)'
+   282→                  : undefined,
+   283→                boxShadow: isActive ? '0 0 0 2px var(--primary)' : undefined,
+   284→              }}
+   285→            >
+   286→              {isActive && (
+   287→                <Check
+   288→                  className="h-4 w-4"
+   289→                  style={{ color: c.hex ? readableTextOn(c.hex) : 'var(--foreground)' }}
+   290→                />
+   291→              )}
+   292→              {!c.hex && !isActive && (
+   293→                <span className="text-[9px] font-medium text-muted-foreground">Def</span>
+   294→              )}
+   295→            </button>
+   296→          )
+   297→        })}
+   298→      </div>
+   299→      {/* Preview bubble */}
+   300→      <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 p-2">
+   301→        <span className="text-[11px] font-medium text-muted-foreground min-w-[60px]">
+   302→          Preview:
+   303→        </span>
+   304→        <div
+   305→          className={cn(
+   306→            'max-w-[78%] rounded-2xl px-3 py-1.5 text-sm shadow-sm',
+   307→            isMine ? 'rounded-br-md' : 'rounded-bl-md'
+   308→          )}
+   309→          style={{
+   310→            backgroundColor: selected || (isMine ? '#10b981' : 'var(--card)'),
+   311→            color: selected ? readableTextOn(selected) : isMine ? '#fff' : 'var(--foreground)',
+   312→            border: !selected && !isMine ? '1px solid var(--border)' : 'none',
+   313→          }}
+   314→        >
+   315→          {isMine ? 'Hi 👋' : 'Hey! 😊'}
+   316→        </div>
+   317→      </div>
+   318→    </div>
+   319→  )
+   320→}
+   321→
+   322→function WallpaperGrid({
+   323→  selected,
+   324→  onSelect,
+   325→  isPremium,
+   326→}: {
+   327→  selected: string
+   328→  onSelect: (id: string) => void
+   329→  isPremium: boolean
+   330→}) {
+   331→  const [expanded, setExpanded] = React.useState(false)
+   332→  const { toast } = useToast()
+   333→
+   334→  // Per PRD: [0] is "default" — visible wallpapers are slice(1, 13) (12 wallpapers).
+   335→  // "More" expands to slice(13) (the remaining 14).
+   336→  const visible = WALLPAPERS.slice(1, 13)
+   337→  const more = WALLPAPERS.slice(13)
+   338→
+   339→  const handleSelect = (w: (typeof WALLPAPERS)[number]) => {
+   340→    if (!isPremium) {
+   341→      toast({ title: 'Image wallpapers are a Premium feature' })
+   342→      return
+   343→    }
+   344→    onSelect(w.id)
+   345→  }
+   346→
+   347→  const renderItem = (w: (typeof WALLPAPERS)[number]) => {
+   348→    const isActive = selected === w.id
+   349→    return (
+   350→      <button
+   351→        key={w.id}
+   352→        type="button"
+   353→        onClick={() => handleSelect(w)}
+   354→        aria-label={w.name}
+   355→        aria-pressed={isActive}
+   356→        className={cn(
+   357→          'relative aspect-square overflow-hidden rounded-lg border-2 transition-all',
+   358→          isActive
+   359→            ? 'border-primary ring-2 ring-primary'
+   360→            : 'border-border hover:border-primary/50',
+   361→          !isPremium && 'cursor-not-allowed'
+   362→        )}
+   363→        style={getWallpaperStyle(w) as React.CSSProperties}
+   364→      >
+   365→        {/* Active check */}
+   366→        {isActive && isPremium && (
+   367→          <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-primary-foreground">
+   368→            <Check className="h-3 w-3" />
+   369→          </span>
+   370→        )}
+   371→        {/* Premium lock overlay for non-premium users */}
+   372→        {!isPremium && (
+   373→          <>
+   374→            <span className="absolute inset-0 flex items-center justify-center bg-black/45 backdrop-blur-[1px]">
+   375→              <Lock className="h-4 w-4 text-white drop-shadow" />
+   376→            </span>
+   377→            <span className="absolute left-1 top-1 inline-flex items-center gap-0.5 rounded bg-amber-500/90 px-1 py-0.5 text-[9px] font-bold uppercase text-white shadow">
+   378→              <Sparkles className="h-2.5 w-2.5" /> Premium
+   379→            </span>
+   380→          </>
+   381→        )}
+   382→      </button>
+   383→    )
+   384→  }
+   385→
+   386→  return (
+   387→    <div className="space-y-2">
+   388→      {!isPremium && (
+   389→        <div className="flex items-center gap-2 rounded-md border border-amber-300/40 bg-amber-50/60 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+   390→          <Lock className="h-3.5 w-3.5 shrink-0" />
+   391→          <span>
+   392→            Image wallpapers are a <span className="font-semibold">Premium</span>{' '}
+   393→            feature. Upgrade to unlock all 25 wallpapers.
+   394→          </span>
+   395→        </div>
+   396→      )}
+   397→      <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+   398→        {visible.map(renderItem)}
+   399→        {expanded && more.map(renderItem)}
+   400→      </div>
+   401→      {!expanded && more.length > 0 && (
+   402→        <button
+   403→          type="button"
+   404→          onClick={() => setExpanded(true)}
+   405→          className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border py-2 text-xs text-muted-foreground hover:bg-accent/50 min-h-[40px]"
+   406→        >
+   407→          <MoreHorizontal className="h-3.5 w-3.5" /> More wallpapers ({more.length})
+   408→        </button>
+   409→      )}
+   410→    </div>
+   411→  )
+   412→}
+   413→
+   414→function MessageStyleCards({
+   415→  selected,
+   416→  onSelect,
+   417→  fontSizePx,
+   418→  fontFamilyClass,
+   419→}: {
+   420→  selected: string
+   421→  onSelect: (v: string) => void
+   422→  fontSizePx: number
+   423→  fontFamilyClass: string
+   424→}) {
+   425→  return (
+   426→    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+   427→      {MESSAGE_STYLES.map((s) => {
+   428→        const isActive = selected === s.id
+   429→        return (
+   430→          <button
+   431→            key={s.id}
+   432→            type="button"
+   433→            onClick={() => onSelect(s.id)}
+   434→            aria-pressed={isActive}
+   435→            className={cn(
+   436→              'flex flex-col items-center gap-2 rounded-xl border-2 p-3 transition-all min-h-[44px]',
+   437→              isActive
+   438→                ? 'border-primary ring-2 ring-primary'
+   439→                : 'border-border hover:border-primary/50'
+   440→            )}
+   441→          >
+   442→            <div
+   443→              className={cn(
+   444→                'max-w-full bg-primary px-2.5 py-1.5 text-primary-foreground shadow-sm',
+   445→                previewBubbleClass(s.id, true)
+   446→              )}
+   447→              style={{
+   448→                fontSize: `${fontSizePx}px`,
+   449→                fontFamily: 'inherit',
+   450→              }}
+   451→            >
+   452→              <span className={cn('whitespace-nowrap', fontFamilyClass)}>Hi 👋</span>
+   453→            </div>
+   454→            <span className="text-xs font-medium">{s.name}</span>
+   455→          </button>
+   456→        )
+   457→      })}
+   458→    </div>
+   459→  )
+   460→}
+   461→
+   462→function FontList({
+   463→  selected,
+   464→  onSelect,
+   465→}: {
+   466→  selected: string
+   467→  onSelect: (v: string) => void
+   468→}) {
+   469→  return (
+   470→    <div className="grid grid-cols-2 gap-2">
+   471→      {FONT_OPTIONS.map((f) => {
+   472→        const isActive = selected === f.id
+   473→        return (
+   474→          <button
+   475→            key={f.id}
+   476→            type="button"
+   477→            onClick={() => onSelect(f.id)}
+   478→            aria-pressed={isActive}
+   479→            className={cn(
+   480→              'flex items-center justify-between rounded-lg border-2 px-3 py-2 text-sm transition-all min-h-[40px]',
+   481→              isActive
+   482→                ? 'border-primary ring-2 ring-primary'
+   483→                : 'border-border hover:border-primary/50',
+   484→              f.className
+   485→            )}
+   486→          >
+   487→            <span>{f.name}</span>
+   488→            {f.isPremium && <span aria-label="Premium font">👑</span>}
+   489→          </button>
+   490→        )
+   491→      })}
+   492→    </div>
+   493→  )
+   494→}
+   495→
+   496→function FontImport({
+   497→  onUploaded,
+   498→}: {
+   499→  onUploaded: (url: string) => void
+   500→}) {
+   501→  const { toast } = useToast()
+   502→  const inputRef = React.useRef<HTMLInputElement | null>(null)
+   503→  const [uploading, setUploading] = React.useState(false)
+   504→
+   505→  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+   506→    const file = e.target.files?.[0]
+   507→    if (!file) return
+   508→    setUploading(true)
+   509→    try {
+   510→      const { apiUpload } = await import('@/lib/api')
+   511→      const res: any = await apiUpload('/api/upload', file, 'file')
+   512→      const url = res?.url
+   513→      if (!url) throw new Error('Upload did not return a URL')
+   514→      onUploaded(url)
+   515→      toast({ title: 'Custom font applied' })
+   516→    } catch (err: any) {
+   517→      toast({
+   518→        title: err?.message || 'Font upload failed',
+   519→        variant: 'destructive',
+   520→      })
+   521→    } finally {
+   522→      setUploading(false)
+   523→      if (inputRef.current) inputRef.current.value = ''
+   524→    }
+   525→  }
+   526→
+   527→  return (
+   528→    <div className="flex items-center gap-2">
+   529→      <input
+   530→        ref={inputRef}
+   531→        type="file"
+   532→        accept=".ttf,.otf"
+   533→        className="hidden"
+   534→        onChange={handleFile}
+   535→      />
+   536→      <Button
+   537→        type="button"
+   538→        variant="outline"
+   539→        onClick={() => inputRef.current?.click()}
+   540→        disabled={uploading}
+   541→        className="min-h-[40px]"
+   542→      >
+   543→        {uploading ? (
+   544→          <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+   545→        ) : (
+   546→          <Upload className="mr-1 h-4 w-4" />
+   547→        )}
+   548→        Upload .ttf / .otf
+   549→      </Button>
+   550→      <p className="text-xs text-muted-foreground">
+   551→        Upload a font file to apply as your custom chat font.
+   552→      </p>
+   553→    </div>
+   554→  )
+   555→}
+   556→
+   557→function LivePreview({
+   558→  wallpaper,
+   559→  messageStyle,
+   560→  fontFamily,
+   561→  fontSize,
+   562→}: {
+   563→  wallpaper: (typeof WALLPAPERS)[number]
+   564→  messageStyle: string
+   565→  fontFamily: (typeof FONT_OPTIONS)[number]
+   566→  fontSize: number
+   567→}) {
+   568→  const wpStyle = getWallpaperStyle(wallpaper) as React.CSSProperties
+   569→  return (
+   570→    <div
+   571→      className="rounded-xl border border-border p-3"
+   572→      style={wpStyle}
+   573→    >
+   574→      <div className="flex flex-col gap-2">
+   575→        {/* Received */}
+   576→        <div className="flex justify-start">
+   577→          <div
+   578→            className={cn(
+   579→              'max-w-[78%] bg-card px-3 py-1.5 text-foreground shadow-sm border border-border',
+   580→              previewBubbleClass(messageStyle, false)
+   581→            )}
+   582→            style={{ fontSize: `${fontSize}px` }}
+   583→          >
+   584→            <span className={cn('whitespace-pre-wrap', fontFamily.className)}>
+   585→              Hey! How are you? 😊
+   586→            </span>
+   587→          </div>
+   588→        </div>
+   589→        {/* Sent */}
+   590→        <div className="flex justify-end">
+   591→          <div
+   592→            className={cn(
+   593→              'max-w-[78%] bg-primary px-3 py-1.5 text-primary-foreground shadow-sm',
+   594→              previewBubbleClass(messageStyle, true)
+   595→            )}
+   596→            style={{ fontSize: `${fontSize}px` }}
+   597→          >
+   598→            <span className={cn('whitespace-pre-wrap', fontFamily.className)}>
+   599→              I&apos;m great! Thanks 🙌
+   600→            </span>
+   601→          </div>
+   602→        </div>
+   603→      </div>
+   604→    </div>
+   605→  )
+   606→}
+   607→
+   608→// ---------------------------------------------------------------------------
+   609→// Premium gate (for global prefs — theme/fonts/message style)
+   610→// ---------------------------------------------------------------------------
+   611→
+   612→function PremiumGateOverlay() {
+   613→  const { toast } = useToast()
+   614→  return (
+   615→    <div className="flex flex-col items-center gap-3 rounded-xl border border-amber-300/40 bg-amber-50/60 p-6 text-center dark:bg-amber-950/20">
+   616→      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-300">
+   617→        <Lock className="h-5 w-5" />
+   618→      </div>
+   619→      <div>
+   620→        <h3 className="text-base font-semibold">Premium Feature</h3>
+   621→        <p className="mt-1 text-sm text-muted-foreground">
+   622→          Global themes, fonts, and message styles are Premium features. Color
+   623→          theming and wallpapers are available above.
+   624→        </p>
+   625→      </div>
+   626→      <Button
+   627→        type="button"
+   628→        className="btn-brand min-h-[40px]"
+   629→        onClick={() => toast({ title: 'Visit Profile to upgrade' })}
+   630→      >
+   631→        <Sparkles className="mr-1 h-4 w-4" /> Upgrade
+   632→      </Button>
+   633→    </div>
+   634→  )
+   635→}
+   636→
+   637→// ---------------------------------------------------------------------------
+   638→// Main component
+   639→// ---------------------------------------------------------------------------
+   640→
+   641→export function CustomizeDialog({
+   642→  open,
+   643→  onClose,
+   644→  onOpenChange,
+   645→  conversationId,
+   646→  isGroup: _isGroup,
+   647→  currentThemeColor,
+   648→  onApplyThemeColor,
+   649→}: CustomizeDialogProps) {
+   650→  const { user } = useAuth()
+   651→  const { toast } = useToast()
+   652→  const customizer = useCustomizerSafe()
+   653→
+   654→  // Local state mirrors customizer preferences so the dialog can work even
+   655→  // when the provider has not been mounted yet.
+   656→  const [prefs, setPrefs] = React.useState<any>(customizer?.preferences || null)
+   657→  const [saving, setSaving] = React.useState<string | null>(null)
+   658→  const [fontImportUrl, setFontImportUrl] = React.useState<string | null>(null)
+   659→  const [applyingColor, setApplyingColor] = React.useState(false)
+   660→
+   661→  // V13 — per-conversation color state (chat background, sent + received bubbles).
+   662→  const [localBgColor, setLocalBgColor] = React.useState<string | null>(
+   663→    currentThemeColor || null,
+   664→  )
+   665→
+   666→  // Per-conversation bubble colors (stored on the Conversation row, optimistically
+   667→  // mirrored locally so the swatch reflects the current state).
+   668→  const [localSentColor, setLocalSentColor] = React.useState<string | null>(null)
+   669→  const [localReceivedColor, setLocalReceivedColor] = React.useState<string | null>(null)
+   670→
+   671→  // Sync from customizer context when it changes
+   672→  React.useEffect(() => {
+   673→    if (customizer?.preferences) setPrefs(customizer.preferences)
+   674→  }, [customizer?.preferences])
+   675→
+   676→  // Sync per-conversation color state when the dialog opens or themeColor changes.
+   677→  React.useEffect(() => {
+   678→    setLocalBgColor(currentThemeColor || null)
+   679→  }, [open, currentThemeColor])
+   680→
+   681→  // Fetch fresh prefs + per-conversation bubble colors when the dialog opens.
+   682→  React.useEffect(() => {
+   683→    if (!open) return
+   684→    let cancelled = false
+   685→    ;(async () => {
+   686→      try {
+   687→        const res: any = await apiFetch('/api/preferences').catch(() => null)
+   688→        const p = res && (res.preferences || res)
+   689→        if (!cancelled && p) setPrefs(p)
+   690→      } catch {}
+   691→      if (conversationId) {
+   692→        try {
+   693→          const convRes: any = await apiFetch(`/api/conversations/${conversationId}`)
+   694→          const conv = convRes?.conversation || convRes
+   695→          if (!cancelled) {
+   696→            setLocalSentColor(conv?.sentBubbleColor || null)
+   697→            setLocalReceivedColor(conv?.receivedBubbleColor || null)
+   698→          }
+   699→        } catch {}
+   700→      }
+   701→    })()
+   702→    return () => {
+   703→      cancelled = true
+   704→    }
+   705→  }, [open, conversationId])
+   706→
+   707→  const isPremium = !!(user as any)?.isPremium
+   708→
+   709→  const handleOpenChange = (o: boolean) => {
+   710→    if (o) {
+   711→      onOpenChange?.(true)
+   712→      return
+   713→    }
+   714→    // Closing — prefer canonical `onClose`, then `onOpenChange(false)`.
+   715→    if (onClose) onClose()
+   716→    else onOpenChange?.(false)
+   717→  }
+   718→
+   719→  // Save a single preference key — uses customizer context when available,
+   720→  // otherwise falls back to apiFetch directly. Also updates local state.
+   721→  const savePref = async (patch: Record<string, any>) => {
+   722→    setPrefs((p: any) => ({ ...(p || {}), ...patch }))
+   723→    if (customizer) {
+   724→      try {
+   725→        await customizer.setPreference(patch)
+   726→      } catch {}
+   727→      return
+   728→    }
+   729→    setSaving(Object.keys(patch).join(','))
+   730→    try {
+   731→      await apiFetch('/api/preferences', {
+   732→        method: 'PUT',
+   733→        body: JSON.stringify(patch),
+   734→      })
+   735→    } catch (e: any) {
+   736→      toast({ title: e?.message || 'Failed to save', variant: 'destructive' })
+   737→    } finally {
+   738→      setSaving(null)
+   739→    }
+   740→  }
+   741→
+   742→  // V13 — Apply per-conversation chat background color (immediately on tap).
+   743→  const applyBgColor = async (hex: string | null) => {
+   744→    setLocalBgColor(hex)
+   745→    onApplyThemeColor?.(hex)
+   746→    if (!conversationId) return
+   747→    setApplyingColor(true)
+   748→    try {
+   749→      await apiFetch(`/api/conversations/${conversationId}`, {
+   750→        method: 'PATCH',
+   751→        body: JSON.stringify({ themeColor: hex }),
+   752→      })
+   753→    } catch (e: any) {
+   754→      const err = e as ApiError
+   755→      toast({
+   756→        title: err?.message || 'Failed to update chat background',
+   757→        variant: 'destructive',
+   758→      })
+   759→    } finally {
+   760→      setApplyingColor(false)
+   761→    }
+   762→  }
+   763→
+   764→  // V13 — Apply per-conversation sent bubble color.
+   765→  const applySentColor = async (hex: string | null) => {
+   766→    setLocalSentColor(hex)
+   767→    if (!conversationId) return
+   768→    try {
+   769→      await apiFetch(`/api/conversations/${conversationId}`, {
+   770→        method: 'PATCH',
+   771→        body: JSON.stringify({ sentBubbleColor: hex }),
+   772→      })
+   773→    } catch (e: any) {
+   774→      const err = e as ApiError
+   775→      toast({
+   776→        title: err?.message || 'Failed to update sent bubble color',
+   777→        variant: 'destructive',
+   778→      })
+   779→    }
+   780→  }
+   781→
+   782→  // V13 — Apply per-conversation received bubble color.
+   783→  const applyReceivedColor = async (hex: string | null) => {
+   784→    setLocalReceivedColor(hex)
+   785→    if (!conversationId) return
+   786→    try {
+   787→      await apiFetch(`/api/conversations/${conversationId}`, {
+   788→        method: 'PATCH',
+   789→        body: JSON.stringify({ receivedBubbleColor: hex }),
+   790→      })
+   791→    } catch (e: any) {
+   792→      const err = e as ApiError
+   793→      toast({
+   794→        title: err?.message || 'Failed to update received bubble color',
+   795→        variant: 'destructive',
+   796→      })
+   797→    }
+   798→  }
+   799→
+   800→  // ----- Derived selections -----
+   801→  const theme: string = prefs?.theme || 'system'
+   802→  const wallpaperId: string = prefs?.wallpaper || 'default'
+   803→  const messageStyle: string = prefs?.messageStyle || 'bubble'
+   804→  const fontSize: number = Number(prefs?.fontSize) || 14
+   805→  const fontFamilyId: string = prefs?.fontFamily || 'sans'
+   806→
+   807→  const wallpaper =
+   808→    WALLPAPERS.find((w) => w.id === wallpaperId) || WALLPAPERS[0]
+   809→  const fontFamily =
+   810→    FONT_OPTIONS.find((f) => f.id === fontFamilyId) || FONT_OPTIONS[0]
+   811→
+   812→  const setTheme = (v: string) => {
+   813→    applyTheme(v)
+   814→    savePref({ theme: v })
+   815→  }
+   816→
+   817→  const setWallpaper = (id: string) => savePref({ wallpaper: id })
+   818→  const setMessageStyle = (v: string) => savePref({ messageStyle: v })
+   819→  const setFontFamily = (id: string) => savePref({ fontFamily: id })
+   820→  const setFontSize = (v: number) => savePref({ fontSize: v })
+   821→
+   822→  const handleFontImport = async (url: string) => {
+   823→    setFontImportUrl(url)
+   824→    await savePref({ customFontUrl: url, fontFamily: 'custom' })
+   825→  }
+   826→
+   827→  return (
+   828→    <Dialog open={open} onOpenChange={handleOpenChange}>
+   829→      <DialogContent className="max-w-2xl gap-0 p-0 sm:max-w-2xl">
+   830→        <DialogHeader className="border-b p-4">
+   831→          <DialogTitle className="flex items-center gap-2">
+   832→            <Palette className="h-4 w-4 text-primary" />
+   833→            Customize
+   834→            {applyingColor && (
+   835→              <Loader2 className="ml-1 h-3.5 w-3.5 animate-spin text-muted-foreground" />
+   836→            )}
+   837→          </DialogTitle>
+   838→          <DialogDescription className="sr-only">
+   839→            Personalize your chat with chat background colors, bubble colors,
+   840→            and image wallpapers.
+   841→          </DialogDescription>
+   842→        </DialogHeader>
+   843→
+   844→        <ScrollArea className="max-h-[78dvh]">
+   845→          <div className="space-y-6 p-4">
+   846→            {/* Saving indicator */}
+   847→            {saving && (
+   848→              <div className="flex items-center justify-end gap-1 text-xs text-muted-foreground">
+   849→                <Loader2 className="h-3 w-3 animate-spin" /> Saving…
+   850→              </div>
+   851→            )}
+   852→
+   853→            {/* ====================================================
+   854→                Section 1 (V13): Chat background — 4 color swatches
+   855→                Available to ALL users (per-conversation override).
+   856→                ==================================================== */}
+   857→            <section className="space-y-2">
+   858→              <div className="flex items-center justify-between">
+   859→                <SectionTitle>Chat Background</SectionTitle>
+   860→                <span className="text-[11px] text-muted-foreground">
+   861→                  Per-conversation
+   862→                </span>
+   863→              </div>
+   864→              <p className="text-xs text-muted-foreground">
+   865→                Pick a color to tint this chat&apos;s background.
+   866→              </p>
+   867→              <ChatBackgroundPicker
+   868→                selected={localBgColor}
+   869→                onSelect={applyBgColor}
+   870→              />
+   871→            </section>
+   872→
+   873→            {/* ====================================================
+   874→                Section 2 (V13): Bubble colors — sent + received
+   875→                Available to ALL users (per-conversation override).
+   876→                ==================================================== */}
+   877→            <section className="space-y-3">
+   878→              <div className="flex items-center justify-between">
+   879→                <SectionTitle>Message Bubble Colors</SectionTitle>
+   880→                <span className="text-[11px] text-muted-foreground">
+   881→                  Per-conversation
+   882→                </span>
+   883→              </div>
+   884→              <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-3">
+   885→                <BubbleColorPicker
+   886→                  label="Sent bubble color"
+   887→                  selected={localSentColor}
+   888→                  onSelect={applySentColor}
+   889→                  isMine
+   890→                />
+   891→                <BubbleColorPicker
+   892→                  label="Received bubble color"
+   893→                  selected={localReceivedColor}
+   894→                  onSelect={applyReceivedColor}
+   895→                  isMine={false}
+   896→                />
+   897→              </div>
+   898→            </section>
+   899→
+   900→            {/* ====================================================
+   901→                Section 3 (V13): Image wallpapers — LOCKED for non-premium.
+   902→                Per-task: lock icon overlay + Premium badge per item.
+   903→                ==================================================== */}
+   904→            <section className="space-y-2">
+   905→              <div className="flex items-center justify-between">
+   906→                <SectionTitle>Image Wallpapers</SectionTitle>
+   907→                {!isPremium && (
+   908→                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-600 dark:text-amber-400">
+   909→                    <Lock className="h-2.5 w-2.5" /> Premium
+   910→                  </span>
+   911→                )}
+   912→              </div>
+   913→              <WallpaperGrid
+   914→                selected={wallpaperId}
+   915→                onSelect={setWallpaper}
+   916→                isPremium={isPremium}
+   917→              />
+   918→            </section>
+   919→
+   920→            {/* ====================================================
+   921→                Sections 4-8: Premium-only global customizations
+   922→                (theme, message style, font size, font family, font import)
+   923→                ==================================================== */}
+   924→            {!isPremium ? (
+   925→              <section className="space-y-2">
+   926→                <SectionTitle>Global Themes &amp; Fonts</SectionTitle>
+   927→                <PremiumGateOverlay />
+   928→              </section>
+   929→            ) : (
+   930→              <>
+   931→                {/* Section 4: Theme */}
+   932→                <section className="space-y-2">
+   933→                  <SectionTitle>Theme</SectionTitle>
+   934→                  <ThemeSegmented value={theme} onChange={setTheme} />
+   935→                </section>
+   936→
+   937→                {/* Section 5: Message Style */}
+   938→                <section className="space-y-2">
+   939→                  <SectionTitle>Message Style</SectionTitle>
+   940→                  <MessageStyleCards
+   941→                    selected={messageStyle}
+   942→                    onSelect={setMessageStyle}
+   943→                    fontSizePx={fontSize}
+   944→                    fontFamilyClass={fontFamily.className}
+   945→                  />
+   946→                </section>
+   947→
+   948→                {/* Section 6: Font Size */}
+   949→                <section className="space-y-2">
+   950→                  <div className="flex items-center justify-between">
+   951→                    <SectionTitle>Font Size</SectionTitle>
+   952→                    <span className="text-xs font-medium tabular-nums text-muted-foreground">
+   953→                      {fontSize}px
+   954→                    </span>
+   955→                  </div>
+   956→                  <Slider
+   957→                    min={FONT_SIZE_MIN}
+   958→                    max={FONT_SIZE_MAX}
+   959→                    step={1}
+   960→                    value={[fontSize]}
+   961→                    onValueChange={(v) => setFontSize(Number(v[0]) || fontSize)}
+   962→                  />
+   963→                  <div className="flex justify-between text-[10px] text-muted-foreground">
+   964→                    <span>{FONT_SIZE_MIN}px</span>
+   965→                    <span>{FONT_SIZE_MAX}px</span>
+   966→                  </div>
+   967→                </section>
+   968→
+   969→                {/* Section 7: Font Family */}
+   970→                <section className="space-y-2">
+   971→                  <SectionTitle>Font Family</SectionTitle>
+   972→                  <FontList selected={fontFamilyId} onSelect={setFontFamily} />
+   973→                  {fontImportUrl && (
+   974→                    <p className="text-xs text-primary">
+   975→                      Custom font applied: <code>{fontImportUrl}</code>
+   976→                    </p>
+   977→                  )}
+   978→                </section>
+   979→
+   980→                {/* Section 8: Font Import */}
+   981→                <section className="space-y-2">
+   982→                  <SectionTitle>Import Custom Font</SectionTitle>
+   983→                  <FontImport onUploaded={handleFontImport} />
+   984→                </section>
+   985→
+   986→                {/* Live Preview */}
+   987→                <section className="space-y-2">
+   988→                  <SectionTitle>Live Preview</SectionTitle>
+   989→                  <LivePreview
+   990→                    wallpaper={wallpaper}
+   991→                    messageStyle={messageStyle}
+   992→                    fontFamily={fontFamily}
+   993→                    fontSize={fontSize}
+   994→                  />
+   995→                </section>
+   996→              </>
+   997→            )}
+   998→          </div>
+   999→        </ScrollArea>
+  1000→      </DialogContent>
+  1001→    </Dialog>
+  1002→  )
+  1003→}
+  1004→

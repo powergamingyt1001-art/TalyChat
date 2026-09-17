@@ -190,14 +190,14 @@ export function AdminDashboard() {
   }, [period, load])
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       {/* Period toggle — V3 segmented-control pill */}
-      <div className="flex flex-wrap items-center justify-between gap-3 animate-fade-in-up">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight">Dashboard</h2>
-          <p className="text-sm text-muted-foreground/80">TalyChat admin overview &amp; analytics</p>
+      <div className="flex flex-wrap items-center justify-between gap-2 animate-fade-in-up">
+        <div className="min-w-0">
+          <h2 className="text-lg font-bold tracking-tight">Dashboard</h2>
+          <p className="text-xs text-muted-foreground/80">TalyChat admin overview &amp; analytics</p>
         </div>
-        <div className="segmented-control" role="group" aria-label="Period selector">
+        <div className="segmented-control shrink-0" role="group" aria-label="Period selector">
           {PERIODS.map((p) => {
             const active = period === p.id
             return (
@@ -217,27 +217,27 @@ export function AdminDashboard() {
       {/* V5 — Key Performance collapsible (default open).
           Wraps the three KPI sections: Overview metrics, User status, Subscriptions. */}
       <Collapsible defaultOpen className="animate-fade-in-up" style={{ animationDelay: '60ms' }}>
-        <CollapsibleTrigger className="group flex w-full items-center justify-between rounded-xl bg-muted/30 px-4 py-3 text-left transition-colors hover:bg-muted/50">
+        <CollapsibleTrigger className="group flex w-full items-center justify-between rounded-xl bg-muted/30 px-3 py-2.5 text-left transition-colors hover:bg-muted/50">
           <div className="section-header flex items-center gap-2">
             <BarChart3 className="h-4 w-4 text-primary" /> Key Performance
           </div>
           <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 group-data-[state=closed]:rotate-[-90deg]" />
         </CollapsibleTrigger>
-        <CollapsibleContent className="mt-3 flex flex-col gap-4">
+        <CollapsibleContent className="mt-2 flex flex-col gap-3">
           {/* Overview metrics — V3 grouped section with light grey container + section-header */}
-          <section className="rounded-xl bg-muted/30 p-4">
-            <div className="section-header mb-4">
+          <section className="rounded-xl bg-muted/30 p-3">
+            <div className="section-header mb-3">
               Overview metrics
             </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
               {METRICS.map((m, i) => {
                 if (loading || !stats) {
                   return (
                     <Skeleton
                       key={m.label}
                       className={cn(
-                        'h-[110px] rounded-xl',
-                        m.featured && 'sm:col-span-2 sm:h-[120px]'
+                        'h-[88px] rounded-xl',
+                        m.featured && 'sm:col-span-2 sm:h-[96px]'
                       )}
                     />
                   )
@@ -259,14 +259,14 @@ export function AdminDashboard() {
           </section>
 
           {/* V2 — User Status cards (4 cards) */}
-          <section className="rounded-xl bg-muted/30 p-4">
-            <div className="section-header mb-4">
+          <section className="rounded-xl bg-muted/30 p-3">
+            <div className="section-header mb-3">
               User status
             </div>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
               {USER_STATUS_METRICS.map((m) => {
                 if (loading || !stats) {
-                  return <Skeleton key={m.label} className="h-[110px] rounded-xl" />
+                  return <Skeleton key={m.label} className="h-[88px] rounded-xl" />
                 }
                 return (
                   <KpiCard
@@ -282,14 +282,14 @@ export function AdminDashboard() {
           </section>
 
           {/* V2 — Subscriptions cards (3 cards) */}
-          <section className="rounded-xl bg-muted/30 p-4">
-            <div className="section-header mb-4">
+          <section className="rounded-xl bg-muted/30 p-3">
+            <div className="section-header mb-3">
               Subscriptions
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               {SUBS_METRICS.map((m) => {
                 if (loading || !stats) {
-                  return <Skeleton key={m.label} className="h-[110px] rounded-xl" />
+                  return <Skeleton key={m.label} className="h-[88px] rounded-xl" />
                 }
                 return (
                   <KpiCard
@@ -310,13 +310,13 @@ export function AdminDashboard() {
           Wraps the 4 charts: New user registrations, Active/Inactive,
           User growth (cumulative), Subscriptions breakdown. */}
       <Collapsible defaultOpen className="animate-fade-in-up" style={{ animationDelay: '120ms' }}>
-        <CollapsibleTrigger className="group flex w-full items-center justify-between rounded-xl bg-muted/30 px-4 py-3 text-left transition-colors hover:bg-muted/50">
+        <CollapsibleTrigger className="group flex w-full items-center justify-between rounded-xl bg-muted/30 px-3 py-2.5 text-left transition-colors hover:bg-muted/50">
           <div className="section-header flex items-center gap-2">
             <PieChartIcon className="h-4 w-4 text-primary" /> Analytics &amp; Growth
           </div>
           <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 group-data-[state=closed]:rotate-[-90deg]" />
         </CollapsibleTrigger>
-        <CollapsibleContent className="mt-3 flex flex-col gap-4">
+        <CollapsibleContent className="mt-2 flex flex-col gap-3">
           {/* Chart 1: Candle/Bar — new user registrations */}
           <Card>
             <CardHeader className="pb-2">
@@ -330,7 +330,7 @@ export function AdminDashboard() {
               </p>
             </CardHeader>
             <CardContent>
-              <div className="h-[300px] w-full">
+              <div className="h-[200px] w-full">
                 {loading || !stats ? (
                   <Skeleton className="h-full w-full" />
                 ) : isAllZeroRegister(stats.registerData) ? (
@@ -362,7 +362,7 @@ export function AdminDashboard() {
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {/* Chart 2: Donut — Active vs Inactive members */}
             <Card>
               <CardHeader className="pb-2">
@@ -370,7 +370,7 @@ export function AdminDashboard() {
                 <p className="text-xs text-muted-foreground/80">Members active (last 24h) vs dormant</p>
               </CardHeader>
               <CardContent>
-                <div className="h-[300px] w-full">
+                <div className="h-[200px] w-full">
                   {loading || !stats ? (
                     <Skeleton className="h-full w-full" />
                   ) : isAllZeroActiveInactive(stats) ? (
@@ -389,8 +389,8 @@ export function AdminDashboard() {
                           ]}
                           dataKey="value"
                           nameKey="name"
-                          innerRadius={60}
-                          outerRadius={90}
+                          innerRadius={45}
+                          outerRadius={70}
                           paddingAngle={2}
                           label={(e: any) => {
                             const total =
@@ -427,7 +427,7 @@ export function AdminDashboard() {
                 <p className="text-xs text-muted-foreground/80">Cumulative total users over period</p>
               </CardHeader>
               <CardContent>
-                <div className="h-[300px] w-full">
+                <div className="h-[200px] w-full">
                   {loading || !stats ? (
                     <Skeleton className="h-full w-full" />
                   ) : isAllZeroGrowth(stats.userGrowth) ? (
@@ -475,7 +475,7 @@ export function AdminDashboard() {
               <p className="text-xs text-muted-foreground/80">Paid vs free vs expired subscriptions</p>
             </CardHeader>
             <CardContent>
-              <div className="h-[300px] w-full">
+              <div className="h-[200px] w-full">
                 {loading || !stats ? (
                   <Skeleton className="h-full w-full" />
                 ) : isAllZeroSubs(stats) ? (
@@ -495,8 +495,8 @@ export function AdminDashboard() {
                         ]}
                         dataKey="value"
                         nameKey="name"
-                        innerRadius={60}
-                        outerRadius={90}
+                        innerRadius={45}
+                        outerRadius={70}
                         paddingAngle={2}
                         label={(e: any) => `${e.name}: ${e.value}`}
                       >
@@ -588,26 +588,26 @@ function KpiCard({
   return (
     <button
       onClick={onClick}
-      className="kpi-card taly-card-hover animate-fade-in-up relative flex flex-col items-start gap-1.5 overflow-hidden text-left"
+      className="kpi-card taly-card-hover animate-fade-in-up relative flex flex-col items-start gap-1 overflow-hidden p-3 text-left"
       style={{ ...(style || {}), ['--kpi-accent' as any]: accentVar }}
       aria-label={`${metric.label} — tap for details`}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex w-full items-center justify-between gap-1">
         <span
-          className="flex h-9 w-9 items-center justify-center rounded-lg"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
           style={{ background: `color-mix(in oklch, ${accentVar} 12%, transparent)`, color: accentVar }}
         >
-          <Icon className="h-4 w-4" />
+          <Icon className="h-3.5 w-3.5" />
         </span>
       </div>
-      <p className={`mt-1 font-bold tabular-nums ${featured ? 'text-3xl' : 'text-2xl'} ${textColor}`}>
+      <p className={`mt-0.5 truncate font-bold tabular-nums ${featured ? 'text-xl' : 'text-lg'} ${textColor}`}>
         {value}
       </p>
-      <p className="text-xs font-medium text-muted-foreground/80">{metric.label}</p>
-      {hint && <p className="text-[10px] text-muted-foreground/70">{hint}</p>}
-      {/* V5 — tiny sparkline in the bottom-right corner. 30px tall, no axes. */}
+      <p className="truncate text-[11px] font-medium text-muted-foreground/80">{metric.label}</p>
+      {hint && <p className="truncate text-[10px] text-muted-foreground/70">{hint}</p>}
+      {/* V5 — tiny sparkline in the bottom-right corner. 24px tall, no axes. */}
       {sparkData && sparkData.length > 1 && (
-        <div className="pointer-events-none absolute bottom-1 right-2 h-8 w-20 opacity-80">
+        <div className="pointer-events-none absolute bottom-1 right-2 h-6 w-16 opacity-80">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={sparkData} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
               <Line
@@ -766,7 +766,7 @@ function DrilldownDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="h-[320px] w-full">
+        <div className="h-[260px] w-full">
           {!stats ? (
             <Skeleton className="h-full w-full" />
           ) : chart === 'none' ? (

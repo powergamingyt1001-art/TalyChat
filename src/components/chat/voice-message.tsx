@@ -63,6 +63,9 @@ export function VoiceMessage({
   const [current, setCurrent] = React.useState(0) // seconds
   const [duration, setDuration] = React.useState<number>(voiceDuration || 0)
   const [loading, setLoading] = React.useState(false)
+  // F5-9 — track audio load errors so we can show a friendly "unavailable"
+  // message instead of an unresponsive play button.
+  const [error, setError] = React.useState(false)
 
   // Seed = messageId (preferred) → fallback to mediaUrl → fallback to constant.
   const seed = messageId || mediaUrl || 'voice-message'
@@ -102,6 +105,8 @@ export function VoiceMessage({
     handleStop(e)
     const audio = audioRef.current
     if (!audio) return
+    // F5-9 — if a previous load failed, retry once on user click.
+    if (error) setError(false)
 
     if (playing) {
       audio.pause()
@@ -122,6 +127,7 @@ export function VoiceMessage({
     } catch {
       // Autoplay rejection / network error
       setPlaying(false)
+      setError(true)
     } finally {
       setLoading(false)
     }
@@ -180,9 +186,31 @@ export function VoiceMessage({
         onEnded={onEnded}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
+        // F5-9 — surface load failures so we can show an "unavailable" state.
+        onError={() => {
+          setError(true)
+          setPlaying(false)
+          setLoading(false)
+        }}
         className="hidden"
       />
 
+      {/* F5-9 — if the audio failed to load (broken URL, network error,
+          expired blob), show a small "unavailable" notice instead of a
+          dead play button. The user can still click to retry. */}
+      {error ? (
+        <div
+          className={cn(
+            'flex flex-1 items-center gap-2 text-sm italic opacity-70',
+            isMine ? 'text-white/80' : 'text-muted-foreground',
+          )}
+          role="alert"
+        >
+          <Play className="h-4 w-4 opacity-50" />
+          Voice message unavailable
+        </div>
+      ) : (
+        <>
       <button
         type="button"
         onClick={togglePlay}
@@ -265,6 +293,8 @@ export function VoiceMessage({
           {playing ? formatDuration(current) : formatDuration(duration)}
         </div>
       </div>
+        </>
+      )}
     </div>
   )
 }

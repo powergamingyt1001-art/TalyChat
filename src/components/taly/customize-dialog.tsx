@@ -18,11 +18,10 @@ import {
   Sparkles,
   Upload,
   Check,
-  Palette,
   RotateCcw,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-store'
-import { apiFetch, ApiError } from '@/lib/api'
+import { apiFetch } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
 import {
   useCustomizer,
@@ -46,6 +45,14 @@ interface CustomizeDialogProps {
   currentThemeColor?: string | null
   /** V13 — callback when user picks a new chat background color. */
   onApplyThemeColor?: (color: string | null) => void
+  /** F5-9 — per-conversation sent bubble color (LOCAL ONLY). Null = default. */
+  currentSentColor?: string | null
+  /** F5-9 — per-conversation received bubble color (LOCAL ONLY). Null = default. */
+  currentReceivedColor?: string | null
+  /** F5-9 — callback when user picks a new sent bubble color. */
+  onApplySentColor?: (color: string | null) => void
+  /** F5-9 — callback when user picks a new received bubble color. */
+  onApplyReceivedColor?: (color: string | null) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -646,6 +653,10 @@ export function CustomizeDialog({
   isGroup: _isGroup,
   currentThemeColor,
   onApplyThemeColor,
+  currentSentColor,
+  currentReceivedColor,
+  onApplySentColor,
+  onApplyReceivedColor,
 }: CustomizeDialogProps) {
   const { user } = useAuth()
   const { toast } = useToast()
@@ -656,29 +667,42 @@ export function CustomizeDialog({
   const [prefs, setPrefs] = React.useState<any>(customizer?.preferences || null)
   const [saving, setSaving] = React.useState<string | null>(null)
   const [fontImportUrl, setFontImportUrl] = React.useState<string | null>(null)
-  const [applyingColor, setApplyingColor] = React.useState(false)
 
-  // V13 — per-conversation color state (chat background, sent + received bubbles).
+  // F5-9 — per-conversation color state (chat background, sent + received bubbles).
+  // All three are LOCAL ONLY (per-device), persisted to localStorage by the
+  // parent ChatView via the onApply* callbacks. The dialog just mirrors the
+  // current values here for the swatches' `selected` state.
   const [localBgColor, setLocalBgColor] = React.useState<string | null>(
     currentThemeColor || null,
   )
-
-  // Per-conversation bubble colors (stored on the Conversation row, optimistically
-  // mirrored locally so the swatch reflects the current state).
-  const [localSentColor, setLocalSentColor] = React.useState<string | null>(null)
-  const [localReceivedColor, setLocalReceivedColor] = React.useState<string | null>(null)
+  const [localSentColor, setLocalSentColor] = React.useState<string | null>(
+    currentSentColor || null,
+  )
+  const [localReceivedColor, setLocalReceivedColor] = React.useState<string | null>(
+    currentReceivedColor || null,
+  )
 
   // Sync from customizer context when it changes
   React.useEffect(() => {
     if (customizer?.preferences) setPrefs(customizer.preferences)
   }, [customizer?.preferences])
 
-  // Sync per-conversation color state when the dialog opens or themeColor changes.
+  // F5-9 — Sync per-conversation color state from props whenever the dialog
+  // opens or the parent's local color state changes (e.g. after the user
+  // picks a new color, the parent updates localStorage + its own state,
+  // then re-renders this dialog with the new values).
   React.useEffect(() => {
     setLocalBgColor(currentThemeColor || null)
   }, [open, currentThemeColor])
+  React.useEffect(() => {
+    setLocalSentColor(currentSentColor || null)
+  }, [open, currentSentColor])
+  React.useEffect(() => {
+    setLocalReceivedColor(currentReceivedColor || null)
+  }, [open, currentReceivedColor])
 
-  // Fetch fresh prefs + per-conversation bubble colors when the dialog opens.
+  // Fetch fresh prefs when the dialog opens. (Per-conversation colors are
+  // LOCAL ONLY — no server fetch for them.)
   React.useEffect(() => {
     if (!open) return
     let cancelled = false
@@ -688,21 +712,11 @@ export function CustomizeDialog({
         const p = res && (res.preferences || res)
         if (!cancelled && p) setPrefs(p)
       } catch {}
-      if (conversationId) {
-        try {
-          const convRes: any = await apiFetch(`/api/conversations/${conversationId}`)
-          const conv = convRes?.conversation || convRes
-          if (!cancelled) {
-            setLocalSentColor(conv?.sentBubbleColor || null)
-            setLocalReceivedColor(conv?.receivedBubbleColor || null)
-          }
-        } catch {}
-      }
     })()
     return () => {
       cancelled = true
     }
-  }, [open, conversationId])
+  }, [open])
 
   const isPremium = !!(user as any)?.isPremium
 
@@ -739,62 +753,25 @@ export function CustomizeDialog({
     }
   }
 
-  // V13 — Apply per-conversation chat background color (immediately on tap).
-  const applyBgColor = async (hex: string | null) => {
+  // F5-9 — Apply per-conversation chat background color (LOCAL ONLY).
+  // Just updates local state + calls the parent's callback. The parent
+  // (ChatView) writes to localStorage and updates its own state — no API
+  // call is made so the color is private to this user's device.
+  const applyBgColor = (hex: string | null) => {
     setLocalBgColor(hex)
     onApplyThemeColor?.(hex)
-    if (!conversationId) return
-    setApplyingColor(true)
-    try {
-      await apiFetch(`/api/conversations/${conversationId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ themeColor: hex }),
-      })
-    } catch (e: any) {
-      const err = e as ApiError
-      toast({
-        title: err?.message || 'Failed to update chat background',
-        variant: 'destructive',
-      })
-    } finally {
-      setApplyingColor(false)
-    }
   }
 
-  // V13 — Apply per-conversation sent bubble color.
-  const applySentColor = async (hex: string | null) => {
+  // F5-9 — Apply per-conversation sent bubble color (LOCAL ONLY).
+  const applySentColor = (hex: string | null) => {
     setLocalSentColor(hex)
-    if (!conversationId) return
-    try {
-      await apiFetch(`/api/conversations/${conversationId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ sentBubbleColor: hex }),
-      })
-    } catch (e: any) {
-      const err = e as ApiError
-      toast({
-        title: err?.message || 'Failed to update sent bubble color',
-        variant: 'destructive',
-      })
-    }
+    onApplySentColor?.(hex)
   }
 
-  // V13 — Apply per-conversation received bubble color.
-  const applyReceivedColor = async (hex: string | null) => {
+  // F5-9 — Apply per-conversation received bubble color (LOCAL ONLY).
+  const applyReceivedColor = (hex: string | null) => {
     setLocalReceivedColor(hex)
-    if (!conversationId) return
-    try {
-      await apiFetch(`/api/conversations/${conversationId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ receivedBubbleColor: hex }),
-      })
-    } catch (e: any) {
-      const err = e as ApiError
-      toast({
-        title: err?.message || 'Failed to update received bubble color',
-        variant: 'destructive',
-      })
-    }
+    onApplyReceivedColor?.(hex)
   }
 
   // ----- Derived selections -----
@@ -827,15 +804,13 @@ export function CustomizeDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-2xl gap-0 p-0 sm:max-w-2xl">
-        <DialogHeader className="border-b p-4">
-          <DialogTitle className="flex items-center gap-2">
-            <Palette className="h-4 w-4 text-primary" />
-            Customize
-            {applyingColor && (
-              <Loader2 className="ml-1 h-3.5 w-3.5 animate-spin text-muted-foreground" />
-            )}
-          </DialogTitle>
-          <DialogDescription className="sr-only">
+        {/* F5-9 — Removed the "Customize" text label per task spec.
+            The dialog now opens directly onto the color swatches and
+            options. The DialogTitle is kept (visually hidden) for
+            accessibility so screen readers still announce the dialog. */}
+        <DialogHeader className="sr-only">
+          <DialogTitle>Customize chat</DialogTitle>
+          <DialogDescription>
             Personalize your chat with chat background colors, bubble colors,
             and image wallpapers.
           </DialogDescription>

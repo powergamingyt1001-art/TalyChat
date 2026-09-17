@@ -1,0 +1,2002 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState, useRef, useCallback } from 'react'
+     4→import { useAuth } from '@/lib/auth-store'
+     5→import { apiFetch, apiUpload, ApiError } from '@/lib/api'
+     6→import { useToast } from '@/hooks/use-toast'
+     7→import { useSound } from '@/hooks/use-sound'
+     8→import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+     9→import { PremiumAvatar } from '@/components/premium-avatar'
+    10→import { Badge } from '@/components/ui/badge'
+    11→import { Button } from '@/components/ui/button'
+    12→import { Input } from '@/components/ui/input'
+    13→import { Label } from '@/components/ui/label'
+    14→import { Textarea } from '@/components/ui/textarea'
+    15→import { Separator } from '@/components/ui/separator'
+    16→import {
+    17→  Dialog,
+    18→  DialogContent,
+    19→  DialogDescription,
+    20→  DialogFooter,
+    21→  DialogHeader,
+    22→  DialogTitle,
+    23→} from '@/components/ui/dialog'
+    24→import {
+    25→  Sheet,
+    26→  SheetContent,
+    27→  SheetHeader,
+    28→  SheetTitle,
+    29→  SheetDescription,
+    30→} from '@/components/ui/sheet'
+    31→import {
+    32→  Select,
+    33→  SelectContent,
+    34→  SelectItem,
+    35→  SelectTrigger,
+    36→  SelectValue,
+    37→} from '@/components/ui/select'
+    38→import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+    39→import { Calendar } from '@/components/ui/calendar'
+    40→import { ScrollArea } from '@/components/ui/scroll-area'
+    41→import {
+    42→  Loader2,
+    43→  Pencil,
+    44→  Crown,
+    45→  Copy,
+    46→  Gift,
+    47→  Users,
+    48→  Shield,
+    49→  ShieldAlert,
+    50→  LogOut,
+    51→  CheckCircle2,
+    52→  Star,
+    53→  CalendarDays,
+    54→  Upload,
+    55→  Sparkles,
+    56→  Clock,
+    57→  Ban,
+    58→  Lock,
+    59→  Eye,
+    60→  Megaphone,
+    61→  Award,
+    62→  Trophy,
+    63→  AlertTriangle,
+    64→  Target,
+    65→  Hourglass,
+    66→  UserCheck,
+    67→  Edit,
+    68→  Trash2,
+    69→  TrendingUp,
+    70→  Zap,
+    71→  Info,
+    72→  Github,
+    73→} from 'lucide-react'
+    74→import { format, parseISO } from 'date-fns'
+    75→import { SettingsDialog } from '@/components/taly/settings-dialog'
+    76→// R1-3 — HighlightsRow, CreateHighlightDialog, StoryViewerDialog imports
+    77→// kept for backward-compat / future re-enablement, but no longer rendered
+    78→// in the Profile screen. Stories + Highlights feature parked under
+    79→// "Coming Soon".
+    80→import { HighlightsRow, type Highlight } from '@/components/taly/highlights-row'
+    81→import { CreateHighlightDialog } from '@/components/taly/create-highlight-dialog'
+    82→import { StoryViewerDialog } from '@/components/taly/story-viewer-dialog'
+    83→
+    84→const UPI_ID = process.env.NEXT_PUBLIC_PAYMENT_UPI_ID || '9897186065@fam'
+    85→const QR_SRC = process.env.NEXT_PUBLIC_PAYMENT_QR || '/payment/qr-code.png'
+    86→const APP_DOMAIN = process.env.NEXT_PUBLIC_APP_DOMAIN || 'talychat.app'
+    87→
+    88→const OFFER_KEY = 'talychat-offer-start'
+    89→const OFFER_WINDOW_MS = 30 * 60 * 1000 // 30 minutes
+    90→const OFFER_LOOP_MS = 24 * 60 * 60 * 1000 // 24 hours
+    91→const OFFER_PRICE = 189
+    92→const REGULAR_PRICE = 199
+    93→
+    94→interface ReferralData {
+    95→  code: string
+    96→  count: number
+    97→  progress: string
+    98→  tierReached: string | null
+    99→  recent: Array<{
+   100→    id: string
+   101→    status: string
+   102→    createdAt: string
+   103→    referred: {
+   104→      id: string
+   105→      name: string
+   106→      username: string
+   107→      avatar?: string | null
+   108→      isPremium: boolean
+   109→    }
+   110→  }>
+   111→  // V2 task fields (optional so old shapes don't break TS)
+   112→  activeReferrals?: number
+   113→  taskTiers?: TaskTier[]
+   114→  currentTask?: ActiveTask | null
+   115→  completedTasks?: Array<{
+   116→    id: string
+   117→    tier: string
+   118→    requiredCount: number
+   119→    windowDays: number
+   120→    rewardMonths: number
+   121→    selectedAt: string
+   122→    completedAt: string | null
+   123→    expiresAt: string | null
+   124→  }>
+   125→}
+   126→
+   127→interface TaskTier {
+   128→  tier: string
+   129→  requiredCount: number
+   130→  windowDays: number
+   131→  rewardMonths: number
+   132→}
+   133→
+   134→interface ActiveTask {
+   135→  id: string
+   136→  tier: string
+   137→  requiredCount: number
+   138→  windowDays: number
+   139→  rewardMonths: number
+   140→  progress: number
+   141→  selectedAt: string
+   142→  expiresAt: string | null
+   143→  completedAt: string | null
+   144→  isActive: boolean
+   145→}
+   146→
+   147→interface BehaviorData {
+   148→  score: number
+   149→  adsWatchedToday: number
+   150→  maxAdsPerDay: number
+   151→  canMessage: boolean
+   152→}
+   153→
+   154→interface AdData {
+   155→  id: string
+   156→  brandName: string
+   157→  headline?: string | null
+   158→  description?: string | null
+   159→  imageUrl?: string | null
+   160→  ctaText?: string | null
+   161→  ctaUrl?: string | null
+   162→  placement?: string | null
+   163→  category?: string | null
+   164→}
+   165→
+   166→export function ProfileScreen() {
+   167→  const { user, updateUser, logout, setAuth } = useAuth()
+   168→  const { toast } = useToast()
+   169→  const { play: soundManager } = useSound()
+   170→  const [loading, setLoading] = useState(true)
+   171→  const [profile, setProfile] = useState<any>(null)
+   172→  const [editOpen, setEditOpen] = useState(false)
+   173→  const [settingsOpen, setSettingsOpen] = useState(false)
+   174→  const [buyPlan, setBuyPlan] = useState<null | { id: string; label: string; price: number; months: number }>(null)
+   175→  const [redeemCode, setRedeemCode] = useState('')
+   176→  const [redeemLoading, setRedeemLoading] = useState(false)
+   177→  const [referral, setReferral] = useState<ReferralData | null>(null)
+   178→
+   179→  // V2 — admin login via Redeem section.
+   180→  // When the user types "admin.in" (case-insensitive) as the redeem code
+   181→  // and taps Redeem, we open an admin-login password dialog instead of
+   182→  // calling the normal /api/redeem endpoint. On success we setAuth() and
+   183→  // the app re-renders as the admin panel (see src/app/page.tsx).
+   184→  const [adminLoginOpen, setAdminLoginOpen] = useState(false)
+   185→  const [adminPassword, setAdminPassword] = useState('')
+   186→  const [adminLoginLoading, setAdminLoginLoading] = useState(false)
+   187→
+   188→  // Block list state
+   189→  const [blockedOpen, setBlockedOpen] = useState(false)
+   190→  const [blockedCount, setBlockedCount] = useState<number>(0)
+   191→
+   192→  // V6 — Scheduled messages state (kept for backward-compat; UI
+   193→  // section removed per R1-3 — Scheduled Messages feature parked under
+   194→  // "Coming Soon").
+   195→  const [scheduledOpen, setScheduledOpen] = useState(false)
+   196→  const [scheduledCount, setScheduledCount] = useState<number>(0)
+   197→
+   198→  // V7 — Story highlights state (kept for backward-compat; UI row removed
+   199→  // per R1-3 — Story Highlights feature parked under "Coming Soon").
+   200→  const [highlights, setHighlights] = useState<Highlight[]>([])
+   201→  const [highlightsLoading, setHighlightsLoading] = useState(false)
+   202→  const [createHighlightOpen, setCreateHighlightOpen] = useState(false)
+   203→  const [activeHighlight, setActiveHighlight] = useState<Highlight | null>(null)
+   204→
+   205→  // Behavior + watch-ad state
+   206→  const [behavior, setBehavior] = useState<BehaviorData | null>(null)
+   207→  const [watchingAd, setWatchingAd] = useState<AdData | null>(null)
+   208→  const [watching, setWatching] = useState(false)
+   209→  const [watchCountdown, setWatchCountdown] = useState(5)
+   210→
+   211→  // Team sheet state
+   212→  const [teamSheetOpen, setTeamSheetOpen] = useState(false)
+   213→
+   214→  const loadProfile = useCallback(async () => {
+   215→    setLoading(true)
+   216→    try {
+   217→      const res: any = await apiFetch('/api/users/me')
+   218→      // Defensive: API returns { user: {...}, preferences: {...} }.
+   219→      // Fall back to bare object if shape changes.
+   220→      const u = res?.user || (res?.id ? res : null)
+   221→      setProfile(u)
+   222→      if (u) updateUser(u)
+   223→    } catch (e: any) {
+   224→      toast({ title: e.message, variant: 'destructive' })
+   225→    } finally {
+   226→      setLoading(false)
+   227→    }
+   228→  }, [toast, updateUser])
+   229→
+   230→  const loadReferral = useCallback(async () => {
+   231→    try {
+   232→      const res: any = await apiFetch('/api/referral/me')
+   233→      // Defensive: API returns flat { code, count, recent, tierReached, progress }.
+   234→      // Some backends might wrap as { referral: {...} } — handle both.
+   235→      const data = res?.referral || res?.data || res
+   236→      setReferral(data as ReferralData)
+   237→    } catch {
+   238→      setReferral(null)
+   239→    }
+   240→  }, [])
+   241→
+   242→  // Fetch behavior summary (score, adsWatchedToday, maxAdsPerDay, canMessage)
+   243→  const loadBehavior = useCallback(async () => {
+   244→    try {
+   245→      const res: any = await apiFetch('/api/behavior/me')
+   246→      const data = res?.behavior || res?.data || res
+   247→      setBehavior({
+   248→        score: typeof data?.score === 'number' ? data.score : 100,
+   249→        adsWatchedToday: data?.adsWatchedToday ?? 0,
+   250→        maxAdsPerDay: data?.maxAdsPerDay ?? 10,
+   251→        canMessage: Boolean(data?.canMessage),
+   252→      })
+   253→    } catch {
+   254→      // Defensive default — assume full score if route fails
+   255→      setBehavior({
+   256→        score: 100,
+   257→        adsWatchedToday: 0,
+   258→        maxAdsPerDay: 10,
+   259→        canMessage: true,
+   260→      })
+   261→    }
+   262→  }, [])
+   263→
+   264→  // Watch an ad: POST /api/behavior/watch-ad, then open dialog for 5s.
+   265→  const handleWatchAd = useCallback(async () => {
+   266→    if (watching) return
+   267→    if (behavior && behavior.adsWatchedToday >= behavior.maxAdsPerDay) {
+   268→      toast({ title: 'Daily limit reached — come back tomorrow!' })
+   269→      return
+   270→    }
+   271→    setWatching(true)
+   272→    try {
+   273→      const res: any = await apiFetch('/api/behavior/watch-ad', { method: 'POST' })
+   274→      const data = res?.behavior || res?.data || res
+   275→      const ad: AdData | null = data?.ad ?? null
+   276→      // Update behavior immediately with new score/adsWatchedToday.
+   277→      setBehavior({
+   278→        score: typeof data?.score === 'number' ? data.score : (behavior?.score ?? 100),
+   279→        adsWatchedToday: data?.adsWatchedToday ?? (behavior?.adsWatchedToday ?? 0) + 1,
+   280→        maxAdsPerDay: data?.maxAdsPerDay ?? behavior?.maxAdsPerDay ?? 10,
+   281→        canMessage: Boolean(data?.canMessage ?? (behavior?.canMessage ?? true)),
+   282→      })
+   283→      if (ad) {
+   284→        setWatchingAd(ad)
+   285→        setWatchCountdown(5)
+   286→      } else {
+   287→        toast({ title: 'Behavior +1! No ad creative available right now.' })
+   288→      }
+   289→    } catch (e: any) {
+   290→      toast({ title: e?.message || 'Failed to watch ad', variant: 'destructive' })
+   291→    } finally {
+   292→      setWatching(false)
+   293→    }
+   294→  }, [behavior, watching, toast])
+   295→
+   296→  // Select a referral task tier.
+   297→  const handleSelectTask = useCallback(
+   298→    async (tier: string) => {
+   299→      try {
+   300→        await apiFetch('/api/referral/task', {
+   301→          method: 'POST',
+   302→          body: JSON.stringify({ tier }),
+   303→        })
+   304→        toast({ title: 'Task selected! Get referring 🚀' })
+   305→        await loadReferral()
+   306→      } catch (e: any) {
+   307→        toast({ title: e?.message || 'Failed to select task', variant: 'destructive' })
+   308→      }
+   309→    },
+   310→    [loadReferral, toast],
+   311→  )
+   312→
+   313→  // Claim the active referral task reward.
+   314→  const handleClaimTask = useCallback(async () => {
+   315→    try {
+   316→      const res: any = await apiFetch('/api/referral/task/claim', { method: 'POST' })
+   317→      const data = res?.claim || res?.data || res
+   318→      const until = data?.premiumUntil
+   319→      toast({
+   320→        title: 'Premium granted! 🎉',
+   321→        description: until
+   322→          ? `Valid until ${format(new Date(until), 'dd MMM yyyy')}`
+   323→          : undefined,
+   324→      })
+   325→      await loadReferral()
+   326→      await loadProfile()
+   327→    } catch (e: any) {
+   328→      toast({ title: e?.message || 'Failed to claim reward', variant: 'destructive' })
+   329→    }
+   330→  }, [loadProfile, loadReferral, toast])
+   331→
+   332→
+   333→  // Fetch the blocked-users count (for the badge on Privacy section).
+   334→  const loadBlockedCount = useCallback(async () => {
+   335→    try {
+   336→      const res: any = await apiFetch('/api/blocks')
+   337→      const list: any[] = Array.isArray(res)
+   338→        ? res
+   339→        : Array.isArray(res?.blocks)
+   340→          ? res.blocks
+   341→          : Array.isArray(res?.items)
+   342→            ? res.items
+   343→            : []
+   344→      setBlockedCount(list.length)
+   345→    } catch {
+   346→      setBlockedCount(0)
+   347→    }
+   348→  }, [])
+   349→
+   350→  // V6 — Fetch pending scheduled messages count (for the badge on the
+   351→  // Scheduled Messages card).
+   352→  const loadScheduledCount = useCallback(async () => {
+   353→    try {
+   354→      const res: any = await apiFetch('/api/messages/schedule')
+   355→      const list: any[] = Array.isArray(res)
+   356→        ? res
+   357→        : Array.isArray(res?.scheduledMessages)
+   358→          ? res.scheduledMessages
+   359→          : Array.isArray(res?.items)
+   360→            ? res.items
+   361→            : []
+   362→      setScheduledCount(list.length)
+   363→    } catch {
+   364→      setScheduledCount(0)
+   365→    }
+   366→  }, [])
+   367→
+   368→  // V7 — Fetch my story highlights (with story contents).
+   369→  const loadHighlights = useCallback(async () => {
+   370→    setHighlightsLoading(true)
+   371→    try {
+   372→      const res: any = await apiFetch('/api/highlights/me')
+   373→      const list: Highlight[] = Array.isArray(res?.highlights)
+   374→        ? res.highlights
+   375→        : []
+   376→      setHighlights(list)
+   377→    } catch {
+   378→      setHighlights([])
+   379→    } finally {
+   380→      setHighlightsLoading(false)
+   381→    }
+   382→  }, [])
+   383→
+   384→  useEffect(() => {
+   385→     
+   386→    loadProfile()
+   387→     
+   388→    loadReferral()
+   389→    loadBlockedCount()
+   390→    loadBehavior()
+   391→    loadScheduledCount()
+   392→    loadHighlights()
+   393→  }, [loadProfile, loadReferral, loadBlockedCount, loadBehavior, loadScheduledCount, loadHighlights])
+   394→
+   395→  if (loading && !profile) {
+   396→    return (
+   397→      <div className="flex min-h-[60dvh] items-center justify-center">
+   398→        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+   399→      </div>
+   400→    )
+   401→  }
+   402→
+   403→  if (!profile) {
+   404→    return (
+   405→      <div className="mx-auto max-w-2xl p-4 text-center text-muted-foreground">
+   406→        Could not load profile. Please try again.
+   407→      </div>
+   408→    )
+   409→  }
+   410→
+   411→  const premiumActive =
+   412→    profile.isPremium &&
+   413→    profile.premiumUntil &&
+   414→    new Date(profile.premiumUntil) > new Date()
+   415→
+   416→  const copyReferralLink = async () => {
+   417→    const link = `${APP_DOMAIN}/?ref=${user?.username || profile.username}`
+   418→    try {
+   419→      await navigator.clipboard.writeText(link)
+   420→      toast({ title: 'Referral link copied!' })
+   421→    } catch {
+   422→      toast({ title: 'Copy failed', variant: 'destructive' })
+   423→    }
+   424→  }
+   425→
+   426→  const handleRedeem = async () => {
+   427→    if (!redeemCode.trim()) {
+   428→      toast({ title: 'Enter a code first', variant: 'destructive' })
+   429→      return
+   430→    }
+   431→    // V2 — admin.in special case: open the admin login dialog instead of
+   432→    // calling /api/redeem. The case-insensitive match mirrors the backend
+   433→    // /api/auth/login behavior (which lower-cases the email).
+   434→    if (redeemCode.trim().toLowerCase() === 'admin.in') {
+   435→      setAdminPassword('')
+   436→      setAdminLoginOpen(true)
+   437→      return
+   438→    }
+   439→    setRedeemLoading(true)
+   440→    try {
+   441→      const res: any = await apiFetch('/api/redeem', {
+   442→        method: 'POST',
+   443→        body: JSON.stringify({ code: redeemCode.trim() }),
+   444→      })
+   445→      // Defensive: API returns flat { ok, premiumUntil }, but may also be
+   446→      // wrapped as { redeem: {...} } or { data: {...} } in some envs.
+   447→      const data: any = res?.redeem || res?.data || res
+   448→      const premiumUntil = data?.premiumUntil
+   449→      toast({
+   450→        title: 'Premium activated!',
+   451→        description: premiumUntil
+   452→          ? `Valid until ${format(new Date(premiumUntil), 'dd MMM yyyy')}`
+   453→          : 'Your premium has been extended.',
+   454→      })
+   455→      // Fanfare — fires inside the user's "Redeem" button click gesture.
+   456→      soundManager.playPremium()
+   457→      setRedeemCode('')
+   458→      loadProfile()
+   459→    } catch (e: any) {
+   460→      toast({ title: e.message, variant: 'destructive' })
+   461→    } finally {
+   462→      setRedeemLoading(false)
+   463→    }
+   464→  }
+   465→
+   466→  // V2 — submit admin login (called from the Admin Login dialog).
+   467→  // On success, setAuth() with the returned user/token; the app will then
+   468→  // re-render as the admin panel.
+   469→  const submitAdminLogin = async () => {
+   470→    if (!adminPassword) {
+   471→      toast({ title: 'Enter the admin password', variant: 'destructive' })
+   472→      return
+   473→    }
+   474→    setAdminLoginLoading(true)
+   475→    try {
+   476→      const res: any = await apiFetch('/api/auth/login', {
+   477→        method: 'POST',
+   478→        body: JSON.stringify({ email: 'admin.in', password: adminPassword }),
+   479→      })
+   480→      const u = res?.user || (res?.id ? res : null)
+   481→      const t = res?.token
+   482→      if (!u || !t) {
+   483→        throw new Error('Invalid admin response')
+   484→      }
+   485→      setAuth(u, t)
+   486→      toast({
+   487→        title: 'Welcome, Admin!',
+   488→        description: 'Switching to the admin panel…',
+   489→      })
+   490→      setAdminLoginOpen(false)
+   491→      setAdminPassword('')
+   492→      setRedeemCode('')
+   493→    } catch (e: any) {
+   494→      toast({ title: e?.message || 'Admin login failed', variant: 'destructive' })
+   495→    } finally {
+   496→      setAdminLoginLoading(false)
+   497→    }
+   498→  }
+   499→
+   500→  // V5 — behavior score for the ring around the avatar
+   501→  const behaviorScore = behavior?.score ?? 100
+   502→  const behaviorRingClass =
+   503→    behaviorScore >= 80
+   504→      ? 'ring-emerald-500/60'
+   505→      : behaviorScore >= 50
+   506→        ? 'ring-amber-500/60'
+   507→        : 'ring-red-500/60'
+   508→
+   509→  return (
+   510→    <div className="mx-auto max-w-2xl space-y-8 p-4">
+   511→      {/* V12 — Group 1: Identity & Status.
+   512→          Wraps the profile header, story highlights, behavior bar, and
+   513→          watch-behavior card into a single tinted container so the user
+   514→          can scan their identity + behavior stats as one block. */}
+   515→      <section className="space-y-3 rounded-2xl bg-muted/20 p-3">
+   516→        <p className="flex items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+   517→          <UserCheck className="h-3.5 w-3.5" /> Your Profile
+   518→        </p>
+   519→      {/* Profile header card — V3: taly-card with shadow, larger avatar, online dot, joined date */}
+   520→      <div className="taly-card taly-card-hover animate-fade-in-up p-5" style={{ animationDelay: '0ms' }}>
+   521→        <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
+   522→          <div className="relative shrink-0">
+   523→            {/* V5 — behavior ring (static emerald/amber/red) around the
+   524→                avatar. R8-11: removed the `animate-pulse` utility because
+   525→                it dimmed the entire PremiumAvatar subtree (including the
+   526→                gold ring / aura / crown), making the premium effects
+   527→                hard to see. The ring stays visible at full opacity.
+   528→                V13 — `dark-avatar-glow` adds an emerald + cream glow
+   529→                around the avatar in dark theme so it stays visible. */}
+   530→            <div
+   531→              className={`relative inline-flex rounded-full ring-4 ${behaviorRingClass} dark-avatar-glow`}
+   532→            >
+   533→              <PremiumAvatar
+   534→                user={{
+   535→                  isPremium: profile.isPremium,
+   536→                  premiumTier: profile.premiumTier,
+   537→                  avatar: profile.avatar || undefined,
+   538→                  name: profile.name || 'U',
+   539→                }}
+   540→                size={80}
+   541→                showAura
+   542→                className="shrink-0"
+   543→              />
+   544→            </div>
+   545→            {profile.isOnline && <span className="online-dot" aria-label="online" />}
+   546→          </div>
+   547→          <div className="min-w-0 flex-1 text-center sm:text-left">
+   548→            <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+   549→              <h2 className="truncate text-xl font-bold tracking-tight">{profile.name}</h2>
+   550→              {premiumActive && (
+   551→                <span className="premium-badge">
+   552→                  <Crown className="h-3 w-3" /> Premium
+   553→                </span>
+   554→              )}
+   555→            </div>
+   556→            <p className="truncate text-sm text-muted-foreground/80">@{profile.username}</p>
+   557→            {profile.bio ? (
+   558→              <p className="mt-2 line-clamp-3 text-sm italic text-muted-foreground">{profile.bio}</p>
+   559→            ) : (
+   560→              <p className="mt-2 text-sm italic text-muted-foreground">No bio yet.</p>
+   561→            )}
+   562→            <div className="mt-2 flex flex-wrap items-center justify-center gap-3 text-xs text-muted-foreground/80 sm:justify-start">
+   563→              <span className="inline-flex items-center gap-1">
+   564→                <span
+   565→                  className={`inline-block h-2 w-2 rounded-full ${
+   566→                    profile.isOnline ? 'bg-emerald-500' : 'bg-muted-foreground/50'
+   567→                  }`}
+   568→                />
+   569→                {profile.isOnline ? 'Online' : 'Offline'}
+   570→              </span>
+   571→              {profile.createdAt && (
+   572→                <span className="inline-flex items-center gap-1">
+   573→                  <CalendarDays className="h-3 w-3" />
+   574→                  Joined {format(new Date(profile.createdAt), 'MMM yyyy')}
+   575→                </span>
+   576→              )}
+   577→            </div>
+   578→            <div className="mt-4">
+   579→              <button
+   580→                onClick={() => setEditOpen(true)}
+   581→                className="action-btn min-h-[40px]"
+   582→              >
+   583→                <Pencil className="h-4 w-4" /> Edit Profile
+   584→              </button>
+   585→            </div>
+   586→          </div>
+   587→        </div>
+   588→      </div>
+   589→
+   590→      {/* V7 — Story Highlights row (own profile) — REMOVED per R1-3.
+   591→          Story Highlights feature parked under "Coming Soon" in the
+   592→          About section at the bottom of this screen. */}
+   593→      {/* <div className="animate-fade-in-up" style={{ animationDelay: '30ms' }}>
+   594→        <HighlightsRow
+   595→          highlights={highlights}
+   596→          loading={highlightsLoading}
+   597→          isOwn
+   598→          onOpenHighlight={(h) => setActiveHighlight(h)}
+   599→          onCreateHighlight={() => setCreateHighlightOpen(true)}
+   600→          onHighlightsChanged={loadHighlights}
+   601→          onViewAll={() =>
+   602→            toast({
+   603→              title: 'Scroll horizontally',
+   604→              description: 'Swipe the highlights row to see all of them.',
+   605→            })
+   606→          }
+   607→        />
+   608→      </div> */}
+   609→
+   610→      {/* Behavior Bar — V3: section-header + behavior-bar pill with inner glow */}
+   611→      <div className="animate-fade-in-up" style={{ animationDelay: '60ms' }}>
+   612→        <BehaviorBar behavior={behavior} />
+   613→      </div>
+   614→
+   615→      {/* Watch Behavior (watch ads to increase score) */}
+   616→      <div className="animate-fade-in-up" style={{ animationDelay: '120ms' }}>
+   617→        <WatchBehaviorCard
+   618→          behavior={behavior}
+   619→          watching={watching}
+   620→          onWatchAd={handleWatchAd}
+   621→        />
+   622→      </div>
+   623→      </section>
+   624→
+   625→      {/* V12 — Group 2: Growth & Rewards.
+   626→          Premium card (or upgrade plans), redeem code, and referral
+   627→          section — all the monetization / growth touchpoints grouped
+   628→          under a subtle emerald/gold tint. */}
+   629→      <section className="space-y-3 rounded-2xl bg-emerald-50/30 p-3 dark:bg-emerald-950/10">
+   630→        <p className="flex items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-wider text-emerald-700/80 dark:text-emerald-300/70">
+   631→          <TrendingUp className="h-3.5 w-3.5" /> Growth Center
+   632→        </p>
+   633→
+   634→      {/* Premium section */}
+   635→      <div className="animate-fade-in-up" style={{ animationDelay: '180ms' }}>
+   636→        <PremiumSection
+   637→          premiumActive={premiumActive}
+   638→          premiumUntil={profile.premiumUntil}
+   639→          onChoosePlan={(plan) => {
+   640→            // V12 — Intercept "manage" / "benefits" pseudo-plans from the
+   641→            // redesigned premium-active card so we don't open the buy
+   642→            // dialog (which expects a real plan with a price). These
+   643→            // buttons are informational for now.
+   644→            if (plan.id === 'manage') {
+   645→              toast({
+   646→                title: 'Manage subscription',
+   647→                description:
+   648→                  'Subscription management is coming soon. For now, contact support.',
+   649→              })
+   650→              return
+   651→            }
+   652→            if (plan.id === 'benefits') {
+   653→              toast({
+   654→                title: 'Premium benefits ✨',
+   655→                description:
+   656→                  'Ad-free messaging, premium avatar aura, exclusive badges, larger uploads, and more.',
+   657→              })
+   658→              return
+   659→            }
+   660→            setBuyPlan(plan)
+   661→          }}
+   662→        />
+   663→      </div>
+   664→
+   665→      {/* Redeem code */}
+   666→      <div className="taly-card animate-fade-in-up p-5" style={{ animationDelay: '240ms' }}>
+   667→        <div className="section-header mb-3">
+   668→          <Gift className="h-4 w-4 text-primary" /> Redeem a Code
+   669→        </div>
+   670→        <div className="flex gap-2">
+   671→          <Input
+   672→            value={redeemCode}
+   673→            onChange={(e) => setRedeemCode(e.target.value)}
+   674→            placeholder="Enter redeem code (e.g., TALY-XXXXXXXX)"
+   675→            className="min-h-[44px] flex-1 uppercase"
+   676→            onKeyDown={(e) => {
+   677→              if (e.key === 'Enter') handleRedeem()
+   678→            }}
+   679→          />
+   680→          <button
+   681→            onClick={handleRedeem}
+   682→            disabled={redeemLoading}
+   683→            className="action-btn min-h-[44px] px-5 disabled:opacity-60"
+   684→          >
+   685→            {redeemLoading ? (
+   686→              <Loader2 className="h-4 w-4 animate-spin" />
+   687→            ) : (
+   688→              'Redeem'
+   689→            )}
+   690→          </button>
+   691→        </div>
+   692→        <p className="mt-2 text-xs text-muted-foreground/80">
+   693→          Get codes from promotions, friends, or the founder.
+   694→        </p>
+   695→      </div>
+   696→
+   697→      {/* V2 — Admin Login dialog (opened when user types 'admin.in' as the
+   698→          redeem code). On success, setAuth() switches the app to the
+   699→          admin panel. */}
+   700→      <Dialog open={adminLoginOpen} onOpenChange={(o) => !adminLoginLoading && setAdminLoginOpen(o)}>
+   701→        <DialogContent className="sm:max-w-md">
+   702→          <DialogHeader>
+   703→            <DialogTitle className="flex items-center gap-2">
+   704→              <ShieldAlert className="h-5 w-5 text-primary" /> Admin Login
+   705→            </DialogTitle>
+   706→            <DialogDescription>
+   707→              Enter the admin password to switch to the TalyChat admin panel.
+   708→            </DialogDescription>
+   709→          </DialogHeader>
+   710→          <div className="flex flex-col gap-3">
+   711→            <Label htmlFor="admin-password" className="text-xs font-medium text-muted-foreground">
+   712→              Admin password
+   713→            </Label>
+   714→            <Input
+   715→              id="admin-password"
+   716→              type="password"
+   717→              value={adminPassword}
+   718→              onChange={(e) => setAdminPassword(e.target.value)}
+   719→              placeholder="Admin password"
+   720→              className="min-h-[44px]"
+   721→              autoFocus
+   722→              onKeyDown={(e) => {
+   723→                if (e.key === 'Enter') submitAdminLogin()
+   724→              }}
+   725→            />
+   726→            <p className="text-xs text-muted-foreground">
+   727→              You entered <code className="font-mono font-semibold">admin.in</code> as the
+   728→              redeem code — this is the admin sign-in shortcut.
+   729→            </p>
+   730→          </div>
+   731→          <DialogFooter className="gap-2">
+   732→            <Button
+   733→              variant="outline"
+   734→              onClick={() => {
+   735→                if (!adminLoginLoading) {
+   736→                  setAdminLoginOpen(false)
+   737→                  setAdminPassword('')
+   738→                }
+   739→              }}
+   740→              disabled={adminLoginLoading}
+   741→              className="min-h-[44px]"
+   742→            >
+   743→              Cancel
+   744→            </Button>
+   745→            <Button
+   746→              onClick={submitAdminLogin}
+   747→              disabled={adminLoginLoading || !adminPassword}
+   748→              className="btn-brand min-h-[44px]"
+   749→            >
+   750→              {adminLoginLoading ? (
+   751→                <Loader2 className="h-4 w-4 animate-spin" />
+   752→              ) : (
+   753→                <ShieldAlert className="h-4 w-4" />
+   754→              )}
+   755→              Sign in as Admin
+   756→            </Button>
+   757→          </DialogFooter>
+   758→        </DialogContent>
+   759→      </Dialog>
+   760→
+   761→      {/* Referral section — V2 redesign with task tiers */}
+   762→      <div className="animate-fade-in-up" style={{ animationDelay: '300ms' }}>
+   763→        <ReferralSection
+   764→          referral={referral}
+   765→          username={user?.username || profile.username}
+   766→          onCopyLink={copyReferralLink}
+   767→          onSelectTask={handleSelectTask}
+   768→          onClaimTask={handleClaimTask}
+   769→          onViewTeam={() => setTeamSheetOpen(true)}
+   770→        />
+   771→      </div>
+   772→      </section>
+   773→
+   774→      {/* V12 — Group 3: Settings & Safety.
+   775→          Privacy, scheduled messages, block list, and logout — the
+   776→          lower-stakes / account-management block grouped under a
+   777→          neutral tint. */}
+   778→      <section className="space-y-2 rounded-2xl bg-muted/10 p-3">
+   779→        <p className="flex items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+   780→          <Shield className="h-3.5 w-3.5" /> Settings &amp; Safety
+   781→        </p>
+   782→
+   783→      {/* Privacy and Safety */}
+   784→      <div className="taly-card animate-fade-in-up p-5" style={{ animationDelay: '360ms' }}>
+   785→        <div className="section-header mb-3">
+   786→          <Shield className="h-4 w-4 text-primary" /> Privacy and Safety
+   787→          {blockedCount > 0 && (
+   788→            <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-semibold text-destructive">
+   789→              <Ban className="h-3 w-3" />
+   790→              {blockedCount}
+   791→            </span>
+   792→          )}
+   793→        </div>
+   794→        <button
+   795→          onClick={() => setSettingsOpen(true)}
+   796→          className="ghost-btn min-h-[44px] w-full justify-start"
+   797→        >
+   798→          <Shield className="mr-2 h-4 w-4" /> Open privacy settings
+   799→        </button>
+   800→      </div>
+   801→
+   802→      {/* V6 — Scheduled Messages card. REMOVED per R1-3 — Scheduled
+   803→          Messages feature parked under "Coming Soon" in the About
+   804→          section at the bottom of this screen. The ScheduledMessagesCard
+   805→          function is kept for future re-enablement. */}
+   806→      {/* <div className="taly-card animate-fade-in-up p-5" style={{ animationDelay: '390ms' }}>
+   807→        <ScheduledMessagesCard
+   808→          open={scheduledOpen}
+   809→          onOpenChange={setScheduledOpen}
+   810→          count={scheduledCount}
+   811→          onCountChange={setScheduledCount}
+   812→        />
+   813→      </div> */}
+   814→
+   815→      {/* V5 — Account container: red-tinted bg, holds Block List + Logout */}
+   816→      <div
+   817→        className="animate-fade-in-up rounded-xl border border-red-500/20 bg-red-50/50 p-5 dark:bg-red-950/10"
+   818→        style={{ animationDelay: '420ms' }}
+   819→      >
+   820→        <div className="section-header mb-3 text-red-600 dark:text-red-400">
+   821→          <ShieldAlert className="h-4 w-4" /> Account
+   822→        </div>
+   823→        <button
+   824→          onClick={() => setBlockedOpen(true)}
+   825→          className="ghost-btn min-h-[44px] w-full justify-start !border-red-500/20 hover:!bg-red-500/10"
+   826→        >
+   827→          <Ban className="mr-2 h-4 w-4" /> Block List
+   828→          {blockedCount > 0 && (
+   829→            <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-bold text-white">
+   830→              {blockedCount}
+   831→            </span>
+   832→          )}
+   833→        </button>
+   834→        <Separator className="my-3 bg-red-500/10" />
+   835→        {/* V5 — Logout as text-only link style (low contrast to prevent accidental taps) */}
+   836→        <button
+   837→          onClick={() => {
+   838→            logout()
+   839→            toast({ title: 'Logged out' })
+   840→          }}
+   841→          className="mx-auto block min-h-[44px] w-full text-center text-xs font-medium text-muted-foreground/70 transition-colors hover:text-destructive"
+   842→        >
+   843→          Logout
+   844→        </button>
+   845→      </div>
+   846→      </section>
+   847→
+   848→      {/* R1-3 — About / Coming Soon section.
+   849→          New bottom-of-profile card with a 2-tab toggle (About | Coming
+   850→          Soon). About shows app info; Coming Soon lists the V2 features
+   851→          that have been parked for a later release. */}
+   852→      <AboutComingSoonSection />
+   853→
+   854→      {/* Edit profile dialog */}
+   855→      <EditProfileDialog
+   856→        open={editOpen}
+   857→        onClose={() => setEditOpen(false)}
+   858→        profile={profile}
+   859→        onSaved={() => {
+   860→          loadProfile()
+   861→        }}
+   862→      />
+   863→
+   864→      {/* Buy plan dialog */}
+   865→      <BuyPlanDialog
+   866→        open={!!buyPlan}
+   867→        plan={buyPlan}
+   868→        onClose={() => setBuyPlan(null)}
+   869→        onSubmitted={() => {
+   870→          setBuyPlan(null)
+   871→        }}
+   872→      />
+   873→
+   874→      {/* Settings dialog */}
+   875→      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+   876→
+   877→      {/* V7 — Create-highlight dialog (picks from archive of own stories) */}
+   878→      <CreateHighlightDialog
+   879→        open={createHighlightOpen}
+   880→        onClose={() => setCreateHighlightOpen(false)}
+   881→        onCreated={() => loadHighlights()}
+   882→      />
+   883→
+   884→      {/* V7 — Highlight viewer (StoryViewerDialog in highlight mode) */}
+   885→      <StoryViewerDialog
+   886→        open={!!activeHighlight}
+   887→        onClose={() => setActiveHighlight(null)}
+   888→        userId={user?.id || ''}
+   889→        allStories={[]}
+   890→        mode="highlight"
+   891→        highlightTitle={activeHighlight?.title}
+   892→        highlightCoverColor={activeHighlight?.coverColor}
+   893→        highlightStories={activeHighlight?.stories}
+   894→        onHighlightsChanged={loadHighlights}
+   895→      />
+   896→
+   897→      {/* Block list dialog */}
+   898→      <BlockListDialog
+   899→        open={blockedOpen}
+   900→        onOpenChange={setBlockedOpen}
+   901→        onUnblocked={() => loadBlockedCount()}
+   902→      />
+   903→
+   904→      {/* View Team sheet (full-screen on mobile, slides up from bottom) */}
+   905→      <ViewTeamSheet
+   906→        open={teamSheetOpen}
+   907→        onOpenChange={setTeamSheetOpen}
+   908→        referral={referral}
+   909→      />
+   910→
+   911→      {/* Ad Watch dialog (auto-closes after 5s) */}
+   912→      <AdWatchDialog
+   913→        ad={watchingAd}
+   914→        countdown={watchCountdown}
+   915→        onCountdownChange={setWatchCountdown}
+   916→        onClose={() => setWatchingAd(null)}
+   917→      />
+   918→    </div>
+   919→  )
+   920→}
+   921→
+   922→// ============================================================
+   923→// Premium section with offer countdown timer
+   924→// ============================================================
+   925→
+   926→function PremiumSection({
+   927→  premiumActive,
+   928→  premiumUntil,
+   929→  onChoosePlan,
+   930→}: {
+   931→  premiumActive: boolean
+   932→  premiumUntil: string | null
+   933→  onChoosePlan: (plan: { id: string; label: string; price: number; months: number }) => void
+   934→}) {
+   935→  const [offerMsLeft, setOfferMsLeft] = useState<number | null>(null)
+   936→  const [offerPrice, setOfferPrice] = useState(OFFER_PRICE)
+   937→  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+   938→
+   939→  useEffect(() => {
+   940→    const compute = () => {
+   941→      const now = Date.now()
+   942→      let start = Number(localStorage.getItem(OFFER_KEY) || 0)
+   943→      if (!start || now - start > OFFER_LOOP_MS) {
+   944→        // restart offer cycle
+   945→        start = now
+   946→        localStorage.setItem(OFFER_KEY, String(start))
+   947→      }
+   948→      const elapsed = now - start
+   949→      if (elapsed < OFFER_WINDOW_MS) {
+   950→        setOfferMsLeft(OFFER_WINDOW_MS - elapsed)
+   951→        setOfferPrice(OFFER_PRICE)
+   952→      } else {
+   953→        setOfferMsLeft(0)
+   954→        setOfferPrice(REGULAR_PRICE)
+   955→      }
+   956→    }
+   957→    compute()
+   958→    timerRef.current = setInterval(compute, 1000)
+   959→    return () => {
+   960→      if (timerRef.current) clearInterval(timerRef.current)
+   961→    }
+   962→  }, [])
+   963→
+   964→  if (premiumActive) {
+   965→    // V12 — Redesigned premium active card: gradient bg + crown watermark,
+   966→    // pulsing green dot, big "Premium Active" text, days remaining
+   967→    // countdown, Manage + View Benefits buttons, expiry as small subtext.
+   968→    const untilDate = premiumUntil ? new Date(premiumUntil) : null
+   969→    const daysRemaining = untilDate
+   970→      ? Math.max(
+   971→          0,
+   972→          Math.ceil((untilDate.getTime() - Date.now()) / (24 * 60 * 60 * 1000)),
+   973→        )
+   974→      : null
+   975→
+   976→    return (
+   977→      <div className="taly-card taly-card-hover animate-fade-in-up relative overflow-hidden border-amber-500/30 bg-gradient-to-br from-amber-50 to-yellow-50 p-5 dark:from-amber-950/20 dark:to-yellow-950/10">
+   978→        {/* V12 — Faint crown watermark in the background */}
+   979→        <Crown
+   980→          className="pointer-events-none absolute -right-3 -top-3 h-28 w-28 text-amber-500/10"
+   981→          aria-hidden
+   982→        />
+   983→
+   984→        <div className="relative flex items-start gap-3">
+   985→          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-amber-500 shadow-md shadow-amber-500/30">
+   986→            <Crown className="h-6 w-6 text-white" />
+   987→          </div>
+   988→          <div className="min-w-0 flex-1">
+   989→            {/* V12 — Big "Premium Active" text with pulsing green dot */}
+   990→            <p className="flex items-center gap-2 text-lg font-bold tracking-tight text-amber-900 dark:text-amber-200">
+   991→              <Crown className="h-4 w-4 text-amber-500" />
+   992→              Premium Active
+   993→              {/* Pulsing green dot — indicates active status */}
+   994→              <span className="relative inline-flex h-2.5 w-2.5" aria-label="active">
+   995→                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+   996→                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+   997→              </span>
+   998→            </p>
+   999→
+  1000→            {/* V12 — Days remaining countdown (big + amber) */}
+  1001→            {daysRemaining !== null ? (
+  1002→              <p className="mt-1 text-sm font-semibold text-amber-700 dark:text-amber-300">
+  1003→                {daysRemaining} {daysRemaining === 1 ? 'day' : 'days'} remaining
+  1004→              </p>
+  1005→            ) : (
+  1006→              <p className="mt-1 text-sm font-semibold text-amber-700 dark:text-amber-300">
+  1007→                Lifetime access
+  1008→              </p>
+  1009→            )}
+  1010→
+  1011→            {/* V12 — Expiry date as small subtext */}
+  1012→            {untilDate && (
+  1013→              <p className="mt-0.5 text-xs text-amber-700/70 dark:text-amber-300/60">
+  1014→                Expires on {format(untilDate, 'dd MMM yyyy')}
+  1015→              </p>
+  1016→            )}
+  1017→          </div>
+  1018→        </div>
+  1019→
+  1020→        {/* V12 — Action buttons: Manage Subscription (ghost) + View Benefits (secondary) */}
+  1021→        <div className="relative mt-4 flex flex-wrap items-center gap-2">
+  1022→          <button
+  1023→            type="button"
+  1024→            onClick={() => onChoosePlan({ id: 'manage', label: 'Manage', price: 0, months: 0 })}
+  1025→            className="ghost-btn min-h-[40px] !border-amber-500/30 !text-amber-700 dark:!text-amber-300 hover:!bg-amber-500/10"
+  1026→          >
+  1027→            Manage Subscription
+  1028→          </button>
+  1029→          <button
+  1030→            type="button"
+  1031→            onClick={() => onChoosePlan({ id: 'benefits', label: 'Benefits', price: 0, months: 0 })}
+  1032→            className="ghost-btn min-h-[40px]"
+  1033→          >
+  1034→            View Benefits
+  1035→          </button>
+  1036→        </div>
+  1037→      </div>
+  1038→    )
+  1039→  }
+  1040→
+  1041→  const plans = [
+  1042→    { id: '2mo', label: '2 Months', price: 49, months: 2, best: false },
+  1043→    { id: '6mo', label: '6 Months', price: 99, months: 6, best: false },
+  1044→    { id: '1yr', label: '1 Year', price: offerPrice, months: 12, best: true },
+  1045→  ]
+  1046→
+  1047→  return (
+  1048→    <div className="taly-card animate-fade-in-up p-5">
+  1049→      <div className="mb-3 flex items-center justify-between gap-2">
+  1050→        <div className="section-header">
+  1051→          <Sparkles className="h-4 w-4 text-primary" /> Upgrade to Premium
+  1052→        </div>
+  1053→        {offerMsLeft && offerMsLeft > 0 && (
+  1054→          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
+  1055→            <Clock className="h-3 w-3" />
+  1056→            {formatCountdown(offerMsLeft)}
+  1057→          </span>
+  1058→        )}
+  1059→      </div>
+  1060→      {offerMsLeft && offerMsLeft > 0 ? (
+  1061→        <p className="mb-3 text-xs text-primary">
+  1062→          Limited-time offer! 1-year plan for ₹{OFFER_PRICE} (was ₹{REGULAR_PRICE})
+  1063→        </p>
+  1064→      ) : (
+  1065→        <p className="mb-3 text-xs text-muted-foreground/80">
+  1066→          Offer ended — 1-year plan is back to ₹{REGULAR_PRICE}
+  1067→        </p>
+  1068→      )}
+  1069→      <div className="grid gap-3 sm:grid-cols-3 sm:items-center">
+  1070→        {plans.map((p) => {
+  1071→          // V8 — Best Value elevation: scale-105, emerald bg tint, larger
+  1072→          // BEST VALUE badge with crown icon, larger pulsing Choose button.
+  1073→          // Other plans: slightly smaller, more muted, ghost button.
+  1074→          const isBest = p.best
+  1075→          return (
+  1076→            <div
+  1077→              key={p.id}
+  1078→              className={`taly-card relative flex flex-col gap-1 overflow-hidden p-4 transition-all ${
+  1079→                isBest
+  1080→                  ? 'taly-card-hover scale-105 border-2 border-emerald-500/50 bg-emerald-50/70 shadow-xl shadow-emerald-500/20 dark:bg-emerald-950/30'
+  1081→                  : 'taly-card-hover opacity-95 scale-[0.98] border-border bg-card'
+  1082→              }`}
+  1083→            >
+  1084→              {/* Best value ribbon + shimmer overlay (larger + crown icon) */}
+  1085→              {isBest && (
+  1086→                <>
+  1087→                  <div className="premium-shimmer pointer-events-none absolute inset-0 opacity-60" />
+  1088→                  <span className="absolute right-0 top-0 inline-flex items-center gap-1 rounded-bl-xl bg-gradient-to-r from-amber-400 to-amber-500 px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white shadow-md">
+  1089→                    <Crown className="h-3.5 w-3.5" /> Best Value
+  1090→                  </span>
+  1091→                </>
+  1092→              )}
+  1093→              <p
+  1094→                className={`text-xs font-medium ${
+  1095→                  isBest ? 'text-emerald-700 dark:text-emerald-300' : 'text-muted-foreground/70'
+  1096→                }`}
+  1097→              >
+  1098→                {p.label}
+  1099→              </p>
+  1100→              <p
+  1101→                className={`text-2xl font-bold ${
+  1102→                  isBest ? 'text-emerald-600 dark:text-emerald-400' : 'text-primary'
+  1103→                }`}
+  1104→              >
+  1105→                ₹{p.price}
+  1106→              </p>
+  1107→              <p className="text-[10px] text-muted-foreground/80">
+  1108→                ₹{Math.round((p.price / p.months) * 100) / 100}/mo
+  1109→              </p>
+  1110→              <button
+  1111→                onClick={() => onChoosePlan(p)}
+  1112→                className={`mt-2 text-sm font-semibold ${
+  1113→                  isBest
+  1114→                    ? 'action-btn relative min-h-[48px] overflow-hidden animate-pulse text-base'
+  1115→                    : 'ghost-btn min-h-[40px] opacity-90'
+  1116→                }`}
+  1117→                style={isBest ? { animationDuration: '2s' } : undefined}
+  1118→              >
+  1119→                {isBest && (
+  1120→                  <span className="premium-shimmer pointer-events-none absolute inset-0 opacity-40" />
+  1121→                )}
+  1122→                <span className="relative flex items-center gap-1">
+  1123→                  {isBest && <Crown className="h-4 w-4" />} Choose
+  1124→                </span>
+  1125→              </button>
+  1126→            </div>
+  1127→          )
+  1128→        })}
+  1129→      </div>
+  1130→    </div>
+  1131→  )
+  1132→}
+  1133→
+  1134→function formatCountdown(ms: number): string {
+  1135→  const totalSec = Math.max(0, Math.floor(ms / 1000))
+  1136→  const m = Math.floor(totalSec / 60)
+  1137→  const s = totalSec % 60
+  1138→  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  1139→}
+  1140→
+  1141→// ============================================================
+  1142→// Edit profile dialog
+  1143→// ============================================================
+  1144→
+  1145→function EditProfileDialog({
+  1146→  open,
+  1147→  onClose,
+  1148→  profile,
+  1149→  onSaved,
+  1150→}: {
+  1151→  open: boolean
+  1152→  onClose: () => void
+  1153→  profile: any
+  1154→  onSaved: () => void
+  1155→}) {
+  1156→  const { toast } = useToast()
+  1157→  const [name, setName] = useState('')
+  1158→  const [username, setUsername] = useState('')
+  1159→  const [bio, setBio] = useState('')
+  1160→  const [gender, setGender] = useState<string>('other')
+  1161→  const [dob, setDob] = useState<Date | undefined>(undefined)
+  1162→  const [avatar, setAvatar] = useState<string | null>(null)
+  1163→  const [saving, setSaving] = useState(false)
+  1164→  const [uploading, setUploading] = useState(false)
+  1165→
+  1166→  useEffect(() => {
+  1167→    if (open && profile) {
+  1168→      setName(profile.name || '')
+  1169→      setUsername(profile.username || '')
+  1170→      setBio(profile.bio || '')
+  1171→      setGender(profile.gender || 'other')
+  1172→      setDob(profile.dob ? new Date(profile.dob) : undefined)
+  1173→      setAvatar(profile.avatar || null)
+  1174→    }
+  1175→  }, [open, profile])
+  1176→
+  1177→  const handleAvatar = async (file: File) => {
+  1178→    setUploading(true)
+  1179→    try {
+  1180→      const res: any = await apiUpload('/api/upload', file)
+  1181→      setAvatar(res?.url || null)
+  1182→      toast({ title: 'Avatar uploaded' })
+  1183→    } catch (e: any) {
+  1184→      toast({ title: e.message, variant: 'destructive' })
+  1185→    } finally {
+  1186→      setUploading(false)
+  1187→    }
+  1188→  }
+  1189→
+  1190→  const handleSave = async () => {
+  1191→    if (!name.trim()) {
+  1192→      toast({ title: 'Name is required', variant: 'destructive' })
+  1193→      return
+  1194→    }
+  1195→    if (!username.trim()) {
+  1196→      toast({ title: 'Username is required', variant: 'destructive' })
+  1197→      return
+  1198→    }
+  1199→    setSaving(true)
+  1200→    try {
+  1201→      const body: any = {
+  1202→        name: name.trim(),
+  1203→        username: username.trim(),
+  1204→        bio: bio,
+  1205→        gender,
+  1206→        avatar: avatar || '',
+  1207→        dob: dob ? format(dob, 'yyyy-MM-dd') : '',
+  1208→      }
+  1209→      const res: any = await apiFetch('/api/users/me', {
+  1210→        method: 'PATCH',
+  1211→        body: JSON.stringify(body),
+  1212→      })
+  1213→      toast({ title: 'Profile updated!' })
+  1214→      onSaved()
+  1215→      onClose()
+  1216→      void res
+  1217→    } catch (e: any) {
+  1218→      toast({ title: e.message, variant: 'destructive' })
+  1219→    } finally {
+  1220→      setSaving(false)
+  1221→    }
+  1222→  }
+  1223→
+  1224→  return (
+  1225→    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+  1226→      <DialogContent className="sm:max-w-md">
+  1227→        <DialogHeader>
+  1228→          <DialogTitle>Edit Profile</DialogTitle>
+  1229→          <DialogDescription>Update your profile information</DialogDescription>
+  1230→        </DialogHeader>
+  1231→        <ScrollArea className="max-h-[70dvh]">
+  1232→          <div className="space-y-4 pr-2">
+  1233→            {/* Avatar */}
+  1234→            <div className="flex items-center gap-4">
+  1235→              <Avatar className="h-16 w-16 border-2 border-primary/30">
+  1236→                <AvatarImage src={avatar || undefined} />
+  1237→                <AvatarFallback className="bg-primary text-primary-foreground">
+  1238→                  {name?.[0]?.toUpperCase() || 'U'}
+  1239→                </AvatarFallback>
+  1240→              </Avatar>
+  1241→              <div className="flex-1">
+  1242→                <Label
+  1243→                  htmlFor="avatar-upload"
+  1244→                  className="inline-flex min-h-[40px] cursor-pointer items-center gap-2 rounded-md border bg-background px-3 text-sm shadow-xs hover:bg-accent"
+  1245→                >
+  1246→                  {uploading ? (
+  1247→                    <Loader2 className="h-4 w-4 animate-spin" />
+  1248→                  ) : (
+  1249→                    <Upload className="h-4 w-4" />
+  1250→                  )}
+  1251→                  Upload avatar
+  1252→                </Label>
+  1253→                <input
+  1254→                  id="avatar-upload"
+  1255→                  type="file"
+  1256→                  accept="image/*"
+  1257→                  className="hidden"
+  1258→                  onChange={(e) => {
+  1259→                    const f = e.target.files?.[0]
+  1260→                    if (f) handleAvatar(f)
+  1261→                    e.target.value = ''
+  1262→                  }}
+  1263→                  disabled={uploading}
+  1264→                />
+  1265→                <p className="mt-1 text-xs text-muted-foreground">
+  1266→                  JPG/PNG, max 5MB
+  1267→                </p>
+  1268→              </div>
+  1269→            </div>
+  1270→
+  1271→            <div>
+  1272→              <Label htmlFor="ep-name">Name</Label>
+  1273→              <Input
+  1274→                id="ep-name"
+  1275→                value={name}
+  1276→                onChange={(e) => setName(e.target.value)}
+  1277→                className="mt-1 min-h-[44px]"
+  1278→                maxLength={50}
+  1279→              />
+  1280→            </div>
+  1281→            <div>
+  1282→              <Label htmlFor="ep-username">Username</Label>
+  1283→              <Input
+  1284→                id="ep-username"
+  1285→                value={username}
+  1286→                onChange={(e) => setUsername(e.target.value)}
+  1287→                className="mt-1 min-h-[44px]"
+  1288→                maxLength={20}
+  1289→              />
+  1290→            </div>
+  1291→            <div>
+  1292→              <Label htmlFor="ep-bio">Bio</Label>
+  1293→              <Textarea
+  1294→                id="ep-bio"
+  1295→                value={bio}
+  1296→                onChange={(e) => setBio(e.target.value)}
+  1297→                className="mt-1"
+  1298→                maxLength={200}
+  1299→                rows={3}
+  1300→              />
+  1301→              <p className="mt-1 text-right text-xs text-muted-foreground">
+  1302→                {bio.length}/200
+  1303→              </p>
+  1304→            </div>
+  1305→            <div>
+  1306→              <Label htmlFor="ep-gender">Gender</Label>
+  1307→              <Select value={gender} onValueChange={setGender}>
+  1308→                <SelectTrigger id="ep-gender" className="mt-1 min-h-[44px] w-full">
+  1309→                  <SelectValue placeholder="Select gender" />
+  1310→                </SelectTrigger>
+  1311→                <SelectContent>
+  1312→                  <SelectItem value="male">Male</SelectItem>
+  1313→                  <SelectItem value="female">Female</SelectItem>
+  1314→                  <SelectItem value="other">Other</SelectItem>
+  1315→                </SelectContent>
+  1316→              </Select>
+  1317→            </div>
+  1318→            <div>
+  1319→              <Label>Date of Birth</Label>
+  1320→              <Popover>
+  1321→                <PopoverTrigger asChild>
+  1322→                  <Button
+  1323→                    variant="outline"
+  1324→                    className="mt-1 min-h-[44px] w-full justify-start text-left font-normal"
+  1325→                  >
+  1326→                    <CalendarDays className="mr-2 h-4 w-4" />
+  1327→                    {dob ? format(dob, 'dd MMM yyyy') : 'Pick a date'}
+  1328→                  </Button>
+  1329→                </PopoverTrigger>
+  1330→                <PopoverContent className="w-auto p-0" align="start">
+  1331→                  <Calendar
+  1332→                    mode="single"
+  1333→                    selected={dob}
+  1334→                    onSelect={setDob}
+  1335→                    disabled={(d) => d > new Date() || d < new Date('1900-01-01')}
+  1336→                    initialFocus
+  1337→                  />
+  1338→                </PopoverContent>
+  1339→              </Popover>
+  1340→            </div>
+  1341→          </div>
+  1342→        </ScrollArea>
+  1343→        <DialogFooter>
+  1344→          <Button variant="outline" onClick={onClose} disabled={saving} className="min-h-[44px]">
+  1345→            Cancel
+  1346→          </Button>
+  1347→          <Button
+  1348→            onClick={handleSave}
+  1349→            disabled={saving || uploading}
+  1350→            className="btn-brand min-h-[44px]"
+  1351→          >
+  1352→            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save changes'}
+  1353→          </Button>
+  1354→        </DialogFooter>
+  1355→      </DialogContent>
+  1356→    </Dialog>
+  1357→  )
+  1358→}
+  1359→
+  1360→// ============================================================
+  1361→// Buy plan dialog (QR + UPI + payment proof)
+  1362→// ============================================================
+  1363→
+  1364→function BuyPlanDialog({
+  1365→  open,
+  1366→  plan,
+  1367→  onClose,
+  1368→  onSubmitted,
+  1369→}: {
+  1370→  open: boolean
+  1371→  plan: null | { id: string; label: string; price: number; months: number }
+  1372→  onClose: () => void
+  1373→  onSubmitted: () => void
+  1374→}) {
+  1375→  const { toast } = useToast()
+  1376→  const [txnId, setTxnId] = useState('')
+  1377→  const [utr, setUtr] = useState('')
+  1378→  const [screenshot, setScreenshot] = useState<string | null>(null)
+  1379→  const [notes, setNotes] = useState('')
+  1380→  const [submitting, setSubmitting] = useState(false)
+  1381→  const [uploading, setUploading] = useState(false)
+  1382→
+  1383→  useEffect(() => {
+  1384→    if (open) {
+  1385→      setTxnId('')
+  1386→      setUtr('')
+  1387→      setScreenshot(null)
+  1388→      setNotes('')
+  1389→    }
+  1390→  }, [open])
+  1391→
+  1392→  const copyUpi = async () => {
+  1393→    try {
+  1394→      await navigator.clipboard.writeText(UPI_ID)
+  1395→      toast({ title: 'UPI ID copied' })
+  1396→    } catch {
+  1397→      toast({ title: 'Copy failed', variant: 'destructive' })
+  1398→    }
+  1399→  }
+  1400→
+  1401→  const handleScreenshot = async (file: File) => {
+  1402→    setUploading(true)
+  1403→    try {
+  1404→      const res: any = await apiUpload('/api/upload', file)
+  1405→      setScreenshot(res?.url || null)
+  1406→      toast({ title: 'Screenshot uploaded' })
+  1407→    } catch (e: any) {
+  1408→      toast({ title: e.message, variant: 'destructive' })
+  1409→    } finally {
+  1410→      setUploading(false)
+  1411→    }
+  1412→  }
+  1413→
+  1414→  const handleSubmit = async () => {
+  1415→    if (!plan) return
+  1416→    if (!txnId.trim()) {
+  1417→      toast({ title: 'Transaction ID is required', variant: 'destructive' })
+  1418→      return
+  1419→    }
+  1420→    setSubmitting(true)
+  1421→    try {
+  1422→      await apiFetch('/api/payment/submit', {
+  1423→        method: 'POST',
+  1424→        body: JSON.stringify({
+  1425→          plan: plan.id,
+  1426→          amount: plan.price,
+  1427→          transactionId: txnId.trim(),
+  1428→          utrNumber: utr.trim() || undefined,
+  1429→          screenshotUrl: screenshot || undefined,
+  1430→          notes: notes.trim() || undefined,
+  1431→        }),
+  1432→      })
+  1433→      toast({
+  1434→        title: 'Payment submitted for verification',
+  1435→        description: 'Admin will approve within 24h. Thanks!',
+  1436→      })
+  1437→      onSubmitted()
+  1438→    } catch (e: any) {
+  1439→      const err = e as ApiError
+  1440→      toast({ title: err.message, variant: 'destructive' })
+  1441→    } finally {
+  1442→      setSubmitting(false)
+  1443→    }
+  1444→  }
+  1445→
+  1446→  return (
+  1447→    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+  1448→      <DialogContent className="sm:max-w-md">
+  1449→        <DialogHeader>
+  1450→          <DialogTitle>
+  1451→            Buy Premium — {plan?.label} (₹{plan?.price})
+  1452→          </DialogTitle>
+  1453→          <DialogDescription>
+  1454→            Scan the QR or pay to the UPI ID below, then submit your payment details.
+  1455→          </DialogDescription>
+  1456→        </DialogHeader>
+  1457→        <ScrollArea className="max-h-[70dvh]">
+  1458→          <div className="space-y-4 pr-2">
+  1459→            <div className="flex flex-col items-center gap-2 rounded-lg border bg-muted/30 p-3">
+  1460→              <img
+  1461→                src={QR_SRC}
+  1462→                alt="UPI QR Code"
+  1463→                className="h-44 w-44 rounded-lg border bg-white p-2"
+  1464→              />
+  1465→              <div className="flex w-full items-center gap-2">
+  1466→                <code className="flex-1 truncate rounded-md border bg-background px-3 py-2 text-sm font-mono">
+  1467→                  {UPI_ID}
+  1468→                </code>
+  1469→                <Button
+  1470→                  size="sm"
+  1471→                  variant="outline"
+  1472→                  onClick={copyUpi}
+  1473→                  className="min-h-[40px]"
+  1474→                >
+  1475→                  <Copy className="h-4 w-4" /> Copy
+  1476→                </Button>
+  1477→              </div>
+  1478→              <p className="text-xs text-muted-foreground">
+  1479→                Payee: TalyChat · Amount: ₹{plan?.price}
+  1480→              </p>
+  1481→            </div>
+  1482→
+  1483→            <div>
+  1484→              <Label htmlFor="bp-txn">Transaction ID *</Label>
+  1485→              <Input
+  1486→                id="bp-txn"
+  1487→                value={txnId}
+  1488→                onChange={(e) => setTxnId(e.target.value)}
+  1489→                className="mt-1 min-h-[44px]"
+  1490→                placeholder="UPI ref / bank txn id"
+  1491→              />
+  1492→            </div>
+  1493→            <div>
+  1494→              <Label htmlFor="bp-utr">UTR Number (optional)</Label>
+  1495→              <Input
+  1496→                id="bp-utr"
+  1497→                value={utr}
+  1498→                onChange={(e) => setUtr(e.target.value)}
+  1499→                className="mt-1 min-h-[44px]"
+  1500→                placeholder="12-digit UTR (bank transfers)"
+  1501→              />
+  1502→            </div>
+  1503→            <div>
+  1504→              <Label>Payment Screenshot</Label>
+  1505→              <Label
+  1506→                htmlFor="bp-shot"
+  1507→                className="mt-1 inline-flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-2 rounded-md border bg-background px-3 text-sm shadow-xs hover:bg-accent"
+  1508→              >
+  1509→                {uploading ? (
+  1510→                  <Loader2 className="h-4 w-4 animate-spin" />
+  1511→                ) : screenshot ? (
+  1512→                  <>
+  1513→                    <CheckCircle2 className="h-4 w-4 text-primary" /> Screenshot attached
+  1514→                  </>
+  1515→                ) : (
+  1516→                  <>
+  1517→                    <Upload className="h-4 w-4" /> Upload screenshot
+  1518→                  </>
+  1519→                )}
+  1520→              </Label>
+  1521→              <input
+  1522→                id="bp-shot"
+  1523→                type="file"
+  1524→                accept="image/*"
+  1525→                className="hidden"
+  1526→                onChange={(e) => {
+  1527→                  const f = e.target.files?.[0]
+  1528→                  if (f) handleScreenshot(f)
+  1529→                  e.target.value = ''
+  1530→                }}
+  1531→                disabled={uploading}
+  1532→              />
+  1533→              {screenshot && (
+  1534→                <img
+  1535→                  src={screenshot}
+  1536→                  alt="Payment screenshot"
+  1537→                  className="mt-2 max-h-32 rounded-md border"
+  1538→                />
+  1539→              )}
+  1540→            </div>
+  1541→            <div>
+  1542→              <Label htmlFor="bp-notes">Notes (optional)</Label>
+  1543→              <Textarea
+  1544→                id="bp-notes"
+  1545→                value={notes}
+  1546→                onChange={(e) => setNotes(e.target.value)}
+  1547→                className="mt-1"
+  1548→                rows={2}
+  1549→                placeholder="Anything we should know?"
+  1550→              />
+  1551→            </div>
+  1552→          </div>
+  1553→        </ScrollArea>
+  1554→        <DialogFooter>
+  1555→          <Button variant="outline" onClick={onClose} disabled={submitting} className="min-h-[44px]">
+  1556→            Cancel
+  1557→          </Button>
+  1558→          <Button
+  1559→            onClick={handleSubmit}
+  1560→            disabled={submitting || uploading}
+  1561→            className="btn-brand min-h-[44px]"
+  1562→          >
+  1563→            {submitting ? (
+  1564→              <Loader2 className="h-4 w-4 animate-spin" />
+  1565→            ) : (
+  1566→              'Submit for verification'
+  1567→            )}
+  1568→          </Button>
+  1569→        </DialogFooter>
+  1570→      </DialogContent>
+  1571→    </Dialog>
+  1572→  )
+  1573→}
+  1574→
+  1575→// ============================================================
+  1576→// Block list dialog — shows blocked users with Unblock buttons
+  1577→// ============================================================
+  1578→
+  1579→interface BlockedUser {
+  1580→  id: string
+  1581→  name?: string
+  1582→  username?: string
+  1583→  avatar?: string | null
+  1584→  isOnline?: boolean
+  1585→  isPremium?: boolean
+  1586→  blockedAt?: string
+  1587→}
+  1588→
+  1589→function BlockListDialog({
+  1590→  open,
+  1591→  onOpenChange,
+  1592→  onUnblocked,
+  1593→}: {
+  1594→  open: boolean
+  1595→  onOpenChange: (open: boolean) => void
+  1596→  onUnblocked?: () => void
+  1597→}) {
+  1598→  const { toast } = useToast()
+  1599→  const [loading, setLoading] = useState(false)
+  1600→  const [blocked, setBlocked] = useState<BlockedUser[]>([])
+  1601→  const [unblocking, setUnblocking] = useState<string | null>(null)
+  1602→
+  1603→  const loadBlocked = useCallback(async () => {
+  1604→    setLoading(true)
+  1605→    try {
+  1606→      const res: any = await apiFetch('/api/blocks')
+  1607→      const list: BlockedUser[] = Array.isArray(res)
+  1608→        ? res
+  1609→        : Array.isArray(res?.blocks)
+  1610→          ? res.blocks
+  1611→          : Array.isArray(res?.items)
+  1612→            ? res.items
+  1613→            : []
+  1614→      setBlocked(list)
+  1615→    } catch {
+  1616→      setBlocked([])
+  1617→    } finally {
+  1618→      setLoading(false)
+  1619→    }
+  1620→  }, [])
+  1621→
+  1622→  useEffect(() => {
+  1623→    if (open) loadBlocked()
+  1624→  }, [open, loadBlocked])
+  1625→
+  1626→  const handleUnblock = async (u: BlockedUser) => {
+  1627→    setUnblocking(u.id)
+  1628→    try {
+  1629→      await apiFetch('/api/blocks', {
+  1630→        method: 'DELETE',
+  1631→        body: JSON.stringify({ blockedId: u.id }),
+  1632→      })
+  1633→      setBlocked((prev) => prev.filter((b) => b.id !== u.id))
+  1634→      toast({ title: `Unblocked ${u.name || u.username || 'user'}` })
+  1635→      onUnblocked?.()
+  1636→    } catch (e: any) {
+  1637→      toast({ title: e?.message || 'Failed to unblock', variant: 'destructive' })
+  1638→    } finally {
+  1639→      setUnblocking(null)
+  1640→    }
+  1641→  }
+  1642→
+  1643→  return (
+  1644→    <Dialog open={open} onOpenChange={onOpenChange}>
+  1645→      <DialogContent className="sm:max-w-md">
+  1646→        <DialogHeader>
+  1647→          <DialogTitle>Block List</DialogTitle>
+  1648→          <DialogDescription>
+  1649→            Users you&apos;ve blocked can&apos;t message you, find you in search,
+  1650→            or see your profile.
+  1651→          </DialogDescription>
+  1652→        </DialogHeader>
+  1653→
+  1654→        {loading ? (
+  1655→          <div className="flex items-center justify-center py-8 text-muted-foreground/80">
+  1656→            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading…
+  1657→          </div>
+  1658→        ) : blocked.length === 0 ? (
+  1659→          <div className="rounded-md border border-dashed bg-muted/10 p-6 text-center text-sm text-muted-foreground/80">
+  1660→            You haven&apos;t blocked anyone.
+  1661→          </div>
+  1662→        ) : (
+  1663→          <ScrollArea className="max-h-[60dvh]">
+  1664→            <ul className="space-y-2 pr-2">
+  1665→              {blocked.map((u) => (
+  1666→                <li
+  1667→                  key={u.id}
+  1668→                  className="chat-list-item border border-border bg-card"
+  1669→                >
+  1670→                  <Avatar className="h-10 w-10">
+  1671→                    {u.avatar && <AvatarImage src={u.avatar} alt={u.name || u.username || ''} />}
+  1672→                    <AvatarFallback className="bg-primary/15 text-sm font-semibold text-primary">
+  1673→                      {(u.name || u.username || 'U').charAt(0).toUpperCase()}
+  1674→                    </AvatarFallback>
+  1675→                  </Avatar>
+  1676→                  <div className="min-w-0 flex-1">
+  1677→                    <p className="truncate text-sm font-medium">
+  1678→                      {u.name || u.username || 'User'}
+  1679→                    </p>
+  1680→                    <p className="truncate text-xs text-muted-foreground/80">
+  1681→                      @{u.username || 'user'}
+  1682→                    </p>
+  1683→                  </div>
+  1684→                  <button
+  1685→                    onClick={() => handleUnblock(u)}
+  1686→                    disabled={unblocking === u.id}
+  1687→                    className="ghost-btn min-h-[36px] px-3 disabled:opacity-60"
+  1688→                  >
+  1689→                    {unblocking === u.id ? (
+  1690→                      <Loader2 className="h-4 w-4 animate-spin" />
+  1691→                    ) : (
+  1692→                      'Unblock'
+  1693→                    )}
+  1694→                  </button>
+  1695→                </li>
+  1696→              ))}
+  1697→            </ul>
+  1698→          </ScrollArea>
+  1699→        )}
+  1700→      </DialogContent>
+  1701→    </Dialog>
+  1702→  )
+  1703→}
+  1704→
+  1705→// ============================================================
+  1706→// V2: Behavior Bar — gradient red→orange→green based on score %
+  1707→// ============================================================
+  1708→
+  1709→function BehaviorBar({ behavior }: { behavior: BehaviorData | null }) {
+  1710→  // Defensive: if behavior not yet loaded, render an optimistic default.
+  1711→  const score = behavior?.score ?? 100
+  1712→  const adsWatchedToday = behavior?.adsWatchedToday ?? 0
+  1713→  const maxAdsPerDay = behavior?.maxAdsPerDay ?? 10
+  1714→  const canMessage = behavior?.canMessage ?? true
+  1715→
+  1716→  // V8 — semantic thresholds: green≥80, amber≥50, red<50
+  1717→  const colorClass =
+  1718→    score >= 80
+  1719→      ? 'text-emerald-600 dark:text-emerald-400'
+  1720→      : score >= 50
+  1721→        ? 'text-amber-600 dark:text-amber-400'
+  1722→        : 'text-red-600 dark:text-red-400'
+  1723→  // V8 — clearer status labels (Excellent / Good / Needs improvement)
+  1724→  const statusLabel =
+  1725→    score >= 80 ? 'Excellent' : score >= 50 ? 'Good' : 'Needs improvement'
+  1726→  // V8 — status badge color matches score color
+  1727→  const statusBadgeClass =
+  1728→    score >= 80
+  1729→      ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:text-emerald-400'
+  1730→      : score >= 50
+  1731→        ? 'bg-amber-500/10 text-amber-600 border-amber-500/30 dark:text-amber-400'
+  1732→        : 'bg-red-500/10 text-red-600 border-red-500/30 dark:text-red-400'
+  1733→
+  1734→  // V8 — calculate ads-to-next-level for the tooltip. Each ad = +1 score
+  1735→  // point (clamped at 100). Thresholds: 50 (Good), 80 (Excellent).
+  1736→  const nextThreshold = score < 50 ? 50 : score < 80 ? 80 : 100
+  1737→  const nextLabel = score < 50 ? "'Good'" : score < 80 ? "'Excellent'" : '100%'
+  1738→  const adsToNext = Math.max(0, nextThreshold - score)
+  1739→
+  1740→  // V8 — segmented bar: 5 blocks (20% each). The block at the user's CURRENT
+  1741→  // score segment pulses to indicate active progress.
+  1742→  const blocks = [
+  1743→    { color: 'bg-red-500', filled: score >= 20, threshold: 20 },
+  1744→    { color: 'bg-orange-500', filled: score >= 40, threshold: 40 },
+  1745→    { color: 'bg-amber-400', filled: score >= 60, threshold: 60 },
+  1746→    { color: 'bg-lime-400', filled: score >= 80, threshold: 80 },
+  1747→    { color: 'bg-emerald-500', filled: score >= 100, threshold: 100 },
+  1748→  ]
+  1749→  // The "current" block is the segment whose threshold range contains the
+  1750→  // user's current score (e.g. score 70 → block 3 [60, 80); score 100 → block 4).
+  1751→  // It pulses to highlight where the user is on the ladder right now.
+  1752→  const currentIdx = Math.min(4, Math.max(0, Math.floor(score / 20)))
+  1753→
+  1754→  return (
+  1755→    <div className="taly-card animate-fade-in-up p-5">
+  1756→      <div className="mb-3 flex items-center justify-between">
+  1757→        <div className="section-header">
+  1758→          <Target className="h-4 w-4 text-primary" /> Behavior
+  1759→        </div>
+  1760→        <div className="flex items-center gap-2">
+  1761→          {/* V8 — status label badge */}
+  1762→          <span
+  1763→            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${statusBadgeClass}`}
+  1764→            title={`Status: ${statusLabel}`}
+  1765→          >
+  1766→            <TrendingUp className="h-3 w-3" />
+  1767→            {statusLabel}
+  1768→          </span>
+  1769→          <Badge
+  1770→            variant={canMessage ? 'default' : 'destructive'}
+  1771→            className={`${
+  1772→              canMessage
+  1773→                ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+  1774→                : 'bg-red-500/10 text-red-600 border-red-500/30'
+  1775→            } border`}
+  1776→          >
+  1777→            {canMessage ? 'Can message' : 'Blocked'}
+  1778→          </Badge>
+  1779→        </div>
+  1780→      </div>
+  1781→
+  1782→      {/* Big score number + descriptive label + ads watched */}
+  1783→      <div className="mb-2 flex items-end justify-between gap-3">
+  1784→        <div className="flex items-baseline gap-2">
+  1785→          <span className={`text-2xl font-bold tabular-nums ${colorClass}`}>{score}%</span>
+  1786→          <span className={`text-xs font-semibold uppercase tracking-wide ${colorClass}`}>
+  1787→            {statusLabel}
+  1788→          </span>
+  1789→        </div>
+  1790→        <span className="text-xs text-muted-foreground/80">
+  1791→          Ads watched today: {adsWatchedToday}/{maxAdsPerDay}
+  1792→        </span>
+  1793→      </div>
+  1794→
+  1795→      {/* V8 — gamified behavior bar: 5 segmented blocks (20% each) with
+  1796→          red → orange → amber → light-green → green color ramp.
+  1797→          Filled blocks are tinted, empty blocks are muted. The block at
+  1798→          the user's CURRENT progress position pulses to indicate where
+  1799→          they are on the ladder. Trophy icon marks the 100% goal.
+  1800→          A tooltip on hover tells them how many ads they need to watch
+  1801→          to reach the next level. */}
+  1802→      <div className="group relative mt-2">
+  1803→        <div className="behavior-bar flex gap-1 px-0" style={{ height: '14px' }}>
+  1804→          {blocks.map((block, i) => {
+  1805→            const isCurrent = i === currentIdx
+  1806→            return (
+  1807→              <div
+  1808→                key={i}
+  1809→                className={`flex-1 rounded-full transition-colors duration-500 ${
+  1810→                  block.filled ? block.color : 'bg-muted-foreground/15'
+  1811→                } ${isCurrent ? 'animate-pulse' : ''}`}
+  1812→              />
+  1813→            )
+  1814→          })}
+  1815→        </div>
+  1816→        {/* V8 — tooltip overlay on hover */}
+  1817→        <div
+  1818→          className="pointer-events-none absolute left-1/2 top-full z-20 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-foreground px-2.5 py-1 text-[11px] font-medium text-background opacity-0 shadow-md transition-opacity duration-150 group-hover:block group-hover:opacity-100"
+  1819→          role="tooltip"
+  1820→        >
+  1821→          {score >= 100
+  1822→            ? 'Perfect score! 🎉'
+  1823→            : `Watch ${adsToNext} more ad${adsToNext === 1 ? '' : 's'} to reach ${nextLabel} status`}
+  1824→        </div>
+  1825→        {/* Trophy marker at the 100% position */}
+  1826→        <span
+  1827→          className={`absolute -top-1 right-0 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full ring-2 ring-card transition-all ${
+  1828→            score >= 100
+  1829→              ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/40'
+  1830→              : 'bg-muted text-muted-foreground'
+  1831→          }`}
+  1832→          title={score >= 100 ? 'Perfect score!' : 'Reach 100 to unlock the trophy'}
+  1833→        >
+  1834→          <Trophy className="h-3 w-3" />
+  1835→        </span>
+  1836→      </div>
+  1837→
+  1838→      {/* Warning if score < 50 */}
+  1839→      {score < 50 && (
+  1840→        <p className="mt-2 flex items-start gap-1.5 text-xs font-medium text-red-600">
+  1841→          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+  1842→          <span>
+  1843→            Your behavior is too low to send messages. Watch ads to increase.
+  1844→          </span>
+  1845→        </p>
+  1846→      )}
+  1847→    </div>
+  1848→  )
+  1849→}
+  1850→
+  1851→// ============================================================
+  1852→// V2: Watch Behavior card — watch ads to increase score (max 10/day)
+  1853→// ============================================================
+  1854→
+  1855→function WatchBehaviorCard({
+  1856→  behavior,
+  1857→  watching,
+  1858→  onWatchAd,
+  1859→}: {
+  1860→  behavior: BehaviorData | null
+  1861→  watching: boolean
+  1862→  onWatchAd: () => void
+  1863→}) {
+  1864→  const adsWatchedToday = behavior?.adsWatchedToday ?? 0
+  1865→  const maxAdsPerDay = behavior?.maxAdsPerDay ?? 10
+  1866→  const reachedMax = adsWatchedToday >= maxAdsPerDay
+  1867→
+  1868→  return (
+  1869→    <div className="taly-card animate-fade-in-up p-5">
+  1870→      <div className="flex items-start gap-3">
+  1871→        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+  1872→          <Megaphone className="h-5 w-5" />
+  1873→        </div>
+  1874→        <div className="min-w-0 flex-1">
+  1875→          <div className="section-header !text-base">
+  1876→            Watch Behavior
+  1877→          </div>
+  1878→          <p className="text-sm text-muted-foreground/80">
+  1879→            Watch ads to increase your behavior score. Max {maxAdsPerDay} per day.
+  1880→          </p>
+  1881→        </div>
+  1882→      </div>
+  1883→
+  1884→      <div className="mt-3 flex items-center justify-between gap-3">
+  1885→        <div className="text-sm">
+  1886→          <p className="font-medium">
+  1887→            Today: <span className="text-primary">{adsWatchedToday}/{maxAdsPerDay}</span>{' '}
+  1888→            ads watched
+  1889→          </p>
+  1890→          <p className="mt-0.5 text-xs text-muted-foreground/80">
+  1891→            {reachedMax
+  1892→              ? 'Daily limit reached — come back tomorrow.'
+  1893→              : `${maxAdsPerDay - adsWatchedToday} ad${maxAdsPerDay - adsWatchedToday === 1 ? '' : 's'} left today.`}
+  1894→          </p>
+  1895→        </div>
+  1896→        <button
+  1897→          onClick={onWatchAd}
+  1898→          disabled={watching || reachedMax}
+  1899→          className="action-btn min-h-[40px] disabled:opacity-60"
+  1900→        >
+  1901→          {watching ? (
+  1902→            <Loader2 className="h-4 w-4 animate-spin" />
+  1903→          ) : reachedMax ? (
+  1904→            <>
+  1905→              <Clock className="mr-1 h-4 w-4" /> Come back tomorrow
+  1906→            </>
+  1907→          ) : (
+  1908→            <>
+  1909→              <Eye className="mr-1 h-4 w-4" /> Watch Ad
+  1910→            </>
+  1911→          )}
+  1912→        </button>
+  1913→      </div>
+  1914→
+  1915→      {/* V3 — behavior-bar style progress for today's ads */}
+  1916→      <div className="behavior-bar mt-3">
+  1917→        <div
+  1918→          className="behavior-bar-fill"
+  1919→          style={{
+  1920→            width: `${Math.min((adsWatchedToday / maxAdsPerDay) * 100, 100)}%`,
+  1921→          }}
+  1922→        />
+  1923→      </div>
+  1924→    </div>
+  1925→  )
+  1926→}
+  1927→
+  1928→// ============================================================
+  1929→// V2: Ad Watch dialog — shows ad for 5s with countdown
+  1930→// ============================================================
+  1931→
+  1932→function AdWatchDialog({
+  1933→  ad,
+  1934→  countdown,
+  1935→  onCountdownChange,
+  1936→  onClose,
+  1937→}: {
+  1938→  ad: AdData | null
+  1939→  countdown: number
+  1940→  onCountdownChange: (n: number) => void
+  1941→  onClose: () => void
+  1942→}) {
+  1943→  // Countdown timer — ticks every second; closes when hits 0.
+  1944→  useEffect(() => {
+  1945→    if (!ad) return
+  1946→    if (countdown <= 0) {
+  1947→      onClose()
+  1948→      return
+  1949→    }
+  1950→    const t = setTimeout(() => onCountdownChange(countdown - 1), 1000)
+  1951→    return () => clearTimeout(t)
+  1952→  }, [ad, countdown, onClose, onCountdownChange])
+  1953→
+  1954→  if (!ad) return null
+  1955→
+  1956→  return (
+  1957→    <Dialog
+  1958→      open={!!ad}
+  1959→      onOpenChange={(o) => {
+  1960→        if (!o) onClose()
+  1961→      }}
+  1962→    >
+  1963→      <DialogContent className="sm:max-w-md">
+  1964→        <DialogHeader>
+  1965→          <DialogTitle className="flex items-center justify-between">
+  1966→            <span className="flex items-center gap-1.5">
+  1967→              <Megaphone className="h-4 w-4 text-primary" /> Advertisement
+  1968→            </span>
+  1969→            <Badge variant="outline" className="bg-muted/40">
+  1970→              {countdown}s
+  1971→            </Badge>
+  1972→          </DialogTitle>
+  1973→          <DialogDescription>
+  1974→            Watch this ad to earn +1 behavior. Auto-closes in {countdown} second
+  1975→            {countdown === 1 ? '' : 's'}.
+  1976→          </DialogDescription>
+  1977→        </DialogHeader>
+  1978→
+  1979→        <div className="overflow-hidden rounded-xl border border-border bg-card">
+  1980→          {ad.imageUrl ? (
+  1981→            <img
+  1982→              src={ad.imageUrl}
+  1983→              alt={ad.brandName || 'Ad'}
+  1984→              className="h-44 w-full object-cover"
+  1985→            />
+  1986→          ) : (
+  1987→            <div className="flex h-44 w-full items-center justify-center bg-gradient-to-br from-primary/20 to-primary/5 text-primary">
+  1988→              <Megaphone className="h-12 w-12" />
+  1989→            </div>
+  1990→          )}
+  1991→          <div className="p-3">
+  1992→            <p className="text-sm font-bold">{ad.brandName}</p>
+  1993→            {ad.headline && (
+  1994→              <p className="mt-1 text-sm font-medium">{ad.headline}</p>
+  1995→            )}
+  1996→            {ad.description && (
+  1997→              <p className="mt-1 text-xs text-muted-foreground">{ad.description}</p>
+  1998→            )}
+  1999→            {ad.ctaText && ad.ctaUrl && (
+  2000→              <a
+
+[showing lines 1-2000 of 2966; use offset=2001 with limit to continue reading]

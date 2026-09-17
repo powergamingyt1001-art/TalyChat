@@ -218,9 +218,6 @@ export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly }: HomePro
           <span className="text-muted-foreground font-medium">{greeting()},</span>{' '}
           {firstName} <span className="inline-block animate-[wave_1.8s_ease-in-out_infinite]">👋</span>
         </h1>
-        <p className="mt-0.5 text-xs text-muted-foreground/80">
-          {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-        </p>
       </motion.div>
 
       {/* Global search bar */}

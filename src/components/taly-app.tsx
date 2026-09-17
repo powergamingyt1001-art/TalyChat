@@ -224,7 +224,7 @@ export function TalyApp() {
               />
             )}
 
-            <div className="scroll-pan-y flex-1 overflow-y-auto">
+            <div className="scroll-pan-y flex-1 overflow-y-auto pb-20 md:pb-0">
               {tab === 'home' && (
                 <HomeScreen
                   user={user}

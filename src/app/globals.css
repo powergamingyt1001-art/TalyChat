@@ -143,17 +143,15 @@
     touch-action: pan-y;
     -webkit-overflow-scrolling: touch;
   }
-  /* Custom scrollbar */
+  /* Hide ALL scrollbars globally (user requested) */
   ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 0px !important;
+    height: 0px !important;
+    display: none !important;
   }
-  ::-webkit-scrollbar-thumb {
-    background: oklch(0.8 0 0 / 0.4);
-    border-radius: 999px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: oklch(0.7 0 0 / 0.6);
+  * {
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
   }
 }
 
@@ -671,4 +669,124 @@
 /* Dark theme — make section header names clearly visible */
 .dark .section-header {
   color: oklch(0.985 0 0);
+}
+
+/* ============================================================
+   F5-9 — Floating AI Agent radiation glow
+   4 concentric rings expanding outward like radiation waves.
+   Outer ring is VERY dark green (#022c22) and very large (250px
+   diameter) so the glow reaches 80-100px beyond the 48px avatar
+   (avatar radius 24px + ~100px outer ring = ~124px reach).
+   Inner rings are progressively smaller and brighter. The
+   avatar image stays SHARP in the center (separate element, z-30)
+   — only the aura/glow animates.
+
+   Animation cycle = 1.5s (faster than the old 3.6s outer ring).
+   Each ring has a 0.2s delay so they radiate sequentially, like
+   ripples expanding from a single point.
+
+   The rings use translate(-50%, -50%) centering + scale() to
+   expand outward from the avatar's center.
+   ============================================================ */
+.floating-ai-glow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 9999px;
+  transform: translate(-50%, -50%);
+  transform-origin: center center;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+/* Ring 1 — OUTER: very dark green (#022c22 = oklch(0.15 0.05 152)),
+   250px diameter, blur 12px. Expands 0.6 → 1.6 scale (1.5s cycle). */
+.floating-ai-glow-outer {
+  width: 250px;
+  height: 250px;
+  background: radial-gradient(
+    circle,
+    rgba(2, 44, 34, 0.55) 0%,
+    rgba(2, 44, 34, 0.30) 40%,
+    rgba(0, 0, 0, 0) 75%
+  );
+  filter: blur(12px);
+  z-index: 1;
+  animation: floating-ai-radiate 1.5s ease-out infinite;
+}
+
+/* Ring 2 — MIDDLE: dark green, 180px diameter, blur 6px.
+   0.2s delay so it follows the outer ring like a radiation wave. */
+.floating-ai-glow-middle {
+  width: 180px;
+  height: 180px;
+  background: radial-gradient(
+    circle,
+    rgba(5, 90, 60, 0.55) 0%,
+    rgba(10, 120, 80, 0.35) 40%,
+    rgba(0, 0, 0, 0) 75%
+  );
+  filter: blur(6px);
+  z-index: 2;
+  animation: floating-ai-radiate 1.5s ease-out infinite 0.2s;
+}
+
+/* Ring 3 — INNER: parrot green, 120px diameter, blur 3px. 0.4s delay. */
+.floating-ai-glow-inner {
+  width: 120px;
+  height: 120px;
+  background: radial-gradient(
+    circle,
+    rgba(50, 203, 52, 0.65) 0%,
+    rgba(40, 180, 50, 0.40) 50%,
+    rgba(0, 0, 0, 0) 100%
+  );
+  filter: blur(3px);
+  z-index: 3;
+  animation: floating-ai-radiate 1.5s ease-out infinite 0.4s;
+}
+
+/* Ring 4 — CORE: light green, 80px diameter, blur 1.5px.
+   Steady pulse (scale 0.85 ↔ 1.06) rather than outward radiation. */
+.floating-ai-glow-core {
+  width: 80px;
+  height: 80px;
+  background: radial-gradient(
+    circle,
+    rgba(170, 255, 170, 0.85) 0%,
+    rgba(120, 240, 140, 0.40) 45%,
+    rgba(0, 0, 0, 0) 90%
+  );
+  filter: blur(1.5px);
+  z-index: 4;
+  animation: floating-ai-pulse 1.5s ease-in-out infinite;
+}
+
+/* Outward radiation: ring starts small + bright, expands outward
+   while fading. The translate(-50%, -50%) keeps it centered on the
+   avatar as it scales. */
+@keyframes floating-ai-radiate {
+  0% {
+    transform: translate(-50%, -50%) scale(0.6);
+    opacity: 0.9;
+  }
+  70% {
+    opacity: 0.2;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.6);
+    opacity: 0;
+  }
+}
+
+/* Steady core pulse: ring grows and shrinks slightly (no outward travel). */
+@keyframes floating-ai-pulse {
+  0%, 100% {
+    transform: translate(-50%, -50%) scale(0.85);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.06);
+    opacity: 1;
+  }
 }

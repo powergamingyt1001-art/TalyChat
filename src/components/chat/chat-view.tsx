@@ -89,6 +89,7 @@ import { EmojiPicker } from './emoji-picker'
 import { ChatAdBox } from './chat-ad'
 import { ReportDialog } from './report-dialog'
 import { AddMemberDialog } from './add-member-dialog'
+import { MembersListDialog } from './members-list-dialog'
 import { PinnedMessagesDialog } from './pinned-messages-dialog'
 import { SharedMediaDialog } from './shared-media-dialog'
 import { LocationShareDialog } from './location-share-dialog'
@@ -138,13 +139,13 @@ function useCustomizerSafe(preferences: any) {
 // ---------------------------------------------------------------------------
 
 const PAGE_SIZE = 50
-// R8-11 — Ad timing: private chat = 45s, group chat = 35s after the last
-// message activity. Cross button appears after 6s (handled in ChatAdBox).
-// Loop: after the ad is closed, the 45s/35s timer restarts so the ad
-// reappears continuously while the chat is open. The timer also resets
-// whenever a new message is sent or received, so the ad only shows up
-// after the chat goes quiet for 45s/35s — keeping it out of the way
-// during active conversation.
+// F5-9 — Ad timing: private chat = 45s, group chat = 35s after the chat
+// is opened. Cross button appears after 6s (handled in ChatAdBox). Loop:
+// after the ad is closed, the 45s/35s timer restarts so the ad reappears
+// continuously while the chat is open. The timer starts on chat open and
+// is NOT reset by new messages — ads appear even during active
+// conversation (per task spec), but the ad is rendered below the last
+// message inside the scroll area so it never covers anything.
 const AD_DELAY_PRIVATE = 45_000 // 45s
 const AD_DELAY_GROUP = 35_000 // 35s
 const TYPING_DEBOUNCE = 300 // ms
@@ -222,6 +223,9 @@ export function ChatView({
   // Three-dot menu items that open dialogs
   const [reportOpen, setReportOpen] = React.useState(false)
   const [addMemberOpen, setAddMemberOpen] = React.useState(false)
+  // F10-11 — Full members-list dialog (3-dot menu → Members). Shows every
+  // member with a role badge + a Remove button (owner/admin only).
+  const [membersListOpen, setMembersListOpen] = React.useState(false)
   const [customizeOpen, setCustomizeOpen] = React.useState(false)
   const [confirmClear, setConfirmClear] = React.useState(false)
   const [confirmLeave, setConfirmLeave] = React.useState(false)
@@ -253,6 +257,30 @@ export function ChatView({
   const [ad, setAd] = React.useState<ChatAd | null>(null)
   const [adVisible, setAdVisible] = React.useState(false)
   const adTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // F5-9 — LOCAL ONLY color customizations (per-device, never sent to server).
+  // Stored in localStorage so they survive reloads and only affect this user's
+  // phone. The other person in the chat sees their own color choices.
+  // Keys are conversation-scoped so each chat can have its own colors.
+  const lsKeyBg = `talychat-bg-color-${conversationId}`
+  const lsKeySent = `talychat-sent-color-${conversationId}`
+  const lsKeyRecv = `talychat-received-color-${conversationId}`
+  const [localBgColor, setLocalBgColor] = React.useState<string | null>(null)
+  const [localSentColor, setLocalSentColor] = React.useState<string | null>(null)
+  const [localReceivedColor, setLocalReceivedColor] = React.useState<string | null>(null)
+
+  // Read saved colors from localStorage on mount + when conversation changes.
+  // We intentionally re-run only when conversationId changes (different chat =
+  // different colors). The ls-key consts are derived from conversationId so we
+  // don't need them in deps — only conversationId.
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      setLocalBgColor(window.localStorage.getItem(lsKeyBg))
+      setLocalSentColor(window.localStorage.getItem(lsKeySent))
+      setLocalReceivedColor(window.localStorage.getItem(lsKeyRecv))
+    } catch {}
+  }, [conversationId, lsKeyBg, lsKeySent, lsKeyRecv])
 
   // ----- Refs -----
   const scrollRef = React.useRef<HTMLDivElement | null>(null)
@@ -556,6 +584,19 @@ export function ChatView({
   }, [connected, conversationId])
 
   // ----- Ad system -----
+  // F5-9 — Ad timing per task spec:
+  //   • Private chat: 45s after the chat is opened → ad appears
+  //   • Group chat:    35s after the chat is opened → ad appears
+  //   • Cross (✕) appears after 6s  (handled in ChatAdBox)
+  //   • After close → 45s/35s timer restarts
+  //   • Ads loop continuously while the chat is open
+  // The timer is NOT reset by incoming/outgoing messages — it starts the
+  // moment the chat opens and runs continuously until the user leaves.
+  // A ref is used to break the fetchAd ↔ scheduleNextAd circular dep so
+  // fetchAd always calls the LATEST scheduleNextAd (which captures the
+  // current isGroup) without re-creating itself.
+  const scheduleNextAdRef = React.useRef<() => void>(() => {})
+
   const fetchAd = React.useCallback(async () => {
     try {
       const res: any = await apiFetch('/api/ads?placement=in-chat')
@@ -565,11 +606,17 @@ export function ChatView({
         setAd(adObj)
         setAdVisible(true)
       } else {
+        // No active ads — stay invisible, but still re-schedule so a new
+        // ad campaign can appear later without needing a chat re-open.
         setAd(null)
         setAdVisible(false)
+        scheduleNextAdRef.current()
       }
     } catch {
-      // Silent fail
+      // Silent fail — re-schedule so the loop continues even if the API
+      // hiccups (network glitch, 500, etc.).
+      setAdVisible(false)
+      scheduleNextAdRef.current()
     }
   }, [])
 
@@ -581,24 +628,24 @@ export function ChatView({
     }, delay)
   }, [fetchAd, isGroup])
 
-  // Start the ad loop on mount and re-schedule on close.
+  // Keep the ref in sync so fetchAd (which never re-creates) always calls
+  // the latest scheduleNextAd (which changes when isGroup changes).
   React.useEffect(() => {
+    scheduleNextAdRef.current = scheduleNextAd
+  }, [scheduleNextAd])
+
+  // Start the ad loop on mount + whenever the conversation changes (so
+  // opening a different chat resets the 45s/35s clock). Also restarts
+  // after the user closes an ad (via handleCloseAd → scheduleNextAd).
+  React.useEffect(() => {
+    // Reset state for the new chat and kick off the timer.
+    setAd(null)
+    setAdVisible(false)
     scheduleNextAd()
     return () => {
       if (adTimerRef.current) clearTimeout(adTimerRef.current)
     }
-  }, [scheduleNextAd])
-
-  // R8-11 — Restart the 45s/35s "quiet period" timer whenever a new
-  // message is sent or received. The ad should only appear after the
-  // chat has been quiet for 45s (private) or 35s (group). Skip the
-  // reset while an ad is currently visible so the user can dismiss it
-  // first (closing the ad re-schedules via handleCloseAd).
-  React.useEffect(() => {
-    if (adVisible) return // wait for user to close the current ad
-    if (messages.length === 0) return
-    scheduleNextAd()
-  }, [messages.length, adVisible, scheduleNextAd])
+  }, [scheduleNextAd, conversationId])
 
   const handleCloseAd = () => {
     setAdVisible(false)
@@ -981,8 +1028,8 @@ export function ChatView({
 
   const startRecording = async () => {
     try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        toast({ title: 'Voice recording not supported', variant: 'destructive' })
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+        toast({ title: 'Voice recording not supported on this device', variant: 'destructive' })
         return
       }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -991,7 +1038,7 @@ export function ChatView({
       const candidates = ['audio/webm', 'audio/ogg', 'audio/mp3']
       let mime = ''
       for (const c of candidates) {
-        if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported?.(c)) {
+        if (MediaRecorder.isTypeSupported?.(c)) {
           mime = c
           break
         }
@@ -1015,7 +1062,17 @@ export function ChatView({
         }
       }, 1000)
     } catch (e: any) {
-      toast({ title: e.message || 'Mic permission denied', variant: 'destructive' })
+      // F5-9 — distinguish "permission denied" (user must grant mic access)
+      // from "not supported" (browser/device lacks mic). Both surface as
+      // a destructive toast so the user knows why nothing happened.
+      const isPermissionDenied =
+        e?.name === 'NotAllowedError' || e?.name === 'SecurityError'
+      const msg = isPermissionDenied
+        ? 'Microphone access denied'
+        : e?.name === 'NotFoundError'
+          ? 'No microphone found'
+          : e?.message || 'Microphone access denied'
+      toast({ title: msg, variant: 'destructive' })
       setIsRecording(false)
       if (recordStreamRef.current) {
         for (const t of recordStreamRef.current.getTracks()) t.stop()
@@ -1240,7 +1297,11 @@ export function ChatView({
 
   // V7 — per-conversation theme color overrides the global wallpaper when set.
   // Renders as a subtle gradient background for the message list.
-  const themeColor: string | null = conversation?.themeColor || null
+  // F5-9 — LOCAL ONLY: prefer localStorage-stored per-device customizations
+  // over the server-stored conversation.themeColor so the user's color choice
+  // is private to this device (the other person sees their own choice).
+  const themeColor: string | null =
+    localBgColor || conversation?.themeColor || null
   const messageListStyle: React.CSSProperties = themeColor
     ? {
         background: `linear-gradient(135deg, ${themeColor}33, ${themeColor}0d 50%, ${themeColor}1a)`,
@@ -1248,6 +1309,19 @@ export function ChatView({
     : (wallpaperStyle as React.CSSProperties)
 
   const otherUserId = conversation?.otherUser?.id
+
+  // F5-9 — Resolved display name for the chat header. The `name` prop
+  // comes from the conversation list and may be null for private chats
+  // (the list only sets conv.name, which is empty for 1:1 chats). After
+  // loadConversation() resolves, we have the other user's profile and
+  // can fall back through: prop name → other user's name → username →
+  // conversation.name → "Unknown".
+  const displayName: string =
+    name ||
+    conversation?.otherUser?.name ||
+    conversation?.otherUser?.username ||
+    conversation?.name ||
+    'Unknown'
 
   // ----- Render -----
   return (
@@ -1292,8 +1366,13 @@ export function ChatView({
           )}
 
           <div className="min-w-0 flex-1 overflow-hidden">
-            <div className="truncate text-sm font-semibold">
-              {name}
+            {/* F5-9 — Header name is always visible with proper contrast:
+                text-foreground is dark on light theme, light on dark theme.
+                Falls back to the loaded conversation's otherUser name (private
+                chats) or the conversation name, then "Unknown" if all empty.
+                Bumped from text-sm to text-base + font-semibold for clarity. */}
+            <div className="truncate text-base font-semibold text-foreground">
+              {displayName}
               {isGroup && conversation?.group?.isPublic === false && (
                 <ShieldCheck className="ml-1 inline h-3.5 w-3.5 text-muted-foreground" />
               )}
@@ -1330,7 +1409,7 @@ export function ChatView({
                 <DropdownMenuItem onClick={() => setSearchOpen(true)}>
                   <SearchIcon className="h-4 w-4" /> Search
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => toast({ title: 'Members list coming soon' })}>
+                <DropdownMenuItem onClick={() => setMembersListOpen(true)}>
                   <Users className="h-4 w-4" /> Members
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setSharedMediaOpen(true)}>
@@ -1668,8 +1747,8 @@ export function ChatView({
                     messageStyle={messageStyle}
                     fontFamilyClass={fontFamilyClass}
                     fontSizePx={fontSizePx}
-                    sentBubbleColor={conversation?.sentBubbleColor || null}
-                    receivedBubbleColor={conversation?.receivedBubbleColor || null}
+                    sentBubbleColor={localSentColor || conversation?.sentBubbleColor || null}
+                    receivedBubbleColor={localReceivedColor || conversation?.receivedBubbleColor || null}
                     isFirstInGroup={item.isFirstInGroup}
                     isLastInGroup={item.isLastInGroup}
                     showDateSeparator={false}
@@ -1926,31 +2005,82 @@ export function ChatView({
         onOpenChange={setReportOpen}
         reportedUserId={isGroup ? null : otherUserId}
         reportedGroupId={isGroup ? conversation?.groupId : null}
-        targetName={name}
+        targetName={displayName}
       />
 
-      {/* Add member dialog (groups) */}
+      {/* Add member dialog (groups) — full-screen multi-select picker */}
       {isGroup && conversation?.groupId && (
         <AddMemberDialog
           open={addMemberOpen}
           onOpenChange={setAddMemberOpen}
           groupId={conversation.groupId}
-          groupName={name}
+          groupName={displayName}
+          onAdded={() => {
+            // After bulk-adding, refresh the conversation so the member list
+            // and membersCount update everywhere (header status, group info).
+            loadConversation()
+          }}
         />
       )}
 
-      {/* Customize dialog (V13 — merged Customize + Chat Theme) */}
+      {/* F10-11 — Members list dialog (3-dot menu → Members) */}
+      {isGroup && conversation?.groupId && (
+        <MembersListDialog
+          open={membersListOpen}
+          onOpenChange={setMembersListOpen}
+          groupId={conversation.groupId}
+          groupName={displayName}
+          currentUserId={user?.id}
+          onAddMember={() => {
+            setMembersListOpen(false)
+            setAddMemberOpen(true)
+          }}
+          onChanged={() => {
+            // After a remove, refresh the conversation so the header status
+            // line (e.g. "X members") updates in real time.
+            loadConversation()
+          }}
+        />
+      )}
+
+      {/* Customize dialog (V13 — merged Customize + Chat Theme, F5-9 — LOCAL ONLY) */}
       <CustomizeDialog
         open={customizeOpen}
         onClose={() => setCustomizeOpen(false)}
         onOpenChange={setCustomizeOpen}
         conversationId={conversationId}
         isGroup={isGroup}
-        currentThemeColor={conversation?.themeColor || null}
+        currentThemeColor={localBgColor || conversation?.themeColor || null}
+        currentSentColor={localSentColor}
+        currentReceivedColor={localReceivedColor}
         onApplyThemeColor={(color) => {
-          // Optimistically update the local conversation state so the
-          // background re-renders immediately without needing a refetch.
-          setConversation((c) => (c ? { ...c, themeColor: color } : c))
+          // F5-9 — LOCAL ONLY: persist to localStorage (per-conversation),
+          // never to the server. Updates the chat background immediately.
+          setLocalBgColor(color)
+          if (typeof window !== 'undefined') {
+            try {
+              if (color) window.localStorage.setItem(lsKeyBg, color)
+              else window.localStorage.removeItem(lsKeyBg)
+            } catch {}
+          }
+        }}
+        onApplySentColor={(color) => {
+          setLocalSentColor(color)
+          if (typeof window !== 'undefined') {
+            try {
+              if (color) window.localStorage.setItem(lsKeySent, color)
+              else window.localStorage.removeItem(lsKeySent)
+            } catch {}
+          }
+        }}
+        onApplyReceivedColor={(color) => {
+          setLocalReceivedColor(color)
+          if (typeof window !== 'undefined') {
+            try {
+              if (color) window.localStorage.setItem(lsKeyRecv, color)
+              else window.localStorage.removeItem(lsKeyRecv)
+            } catch {}
+          }
         }}
       />
 
@@ -1959,7 +2089,7 @@ export function ChatView({
         open={profileViewOpen}
         onOpenChange={setProfileViewOpen}
         isGroup={isGroup}
-        name={name}
+        name={displayName}
         avatar={avatar}
         otherUserId={otherUserId}
         groupId={conversation?.groupId || null}
@@ -2015,7 +2145,7 @@ export function ChatView({
         open={exportOpen}
         onClose={() => setExportOpen(false)}
         conversationId={conversationId}
-        conversationName={name}
+        conversationName={displayName}
       />
 
       {/* Confirm dialogs */}

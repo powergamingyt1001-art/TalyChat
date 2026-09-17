@@ -1,0 +1,938 @@
+     1→'use client'
+     2→
+     3→import * as React from 'react'
+     4→import {
+     5→  Area,
+     6→  AreaChart,
+     7→  Bar,
+     8→  BarChart,
+     9→  CartesianGrid,
+    10→  Cell,
+    11→  Line,
+    12→  LineChart,
+    13→  Pie,
+    14→  PieChart,
+    15→  ResponsiveContainer,
+    16→  Tooltip,
+    17→  XAxis,
+    18→  YAxis,
+    19→} from 'recharts'
+    20→import {
+    21→  Users,
+    22→  Zap,
+    23→  UserPlus,
+    24→  Group,
+    25→  Flag,
+    26→  Ban,
+    27→  Crown,
+    28→  CalendarX,
+    29→  IndianRupee,
+    30→  Eye,
+    31→  MousePointerClick,
+    32→  Gift,
+    33→  UserCheck,
+    34→  UserX,
+    35→  ShieldAlert,
+    36→  UserMinus,
+    37→  CreditCard,
+    38→  BarChart3,
+    39→  PieChart as PieChartIcon,
+    40→  ChevronDown,
+    41→  type LucideIcon,
+    42→} from 'lucide-react'
+    43→import { apiFetch } from '@/lib/api'
+    44→import { useToast } from '@/hooks/use-toast'
+    45→import { Button } from '@/components/ui/button'
+    46→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    47→import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+    48→import { Skeleton } from '@/components/ui/skeleton'
+    49→import {
+    50→  Collapsible,
+    51→  CollapsibleContent,
+    52→  CollapsibleTrigger,
+    53→} from '@/components/ui/collapsible'
+    54→import {
+    55→  type AdminStats,
+    56→  formatINR,
+    57→} from './admin-shared'
+    58→import { AdminMembers } from './admin-members'
+    59→import { AdminReports } from './admin-reports'
+    60→import { cn } from '@/lib/utils'
+    61→
+    62→// ============================================================
+    63→// V2 — Period toggle: 7 Days | 1 Month | All Time
+    64→// (Old today/quarterly options removed per V2 spec.)
+    65→// ============================================================
+    66→type Period = '7days' | '1month' | 'alltime'
+    67→
+    68→const PERIODS: { id: Period; label: string }[] = [
+    69→  { id: '7days', label: '7 Days' },
+    70→  { id: '1month', label: '1 Month' },
+    71→  { id: 'alltime', label: 'All Time' },
+    72→]
+    73→
+    74→// V2 chart palette — emerald brand colors + neutrals
+    75→const BRAND = 'oklch(0.72 0.18 152)'
+    76→const NEUTRAL = 'oklch(0.85 0.02 152)'
+    77→const AMBER = 'oklch(0.78 0.16 70)'
+    78→const ROSE = 'oklch(0.65 0.18 18)'
+    79→
+    80→// V3 — semantic accent colors for KPI cards (--kpi-accent CSS var)
+    81→const ACCENT_EMERALD = 'oklch(0.72 0.18 152)'
+    82→const ACCENT_AMBER = 'oklch(0.75 0.18 70)'
+    83→const ACCENT_RED = 'oklch(0.65 0.22 25)'
+    84→const ACCENT_BLUE = 'oklch(0.62 0.15 220)'
+    85→const ACCENT_PURPLE = 'oklch(0.62 0.18 300)'
+    86→
+    87→// V3 — semantic text colors for KPI numbers
+    88→const TEXT_EMERALD = 'text-emerald-600 dark:text-emerald-400'
+    89→const TEXT_AMBER = 'text-amber-600 dark:text-amber-400'
+    90→const TEXT_RED = 'text-red-600 dark:text-red-400'
+    91→const TEXT_BLUE = 'text-sky-600 dark:text-sky-400'
+    92→const TEXT_PURPLE = 'text-purple-600 dark:text-purple-400'
+    93→
+    94→type AccentColor = 'emerald' | 'amber' | 'red' | 'blue' | 'purple'
+    95→
+    96→const ACCENT_VAR: Record<AccentColor, string> = {
+    97→  emerald: ACCENT_EMERALD,
+    98→  amber: ACCENT_AMBER,
+    99→  red: ACCENT_RED,
+   100→  blue: ACCENT_BLUE,
+   101→  purple: ACCENT_PURPLE,
+   102→}
+   103→const TEXT_COLOR: Record<AccentColor, string> = {
+   104→  emerald: TEXT_EMERALD,
+   105→  amber: TEXT_AMBER,
+   106→  red: TEXT_RED,
+   107→  blue: TEXT_BLUE,
+   108→  purple: TEXT_PURPLE,
+   109→}
+   110→
+   111→interface MetricDef {
+   112→  key: keyof AdminStats | 'userStatus' | 'subscriptions'
+   113→  label: string
+   114→  icon: LucideIcon
+   115→  accent: AccentColor
+   116→  value: (s: AdminStats) => string
+   117→  // chart to render in drilldown dialog
+   118→  chart?: 'registerData' | 'userGrowth' | 'salesData' | 'piePremium' | 'pieActiveInactive' | 'pieSubs' | 'none'
+   119→  hint?: (s: AdminStats) => string
+   120→  // V3 — flag for "primary"/featured metrics (rendered larger in first row)
+   121→  featured?: boolean
+   122→}
+   123→
+   124→// The 12 metric cards (unchanged labels from V1)
+   125→const METRICS: MetricDef[] = [
+   126→  { key: 'totalUsers', label: 'Total Users', icon: Users, accent: 'emerald', value: (s) => s.totalUsers.toLocaleString('en-IN'), chart: 'userGrowth', featured: true },
+   127→  { key: 'activeUsers', label: 'Active Now', icon: Zap, accent: 'emerald', value: (s) => s.activeUsers.toLocaleString('en-IN'), chart: 'registerData', featured: true },
+   128→  { key: 'newToday', label: 'New Today', icon: UserPlus, accent: 'emerald', value: (s) => s.newToday.toLocaleString('en-IN'), chart: 'registerData', featured: true },
+   129→  { key: 'premium', label: 'Premium Users', icon: Crown, accent: 'emerald', value: (s) => s.premium.toLocaleString('en-IN'), chart: 'piePremium', featured: true },
+   130→  { key: 'totalGroups', label: 'Total Groups', icon: Group, accent: 'purple', value: (s) => s.totalGroups.toLocaleString('en-IN'), chart: 'none' },
+   131→  { key: 'reports', label: 'Pending Reports', icon: Flag, accent: 'amber', value: (s) => s.reports.toLocaleString('en-IN'), chart: 'none' },
+   132→  { key: 'restricted', label: 'Restricted Users', icon: Ban, accent: 'amber', value: (s) => s.restricted.toLocaleString('en-IN'), chart: 'none' },
+   133→  { key: 'expiredPlans', label: 'Expired Plans', icon: CalendarX, accent: 'red', value: (s) => s.expiredPlans.toLocaleString('en-IN'), chart: 'piePremium' },
+   134→  { key: 'revenue', label: 'Revenue', icon: IndianRupee, accent: 'blue', value: (s) => formatINR(s.revenue), chart: 'salesData' },
+   135→  { key: 'adImpressions', label: 'Ad Impressions', icon: Eye, accent: 'blue', value: (s) => s.adImpressions.toLocaleString('en-IN'), chart: 'none' },
+   136→  { key: 'adClicks', label: 'Ad Clicks', icon: MousePointerClick, accent: 'blue', value: (s) => s.adClicks.toLocaleString('en-IN'), chart: 'none' },
+   137→  { key: 'rewardClaims', label: 'Reward Claims', icon: Gift, accent: 'purple', value: (s) => s.rewardClaims.toLocaleString('en-IN'), chart: 'none' },
+   138→]
+   139→
+   140→// V2 — User Status cards (Active / Inactive / Banned / Deactivated)
+   141→interface UserStatusDef {
+   142→  key: 'active' | 'inactive' | 'banned' | 'deactivated'
+   143→  label: string
+   144→  icon: LucideIcon
+   145→  accent: AccentColor
+   146→  value: (s: AdminStats) => number
+   147→}
+   148→const USER_STATUS_METRICS: UserStatusDef[] = [
+   149→  { key: 'active', label: 'Active (online)', icon: UserCheck, accent: 'emerald', value: (s) => s.userStatus?.active ?? 0 },
+   150→  { key: 'inactive', label: 'Inactive', icon: UserX, accent: 'blue', value: (s) => s.userStatus?.inactive ?? 0 },
+   151→  { key: 'banned', label: 'Banned', icon: ShieldAlert, accent: 'red', value: (s) => s.userStatus?.banned ?? 0 },
+   152→  { key: 'deactivated', label: 'Deactivated', icon: UserMinus, accent: 'amber', value: (s) => s.userStatus?.deactivated ?? 0 },
+   153→]
+   154→
+   155→// V2 — Subscriptions cards (Paid / Free / Expired)
+   156→interface SubsDef {
+   157→  key: 'paid' | 'free' | 'expired'
+   158→  label: string
+   159→  icon: LucideIcon
+   160→  accent: AccentColor
+   161→  value: (s: AdminStats) => number
+   162→}
+   163→const SUBS_METRICS: SubsDef[] = [
+   164→  { key: 'paid', label: 'Paid Subscriptions', icon: CreditCard, accent: 'emerald', value: (s) => s.subscriptions?.paid ?? 0 },
+   165→  { key: 'free', label: 'Free Users', icon: Users, accent: 'blue', value: (s) => s.subscriptions?.free ?? 0 },
+   166→  { key: 'expired', label: 'Expired Subscriptions', icon: CalendarX, accent: 'red', value: (s) => s.subscriptions?.expired ?? 0 },
+   167→]
+   168→
+   169→export function AdminDashboard() {
+   170→  const { toast } = useToast()
+   171→  const [stats, setStats] = React.useState<AdminStats | null>(null)
+   172→  const [loading, setLoading] = React.useState(true)
+   173→  const [period, setPeriod] = React.useState<Period>('7days')
+   174→  const [drilldown, setDrilldown] = React.useState<MetricDef | UserStatusDef | SubsDef | null>(null)
+   175→
+   176→  const load = React.useCallback(async (p: Period) => {
+   177→    setLoading(true)
+   178→    try {
+   179→      const res: any = await apiFetch(`/api/admin/stats?period=${p}`)
+   180→      setStats(res as AdminStats)
+   181→    } catch (e: any) {
+   182→      toast({ title: 'Failed to load stats', description: e?.message, variant: 'destructive' })
+   183→    } finally {
+   184→      setLoading(false)
+   185→    }
+   186→  }, [toast])
+   187→
+   188→  React.useEffect(() => {
+   189→    load(period)
+   190→  }, [period, load])
+   191→
+   192→  return (
+   193→    <div className="flex flex-col gap-6">
+   194→      {/* Period toggle — V3 segmented-control pill */}
+   195→      <div className="flex flex-wrap items-center justify-between gap-3 animate-fade-in-up">
+   196→        <div>
+   197→          <h2 className="text-xl font-bold tracking-tight">Dashboard</h2>
+   198→          <p className="text-sm text-muted-foreground/80">TalyChat admin overview &amp; analytics</p>
+   199→        </div>
+   200→        <div className="segmented-control" role="group" aria-label="Period selector">
+   201→          {PERIODS.map((p) => {
+   202→            const active = period === p.id
+   203→            return (
+   204→              <button
+   205→                key={p.id}
+   206→                onClick={() => setPeriod(p.id)}
+   207→                aria-pressed={active}
+   208→                className={cn(active ? 'active' : '')}
+   209→              >
+   210→                {p.label}
+   211→              </button>
+   212→            )
+   213→          })}
+   214→        </div>
+   215→      </div>
+   216→
+   217→      {/* V5 — Key Performance collapsible (default open).
+   218→          Wraps the three KPI sections: Overview metrics, User status, Subscriptions. */}
+   219→      <Collapsible defaultOpen className="animate-fade-in-up" style={{ animationDelay: '60ms' }}>
+   220→        <CollapsibleTrigger className="group flex w-full items-center justify-between rounded-xl bg-muted/30 px-4 py-3 text-left transition-colors hover:bg-muted/50">
+   221→          <div className="section-header flex items-center gap-2">
+   222→            <BarChart3 className="h-4 w-4 text-primary" /> Key Performance
+   223→          </div>
+   224→          <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 group-data-[state=closed]:rotate-[-90deg]" />
+   225→        </CollapsibleTrigger>
+   226→        <CollapsibleContent className="mt-3 flex flex-col gap-4">
+   227→          {/* Overview metrics — V3 grouped section with light grey container + section-header */}
+   228→          <section className="rounded-xl bg-muted/30 p-4">
+   229→            <div className="section-header mb-4">
+   230→              Overview metrics
+   231→            </div>
+   232→            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+   233→              {METRICS.map((m, i) => {
+   234→                if (loading || !stats) {
+   235→                  return (
+   236→                    <Skeleton
+   237→                      key={m.label}
+   238→                      className={cn(
+   239→                        'h-[110px] rounded-xl',
+   240→                        m.featured && 'sm:col-span-2 sm:h-[120px]'
+   241→                      )}
+   242→                    />
+   243→                  )
+   244→                }
+   245→                return (
+   246→                  <KpiCard
+   247→                    key={m.label}
+   248→                    metric={m}
+   249→                    value={m.value(stats)}
+   250→                    hint={m.hint ? m.hint(stats) : undefined}
+   251→                    onClick={() => setDrilldown(m)}
+   252→                    featured={!!m.featured}
+   253→                    stats={stats}
+   254→                    style={{ animationDelay: `${60 + i * 30}ms` }}
+   255→                  />
+   256→                )
+   257→              })}
+   258→            </div>
+   259→          </section>
+   260→
+   261→          {/* V2 — User Status cards (4 cards) */}
+   262→          <section className="rounded-xl bg-muted/30 p-4">
+   263→            <div className="section-header mb-4">
+   264→              User status
+   265→            </div>
+   266→            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+   267→              {USER_STATUS_METRICS.map((m) => {
+   268→                if (loading || !stats) {
+   269→                  return <Skeleton key={m.label} className="h-[110px] rounded-xl" />
+   270→                }
+   271→                return (
+   272→                  <KpiCard
+   273→                    key={m.label}
+   274→                    metric={m}
+   275→                    value={m.value(stats).toLocaleString('en-IN')}
+   276→                    onClick={() => setDrilldown(m)}
+   277→                    stats={stats}
+   278→                  />
+   279→                )
+   280→              })}
+   281→            </div>
+   282→          </section>
+   283→
+   284→          {/* V2 — Subscriptions cards (3 cards) */}
+   285→          <section className="rounded-xl bg-muted/30 p-4">
+   286→            <div className="section-header mb-4">
+   287→              Subscriptions
+   288→            </div>
+   289→            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+   290→              {SUBS_METRICS.map((m) => {
+   291→                if (loading || !stats) {
+   292→                  return <Skeleton key={m.label} className="h-[110px] rounded-xl" />
+   293→                }
+   294→                return (
+   295→                  <KpiCard
+   296→                    key={m.label}
+   297→                    metric={m}
+   298→                    value={m.value(stats).toLocaleString('en-IN')}
+   299→                    onClick={() => setDrilldown(m)}
+   300→                    stats={stats}
+   301→                  />
+   302→                )
+   303→              })}
+   304→            </div>
+   305→          </section>
+   306→        </CollapsibleContent>
+   307→      </Collapsible>
+   308→
+   309→      {/* V5 — Analytics & Growth collapsible (default open).
+   310→          Wraps the 4 charts: New user registrations, Active/Inactive,
+   311→          User growth (cumulative), Subscriptions breakdown. */}
+   312→      <Collapsible defaultOpen className="animate-fade-in-up" style={{ animationDelay: '120ms' }}>
+   313→        <CollapsibleTrigger className="group flex w-full items-center justify-between rounded-xl bg-muted/30 px-4 py-3 text-left transition-colors hover:bg-muted/50">
+   314→          <div className="section-header flex items-center gap-2">
+   315→            <PieChartIcon className="h-4 w-4 text-primary" /> Analytics &amp; Growth
+   316→          </div>
+   317→          <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 group-data-[state=closed]:rotate-[-90deg]" />
+   318→        </CollapsibleTrigger>
+   319→        <CollapsibleContent className="mt-3 flex flex-col gap-4">
+   320→          {/* Chart 1: Candle/Bar — new user registrations */}
+   321→          <Card>
+   322→            <CardHeader className="pb-2">
+   323→              <CardTitle className="text-base font-bold">New user registrations</CardTitle>
+   324→              <p className="text-xs text-muted-foreground/80">
+   325→                {period === '7days'
+   326→                  ? 'Daily new sign-ups (last 7 days)'
+   327→                  : period === '1month'
+   328→                    ? 'Weekly new sign-ups (this month)'
+   329→                    : 'Monthly new sign-ups (all time)'}
+   330→              </p>
+   331→            </CardHeader>
+   332→            <CardContent>
+   333→              <div className="h-[300px] w-full">
+   334→                {loading || !stats ? (
+   335→                  <Skeleton className="h-full w-full" />
+   336→                ) : isAllZeroRegister(stats.registerData) ? (
+   337→                  <ChartEmptyState icon={BarChart3} label="No registrations yet" hint="New sign-ups will appear here once users start joining." cta={{ label: "Invite users" }} />
+   338→                ) : (
+   339→                  <ResponsiveContainer width="100%" height="100%">
+   340→                    <BarChart
+   341→                      data={stats.registerData ?? []}
+   342→                      margin={{ top: 8, right: 8, left: -10, bottom: 0 }}
+   343→                    >
+   344→                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+   345→                      <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
+   346→                      <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" width={36} allowDecimals={false} />
+   347→                      <Tooltip
+   348→                        contentStyle={{ fontSize: 12, borderRadius: 8 }}
+   349→                        formatter={(v: number) => [v, 'New users']}
+   350→                      />
+   351→                      {/* Candle-like tall thin bars with rounded tops */}
+   352→                      <Bar
+   353→                        dataKey="count"
+   354→                        fill={BRAND}
+   355→                        radius={[6, 6, 0, 0]}
+   356→                        barSize={period === 'alltime' ? 28 : 38}
+   357→                      />
+   358→                    </BarChart>
+   359→                  </ResponsiveContainer>
+   360→                )}
+   361→              </div>
+   362→            </CardContent>
+   363→          </Card>
+   364→
+   365→          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   366→            {/* Chart 2: Donut — Active vs Inactive members */}
+   367→            <Card>
+   368→              <CardHeader className="pb-2">
+   369→                <CardTitle className="text-base font-bold">Active vs Inactive</CardTitle>
+   370→                <p className="text-xs text-muted-foreground/80">Members active (last 24h) vs dormant</p>
+   371→              </CardHeader>
+   372→              <CardContent>
+   373→                <div className="h-[300px] w-full">
+   374→                  {loading || !stats ? (
+   375→                    <Skeleton className="h-full w-full" />
+   376→                  ) : isAllZeroActiveInactive(stats) ? (
+   377→                    <ChartEmptyState icon={PieChartIcon} label="No user activity yet" hint="Active vs inactive will appear here once users are online." />
+   378→                  ) : (
+   379→                    <ResponsiveContainer width="100%" height="100%">
+   380→                      <PieChart>
+   381→                        <Tooltip
+   382→                          contentStyle={{ fontSize: 12, borderRadius: 8 }}
+   383→                          formatter={(v: number, n) => [v, n === 'active' ? 'Active' : 'Inactive']}
+   384→                        />
+   385→                        <Pie
+   386→                          data={[
+   387→                            { name: 'active', value: stats.activeVsInactive?.active ?? stats.activeInactive.active },
+   388→                            { name: 'inactive', value: stats.activeVsInactive?.inactive ?? stats.activeInactive.inactive },
+   389→                          ]}
+   390→                          dataKey="value"
+   391→                          nameKey="name"
+   392→                          innerRadius={60}
+   393→                          outerRadius={90}
+   394→                          paddingAngle={2}
+   395→                          label={(e: any) => {
+   396→                            const total =
+   397→                              (stats?.activeVsInactive?.active ?? stats?.activeInactive.active ?? 0) +
+   398→                              (stats?.activeVsInactive?.inactive ?? stats?.activeInactive.inactive ?? 0)
+   399→                            const pct = total ? Math.round((e.value / total) * 100) : 0
+   400→                            return `${pct}%`
+   401→                          }}
+   402→                        >
+   403→                          <Cell fill={BRAND} />
+   404→                          <Cell fill={NEUTRAL} />
+   405→                        </Pie>
+   406→                      </PieChart>
+   407→                    </ResponsiveContainer>
+   408→                  )}
+   409→                </div>
+   410→                <div className="mt-2 flex items-center justify-center gap-4 text-xs">
+   411→                  <span className="inline-flex items-center gap-1.5">
+   412→                    <span className="h-2.5 w-2.5 rounded-full bg-primary" />
+   413→                    Active ({stats?.activeVsInactive?.active ?? stats?.activeInactive.active ?? 0})
+   414→                  </span>
+   415→                  <span className="inline-flex items-center gap-1.5">
+   416→                    <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/40" />
+   417→                    Inactive ({stats?.activeVsInactive?.inactive ?? stats?.activeInactive.inactive ?? 0})
+   418→                  </span>
+   419→                </div>
+   420→              </CardContent>
+   421→            </Card>
+   422→
+   423→            {/* Chart 3: Area chart — User growth (cumulative) with gradient fill */}
+   424→            <Card>
+   425→              <CardHeader className="pb-2">
+   426→                <CardTitle className="text-base font-bold">User growth (cumulative)</CardTitle>
+   427→                <p className="text-xs text-muted-foreground/80">Cumulative total users over period</p>
+   428→              </CardHeader>
+   429→              <CardContent>
+   430→                <div className="h-[300px] w-full">
+   431→                  {loading || !stats ? (
+   432→                    <Skeleton className="h-full w-full" />
+   433→                  ) : isAllZeroGrowth(stats.userGrowth) ? (
+   434→                    <ChartEmptyState icon={BarChart3} label="No growth data yet" hint="User growth will populate as users join TalyChat." />
+   435→                  ) : (
+   436→                    <ResponsiveContainer width="100%" height="100%">
+   437→                      <AreaChart
+   438→                        data={stats.userGrowth ?? []}
+   439→                        margin={{ top: 8, right: 8, left: -10, bottom: 0 }}
+   440→                      >
+   441→                        <defs>
+   442→                          <linearGradient id="userGrowthFill" x1="0" y1="0" x2="0" y2="1">
+   443→                            <stop offset="0%" stopColor={BRAND} stopOpacity={0.35} />
+   444→                            <stop offset="100%" stopColor={BRAND} stopOpacity={0} />
+   445→                          </linearGradient>
+   446→                        </defs>
+   447→                        <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+   448→                        <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
+   449→                        <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" width={36} allowDecimals={false} />
+   450→                        <Tooltip
+   451→                          contentStyle={{ fontSize: 12, borderRadius: 8 }}
+   452→                          formatter={(v: number) => [v, 'Total users']}
+   453→                        />
+   454→                        <Area
+   455→                          type="monotone"
+   456→                          dataKey="value"
+   457→                          stroke={BRAND}
+   458→                          strokeWidth={3}
+   459→                          dot={{ r: 3, fill: BRAND, strokeWidth: 0 }}
+   460→                          activeDot={{ r: 5, fill: BRAND, stroke: 'var(--card)', strokeWidth: 2 }}
+   461→                          fill="url(#userGrowthFill)"
+   462→                        />
+   463→                      </AreaChart>
+   464→                    </ResponsiveContainer>
+   465→                  )}
+   466→                </div>
+   467→              </CardContent>
+   468→            </Card>
+   469→          </div>
+   470→
+   471→          {/* Chart 4: Donut — Subscriptions: Paid / Free / Expired */}
+   472→          <Card>
+   473→            <CardHeader className="pb-2">
+   474→              <CardTitle className="text-base font-bold">Subscriptions breakdown</CardTitle>
+   475→              <p className="text-xs text-muted-foreground/80">Paid vs free vs expired subscriptions</p>
+   476→            </CardHeader>
+   477→            <CardContent>
+   478→              <div className="h-[300px] w-full">
+   479→                {loading || !stats ? (
+   480→                  <Skeleton className="h-full w-full" />
+   481→                ) : isAllZeroSubs(stats) ? (
+   482→                  <ChartEmptyState icon={PieChartIcon} label="No subscriptions yet" hint="Subscriptions will appear here once users upgrade to premium." cta={{ label: "Create redeem code" }} />
+   483→                ) : (
+   484→                  <ResponsiveContainer width="100%" height="100%">
+   485→                    <PieChart>
+   486→                      <Tooltip
+   487→                        contentStyle={{ fontSize: 12, borderRadius: 8 }}
+   488→                        formatter={(v: number, n) => [v, n]}
+   489→                      />
+   490→                      <Pie
+   491→                        data={[
+   492→                          { name: 'Paid', value: stats.subscriptions?.paid ?? 0 },
+   493→                          { name: 'Free', value: stats.subscriptions?.free ?? 0 },
+   494→                          { name: 'Expired', value: stats.subscriptions?.expired ?? 0 },
+   495→                        ]}
+   496→                        dataKey="value"
+   497→                        nameKey="name"
+   498→                        innerRadius={60}
+   499→                        outerRadius={90}
+   500→                        paddingAngle={2}
+   501→                        label={(e: any) => `${e.name}: ${e.value}`}
+   502→                      >
+   503→                        <Cell fill={BRAND} />
+   504→                        <Cell fill={NEUTRAL} />
+   505→                        <Cell fill={ROSE} />
+   506→                      </Pie>
+   507→                    </PieChart>
+   508→                  </ResponsiveContainer>
+   509→                )}
+   510→              </div>
+   511→              <div className="mt-2 flex flex-wrap items-center justify-center gap-4 text-xs">
+   512→                <span className="inline-flex items-center gap-1.5">
+   513→                  <span className="h-2.5 w-2.5 rounded-full bg-primary" />
+   514→                  Paid ({stats?.subscriptions?.paid ?? 0})
+   515→                </span>
+   516→                <span className="inline-flex items-center gap-1.5">
+   517→                  <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/40" />
+   518→                  Free ({stats?.subscriptions?.free ?? 0})
+   519→                </span>
+   520→                <span className="inline-flex items-center gap-1.5">
+   521→                  <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />
+   522→                  Expired ({stats?.subscriptions?.expired ?? 0})
+   523→                </span>
+   524→              </div>
+   525→            </CardContent>
+   526→          </Card>
+   527→        </CollapsibleContent>
+   528→      </Collapsible>
+   529→
+   530→      {/* V2 — Members section (kept accessible from Dashboard; no separate tab).
+   531→          Renders the existing admin-members component which has its own
+   532→          search, table, and user-detail dialog. */}
+   533→      <AdminMembers />
+   534→
+   535→      {/* V2 — Reports section (kept accessible from Dashboard; no separate tab).
+   536→          Renders the existing admin-reports component with approve/reject. */}
+   537→      <AdminReports />
+   538→
+   539→      <DrilldownDialog
+   540→        metric={drilldown}
+   541→        stats={stats}
+   542→        period={period}
+   543→        onClose={() => setDrilldown(null)}
+   544→      />
+   545→    </div>
+   546→  )
+   547→}
+   548→
+   549→// ============================================================
+   550→// V3 — KpiCard — vertical layout: icon top-left, big number center,
+   551→// label below. Uses --kpi-accent CSS var for the left accent bar.
+   552→// V5 — adds a tiny sparkline in the bottom-right when stats is provided
+   553→// and the metric's chart kind is one of the time-series types.
+   554→// ============================================================
+   555→function KpiCard({
+   556→  metric,
+   557→  value,
+   558→  hint,
+   559→  onClick,
+   560→  style,
+   561→  featured,
+   562→  stats,
+   563→}: {
+   564→  metric: MetricDef | UserStatusDef | SubsDef
+   565→  value: string
+   566→  hint?: string
+   567→  onClick: () => void
+   568→  style?: React.CSSProperties
+   569→  featured?: boolean
+   570→  stats?: AdminStats | null
+   571→}) {
+   572→  const Icon = metric.icon
+   573→  const accent = metric.accent
+   574→  const accentVar = ACCENT_VAR[accent]
+   575→  const textColor = TEXT_COLOR[accent]
+   576→
+   577→  // Resolve the sparkline series from the metric's chart kind
+   578→  const chartKind = (metric as MetricDef).chart ?? 'none'
+   579→  let sparkData: Array<{ label: string; value: number }> | null = null
+   580→  if (stats && chartKind === 'registerData') {
+   581→    sparkData = (stats.registerData ?? []).map((d) => ({ label: d.label, value: d.count }))
+   582→  } else if (stats && chartKind === 'userGrowth') {
+   583→    sparkData = (stats.userGrowth ?? []).map((d) => ({ label: d.label, value: d.value }))
+   584→  } else if (stats && chartKind === 'salesData') {
+   585→    sparkData = stats.salesData ?? []
+   586→  }
+   587→
+   588→  return (
+   589→    <button
+   590→      onClick={onClick}
+   591→      className="kpi-card taly-card-hover animate-fade-in-up relative flex flex-col items-start gap-1.5 overflow-hidden text-left"
+   592→      style={{ ...(style || {}), ['--kpi-accent' as any]: accentVar }}
+   593→      aria-label={`${metric.label} — tap for details`}
+   594→    >
+   595→      <div className="flex items-center gap-2">
+   596→        <span
+   597→          className="flex h-9 w-9 items-center justify-center rounded-lg"
+   598→          style={{ background: `color-mix(in oklch, ${accentVar} 12%, transparent)`, color: accentVar }}
+   599→        >
+   600→          <Icon className="h-4 w-4" />
+   601→        </span>
+   602→      </div>
+   603→      <p className={`mt-1 font-bold tabular-nums ${featured ? 'text-3xl' : 'text-2xl'} ${textColor}`}>
+   604→        {value}
+   605→      </p>
+   606→      <p className="text-xs font-medium text-muted-foreground/80">{metric.label}</p>
+   607→      {hint && <p className="text-[10px] text-muted-foreground/70">{hint}</p>}
+   608→      {/* V5 — tiny sparkline in the bottom-right corner. 30px tall, no axes. */}
+   609→      {sparkData && sparkData.length > 1 && (
+   610→        <div className="pointer-events-none absolute bottom-1 right-2 h-8 w-20 opacity-80">
+   611→          <ResponsiveContainer width="100%" height="100%">
+   612→            <LineChart data={sparkData} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+   613→              <Line
+   614→                type="monotone"
+   615→                dataKey="value"
+   616→                stroke={accentVar}
+   617→                strokeWidth={2}
+   618→                dot={false}
+   619→                isAnimationActive={false}
+   620→              />
+   621→            </LineChart>
+   622→          </ResponsiveContainer>
+   623→        </div>
+   624→      )}
+   625→    </button>
+   626→  )
+   627→}
+   628→
+   629→// ============================================================
+   630→// V5 — helpers to detect "empty" chart data (all zeros / no rows)
+   631→// ============================================================
+   632→
+   633→function isAllZeroRegister(data?: { label: string; count: number }[] | null): boolean {
+   634→  if (!data || data.length === 0) return true
+   635→  return data.every((d) => (d.count ?? 0) === 0)
+   636→}
+   637→
+   638→function isAllZeroGrowth(data?: { label: string; value: number }[] | null): boolean {
+   639→  if (!data || data.length === 0) return true
+   640→  return data.every((d) => (d.value ?? 0) === 0)
+   641→}
+   642→
+   643→function isAllZeroActiveInactive(stats: AdminStats): boolean {
+   644→  const a = stats.activeVsInactive?.active ?? stats.activeInactive.active
+   645→  const i = stats.activeVsInactive?.inactive ?? stats.activeInactive.inactive
+   646→  return (a ?? 0) === 0 && (i ?? 0) === 0
+   647→}
+   648→
+   649→function isAllZeroSubs(stats: AdminStats): boolean {
+   650→  return (
+   651→    (stats.subscriptions?.paid ?? 0) === 0 &&
+   652→    (stats.subscriptions?.free ?? 0) === 0 &&
+   653→    (stats.subscriptions?.expired ?? 0) === 0
+   654→  )
+   655→}
+   656→
+   657→// ============================================================
+   658→// V5 — ChartEmptyState — centered empty-state placeholder for charts
+   659→// whose data is empty (all zeros). Shows a muted icon + message + optional CTA.
+   660→// ============================================================
+   661→function ChartEmptyState({
+   662→  icon: Icon,
+   663→  label,
+   664→  hint,
+   665→  cta,
+   666→}: {
+   667→  icon: React.ComponentType<{ className?: string }>
+   668→  label: string
+   669→  hint?: string
+   670→  cta?: { label: string; onClick?: () => void }
+   671→}) {
+   672→  return (
+   673→    <div className="relative flex h-full w-full flex-col items-center justify-center gap-3 overflow-hidden rounded-md bg-muted/10 text-center">
+   674→      {/* Decorative dotted bg */}
+   675→      <div className="dotted-bg absolute inset-0" aria-hidden />
+   676→      {/* Floating icon */}
+   677→      <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-primary/5">
+   678→        <Icon className="h-8 w-8 text-primary/50" />
+   679→      </div>
+   680→      <div className="relative space-y-1">
+   681→        <p className="text-sm font-semibold text-muted-foreground">{label}</p>
+   682→        {hint && <p className="mx-auto max-w-xs text-xs text-muted-foreground/60">{hint}</p>}
+   683→      </div>
+   684→      {cta && (
+   685→        <button
+   686→          onClick={cta.onClick}
+   687→          className="relative rounded-full border border-primary/20 bg-primary/5 px-4 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+   688→        >
+   689→          {cta.label}
+   690→        </button>
+   691→      )}
+   692→    </div>
+   693→  )
+   694→}
+   695→
+   696→// ============================================================
+   697→// Drilldown dialog — opens when any metric card is clicked.
+   698→// Renders a mini chart for that metric + small stats summary.
+   699→// ============================================================
+   700→function DrilldownDialog({
+   701→  metric,
+   702→  stats,
+   703→  period,
+   704→  onClose,
+   705→}: {
+   706→  metric: MetricDef | UserStatusDef | SubsDef | null
+   707→  stats: AdminStats | null
+   708→  period: Period
+   709→  onClose: () => void
+   710→}) {
+   711→  if (!metric) return null
+   712→
+   713→  // Resolve common fields
+   714→  const Icon = metric.icon
+   715→  const label = metric.label
+   716→  const accent = metric.accent
+   717→  const rawValue = metric.value(stats as AdminStats)
+   718→  const valueStr = typeof rawValue === 'string' ? rawValue : rawValue.toLocaleString('en-IN')
+   719→
+   720→  const chart = (metric as MetricDef).chart ?? 'none'
+   721→  const periodLabel =
+   722→    period === '7days' ? '7 Days' : period === '1month' ? '1 Month' : 'All Time'
+   723→
+   724→  // V3 — small stats summary (current + period + breakdown for pie metrics)
+   725→  const summary: Array<{ label: string; value: string }> = [
+   726→    { label: 'Current value', value: stats ? valueStr : '—' },
+   727→    { label: 'Period', value: periodLabel },
+   728→  ]
+   729→  if (chart === 'piePremium' && stats) {
+   730→    summary.push(
+   731→      { label: 'Premium', value: stats.premium.toLocaleString('en-IN') },
+   732→      { label: 'Expired', value: stats.expiredPlans.toLocaleString('en-IN') },
+   733→      {
+   734→        label: 'Free',
+   735→        value: Math.max(0, stats.totalUsers - stats.premium).toLocaleString('en-IN'),
+   736→      },
+   737→    )
+   738→  } else if (chart === 'pieActiveInactive' && stats) {
+   739→    summary.push(
+   740→      { label: 'Active', value: (stats.activeVsInactive?.active ?? stats.activeInactive.active).toLocaleString('en-IN') },
+   741→      { label: 'Inactive', value: (stats.activeVsInactive?.inactive ?? stats.activeInactive.inactive).toLocaleString('en-IN') },
+   742→    )
+   743→  } else if (chart === 'pieSubs' && stats) {
+   744→    summary.push(
+   745→      { label: 'Paid', value: (stats.subscriptions?.paid ?? 0).toLocaleString('en-IN') },
+   746→      { label: 'Free', value: (stats.subscriptions?.free ?? 0).toLocaleString('en-IN') },
+   747→      { label: 'Expired', value: (stats.subscriptions?.expired ?? 0).toLocaleString('en-IN') },
+   748→    )
+   749→  }
+   750→
+   751→  return (
+   752→    <Dialog open={!!metric} onOpenChange={(o) => !o && onClose()}>
+   753→      <DialogContent className="sm:max-w-2xl">
+   754→        <DialogHeader>
+   755→          <DialogTitle className="flex items-center gap-2">
+   756→            <span
+   757→              className="flex h-8 w-8 items-center justify-center rounded-lg"
+   758→              style={{ background: `color-mix(in oklch, ${ACCENT_VAR[accent]} 12%, transparent)`, color: ACCENT_VAR[accent] }}
+   759→            >
+   760→              <Icon className="h-4 w-4" />
+   761→            </span>
+   762→            {label}
+   763→          </DialogTitle>
+   764→          <DialogDescription>
+   765→            Tap-to-see detail · <span className="font-medium">{periodLabel}</span>
+   766→          </DialogDescription>
+   767→        </DialogHeader>
+   768→
+   769→        <div className="h-[320px] w-full">
+   770→          {!stats ? (
+   771→            <Skeleton className="h-full w-full" />
+   772→          ) : chart === 'none' ? (
+   773→            <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground/80">
+   774→              <Icon className="h-12 w-12 opacity-30" />
+   775→              <p className="text-sm">No time-series breakdown for this metric.</p>
+   776→              <p className="text-xs">
+   777→                Snapshot value: <span className="font-semibold text-foreground">{valueStr}</span>
+   778→              </p>
+   779→            </div>
+   780→          ) : chart === 'salesData' ? (
+   781→            <ResponsiveContainer width="100%" height="100%">
+   782→              <AreaChart data={stats.salesData ?? []} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+   783→                <defs>
+   784→                  <linearGradient id="drillRevFill" x1="0" y1="0" x2="0" y2="1">
+   785→                    <stop offset="0%" stopColor={BRAND} stopOpacity={0.35} />
+   786→                    <stop offset="100%" stopColor={BRAND} stopOpacity={0} />
+   787→                  </linearGradient>
+   788→                </defs>
+   789→                <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+   790→                <XAxis dataKey="label" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+   791→                <YAxis tick={{ fontSize: 10 }} width={48} stroke="var(--muted-foreground)" />
+   792→                <Tooltip
+   793→                  contentStyle={{ fontSize: 12, borderRadius: 8 }}
+   794→                  formatter={(v: number) => [formatINR(v), 'Revenue']}
+   795→                />
+   796→                <Area
+   797→                  type="monotone"
+   798→                  dataKey="value"
+   799→                  stroke={BRAND}
+   800→                  strokeWidth={3}
+   801→                  dot={{ r: 3, fill: BRAND, strokeWidth: 0 }}
+   802→                  activeDot={{ r: 5, fill: BRAND, stroke: 'var(--card)', strokeWidth: 2 }}
+   803→                  fill="url(#drillRevFill)"
+   804→                />
+   805→              </AreaChart>
+   806→            </ResponsiveContainer>
+   807→          ) : chart === 'userGrowth' ? (
+   808→            <ResponsiveContainer width="100%" height="100%">
+   809→              <AreaChart data={stats.userGrowth ?? []} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+   810→                <defs>
+   811→                  <linearGradient id="drillGrowthFill" x1="0" y1="0" x2="0" y2="1">
+   812→                    <stop offset="0%" stopColor={BRAND} stopOpacity={0.35} />
+   813→                    <stop offset="100%" stopColor={BRAND} stopOpacity={0} />
+   814→                  </linearGradient>
+   815→                </defs>
+   816→                <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+   817→                <XAxis dataKey="label" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+   818→                <YAxis tick={{ fontSize: 10 }} width={48} stroke="var(--muted-foreground)" />
+   819→                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+   820→                <Area
+   821→                  type="monotone"
+   822→                  dataKey="value"
+   823→                  stroke={BRAND}
+   824→                  strokeWidth={3}
+   825→                  dot={{ r: 3, fill: BRAND, strokeWidth: 0 }}
+   826→                  activeDot={{ r: 5, fill: BRAND, stroke: 'var(--card)', strokeWidth: 2 }}
+   827→                  fill="url(#drillGrowthFill)"
+   828→                />
+   829→              </AreaChart>
+   830→            </ResponsiveContainer>
+   831→          ) : chart === 'registerData' ? (
+   832→            <ResponsiveContainer width="100%" height="100%">
+   833→              <BarChart data={stats.registerData ?? []} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+   834→                <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+   835→                <XAxis dataKey="label" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+   836→                <YAxis tick={{ fontSize: 10 }} width={36} allowDecimals={false} stroke="var(--muted-foreground)" />
+   837→                <Tooltip
+   838→                  contentStyle={{ fontSize: 12, borderRadius: 8 }}
+   839→                  formatter={(v: number) => [v, 'New users']}
+   840→                />
+   841→                <Bar dataKey="count" fill={BRAND} radius={[6, 6, 0, 0]} barSize={28} />
+   842→              </BarChart>
+   843→            </ResponsiveContainer>
+   844→          ) : chart === 'pieActiveInactive' ? (
+   845→            <ResponsiveContainer width="100%" height="100%">
+   846→              <PieChart>
+   847→                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+   848→                <Pie
+   849→                  data={[
+   850→                    { name: 'Active', value: stats.activeVsInactive?.active ?? stats.activeInactive.active },
+   851→                    { name: 'Inactive', value: stats.activeVsInactive?.inactive ?? stats.activeInactive.inactive },
+   852→                  ]}
+   853→                  dataKey="value"
+   854→                  nameKey="name"
+   855→                  innerRadius={60}
+   856→                  outerRadius={90}
+   857→                  paddingAngle={2}
+   858→                  label={(e: any) => `${e.name}: ${e.value}`}
+   859→                >
+   860→                  <Cell fill={BRAND} />
+   861→                  <Cell fill={NEUTRAL} />
+   862→                </Pie>
+   863→              </PieChart>
+   864→            </ResponsiveContainer>
+   865→          ) : chart === 'piePremium' ? (
+   866→            <ResponsiveContainer width="100%" height="100%">
+   867→              <PieChart>
+   868→                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+   869→                <Pie
+   870→                  data={[
+   871→                    { name: 'Premium', value: stats.premium },
+   872→                    { name: 'Expired', value: stats.expiredPlans },
+   873→                    {
+   874→                      name: 'Free',
+   875→                      value: Math.max(0, stats.totalUsers - stats.premium),
+   876→                    },
+   877→                  ]}
+   878→                  dataKey="value"
+   879→                  nameKey="name"
+   880→                  innerRadius={60}
+   881→                  outerRadius={90}
+   882→                  paddingAngle={2}
+   883→                  label={(e: any) => `${e.name}: ${e.value}`}
+   884→                >
+   885→                  <Cell fill={AMBER} />
+   886→                  <Cell fill={ROSE} />
+   887→                  <Cell fill={NEUTRAL} />
+   888→                </Pie>
+   889→              </PieChart>
+   890→            </ResponsiveContainer>
+   891→          ) : chart === 'pieSubs' ? (
+   892→            <ResponsiveContainer width="100%" height="100%">
+   893→              <PieChart>
+   894→                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+   895→                <Pie
+   896→                  data={[
+   897→                    { name: 'Paid', value: stats.subscriptions?.paid ?? 0 },
+   898→                    { name: 'Free', value: stats.subscriptions?.free ?? 0 },
+   899→                    { name: 'Expired', value: stats.subscriptions?.expired ?? 0 },
+   900→                  ]}
+   901→                  dataKey="value"
+   902→                  nameKey="name"
+   903→                  innerRadius={60}
+   904→                  outerRadius={90}
+   905→                  paddingAngle={2}
+   906→                  label={(e: any) => `${e.name}: ${e.value}`}
+   907→                >
+   908→                  <Cell fill={BRAND} />
+   909→                  <Cell fill={NEUTRAL} />
+   910→                  <Cell fill={ROSE} />
+   911→                </Pie>
+   912→              </PieChart>
+   913→            </ResponsiveContainer>
+   914→          ) : null}
+   915→        </div>
+   916→
+   917→        {/* V3 — small stats summary */}
+   918→        {stats && (
+   919→          <div className="grid grid-cols-2 gap-2 rounded-lg bg-muted/30 p-3 sm:grid-cols-3">
+   920→            {summary.map((s) => (
+   921→              <div key={s.label} className="text-center">
+   922→                <p className={`text-sm font-bold ${TEXT_COLOR[accent]}`}>{s.value}</p>
+   923→                <p className="text-[10px] uppercase tracking-wide text-muted-foreground/80">{s.label}</p>
+   924→              </div>
+   925→            ))}
+   926→          </div>
+   927→        )}
+   928→
+   929→        <div className="flex items-center justify-end">
+   930→          <Button variant="outline" size="sm" onClick={onClose}>
+   931→            Close
+   932→          </Button>
+   933→        </div>
+   934→      </DialogContent>
+   935→    </Dialog>
+   936→  )
+   937→}
+   938→

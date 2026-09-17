@@ -21,7 +21,6 @@ import {
   User,
   Phone,
   Gift,
-  ArrowRight,
   Sparkles,
   Users,
   MessageCircle,
@@ -56,10 +55,6 @@ export function AuthScreen() {
   } | null>(null)
   const [twoFactorCode, setTwoFactorCode] = useState('')
   const [twoFactorLoading, setTwoFactorLoading] = useState(false)
-
-  const scrollToForm = () => {
-    document.getElementById('taly-auth-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }
 
   const handleLogin = async () => {
     if (!loginEmail || !loginPassword) {
@@ -272,44 +267,52 @@ export function AuthScreen() {
 
   return (
     <div className="taly-shell min-h-[100dvh] bg-background">
-      <section className="relative flex flex-col items-center justify-start overflow-hidden px-6 pt-12 pb-10 text-center">
+      <section className="relative flex flex-col items-center justify-start overflow-hidden px-6 pt-12 pb-6 text-center">
         <div className="pointer-events-none absolute inset-0 -z-10">
           <div className="absolute -top-20 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-primary/20 blur-3xl" />
           <div className="absolute -bottom-32 -right-20 h-72 w-72 rounded-full bg-emerald-400/10 blur-3xl" />
         </div>
 
+        {/* F10-11 — Entry animation sequence:
+            Logo fades + scales up (0.8 → 1.0) over 0.5s
+            Heading slides up + fades in (delay 0.1s)
+            Tagline fades in (delay 0.2s)
+            Features fade + slide up (delay 0.3s)
+            Form card slides up from bottom + fades in (delay 0.3s, slightly longer) */}
+        <div className="flex flex-col items-center gap-3">
+          <motion.img
+            src="/logo.png"
+            alt="TalyChat"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5, ease: 'easeOut' }}
+            className="h-20 w-20 rounded-2xl shadow-xl"
+          />
+          <motion.h1
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1, duration: 0.4, ease: 'easeOut' }}
+            className="text-4xl font-extrabold tracking-tight"
+          >
+            <span className="bg-gradient-to-r from-primary to-emerald-600 bg-clip-text text-transparent">
+              TalyChat
+            </span>
+          </motion.h1>
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2, duration: 0.4 }}
+            className="text-sm text-muted-foreground"
+          >
+            Chat. Connect. Mingle.
+          </motion.p>
+        </div>
+
         <motion.div
-          initial={{ opacity: 0, y: -10 }}
+          initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="flex flex-col items-center gap-4"
-        >
-          <img src="/logo.png" alt="TalyChat" className="h-20 w-20 rounded-2xl shadow-xl" />
-          <div>
-            <h1 className="text-4xl font-extrabold tracking-tight">
-              <span className="bg-gradient-to-r from-primary to-emerald-600 bg-clip-text text-transparent">
-                TalyChat
-              </span>
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">Chat. Connect. Mingle.</p>
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
-            <Button onClick={scrollToForm} className="btn-brand gap-2 px-6 py-5">
-              Sign up
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-            <Button onClick={scrollToForm} variant="outline" className="px-6 py-5">
-              Login
-            </Button>
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-          className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-3 w-full max-w-md"
+          transition={{ delay: 0.3, duration: 0.4 }}
+          className="mt-8 grid w-full max-w-md grid-cols-1 gap-3 sm:grid-cols-3"
         >
           <Feature icon={<MessageCircle className="h-4 w-4" />} label="Private P2P chats" />
           <Feature icon={<Users className="h-4 w-4" />} label="Join communities" />
@@ -317,8 +320,13 @@ export function AuthScreen() {
         </motion.div>
       </section>
 
-      <section id="taly-auth-form" className="scroll-pan-y mx-auto w-full max-w-md px-6 pb-12">
-        <div className="rounded-2xl border bg-card p-5 shadow-sm">
+      <section id="taly-auth-form" className="scroll-pan-y mx-auto w-full max-w-md px-6 pb-16">
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3, duration: 0.45, ease: 'easeOut' }}
+          className="rounded-2xl border bg-card p-5 shadow-sm"
+        >
           <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="login">Login</TabsTrigger>
@@ -428,7 +436,7 @@ export function AuthScreen() {
           <p className="mt-4 text-center text-xs text-muted-foreground">
             <Sparkles className="inline h-3 w-3" /> Founded by Omkar Panday
           </p>
-        </div>
+        </motion.div>
       </section>
     </div>
   )

@@ -1,10 +1,9 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   ChevronLeft,
-  ChevronRight,
   Compass,
   Loader2,
   Lock,
@@ -261,14 +260,14 @@ function CapsuleCategorySlider({
 }) {
   return (
     <div
-      className="no-scrollbar scroll-pan-y -mx-4 mt-3 w-full overflow-x-auto px-4"
+      className="no-scrollbar scroll-pan-y mt-3 w-full overflow-x-auto pb-1"
       style={{
-        scrollSnapType: 'x proximity',
-        scrollPaddingLeft: '16px',
-        scrollPaddingRight: '16px',
+        scrollSnapType: 'x mandatory',
+        scrollPaddingLeft: '8px',
+        scrollPaddingRight: '8px',
       }}
     >
-      <div className="flex min-w-0 gap-2 pb-1">
+      <div className="flex min-w-0 gap-1.5 pb-1">
         {categories.map((cat) => {
           const active = activeCategory === cat
           return (
@@ -278,12 +277,11 @@ function CapsuleCategorySlider({
               onClick={() => onSelect(cat)}
               aria-pressed={active}
               className={
-                'min-h-[40px] shrink-0 rounded-full border px-4 py-2 text-sm font-medium transition-colors ' +
+                'min-h-[36px] shrink-0 snap-start rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ' +
                 (active
                   ? 'btn-brand border-transparent text-primary-foreground shadow-sm'
                   : 'border-border bg-card text-foreground/80 hover:bg-accent hover:text-foreground')
               }
-              style={{ scrollSnapAlign: 'start' }}
             >
               {cat}
             </button>
@@ -500,7 +498,7 @@ export function DiscoverScreen({ onOpenChat }: DiscoverScreenProps = {}) {
   const totalGroups = trending.length + popular.length + newGroups.length
 
   return (
-    <div className="mx-auto max-w-2xl px-4 pb-20 pt-6 lg:pb-6 lg:pt-8">
+    <div className="w-full px-2 pb-20 pt-4 lg:pb-6 lg:pt-6">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}
@@ -545,7 +543,7 @@ export function DiscoverScreen({ onOpenChat }: DiscoverScreenProps = {}) {
 
       {/* Empty state — no groups loaded */}
       {!loading && totalGroups === 0 && !activeCategory && (
-        <div className="dotted-bg mt-6 flex flex-col items-center justify-center rounded-2xl border border-border bg-card p-10 text-center">
+        <div className="dotted-bg mt-6 flex flex-col items-center justify-center rounded-2xl border border-border bg-card p-8 text-center">
           <Compass className="h-12 w-12 text-muted-foreground/60" />
           <p className="mt-3 text-sm font-semibold text-foreground">
             No communities yet
@@ -661,15 +659,22 @@ export function DiscoverScreen({ onOpenChat }: DiscoverScreenProps = {}) {
           {sponsored.length > 0 && (
             <section className="mt-6 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
               <h2 className="section-header">Sponsored Communities</h2>
-              <div className="no-scrollbar scroll-pan-y -mx-4 mt-3 w-full overflow-x-auto px-4">
-                <div className="flex min-w-0 gap-3 pb-1">
+              <div
+                className="no-scrollbar scroll-pan-y mt-3 w-full overflow-x-auto pb-2"
+                style={{
+                  scrollSnapType: 'x mandatory',
+                  scrollPaddingLeft: '8px',
+                  scrollPaddingRight: '8px',
+                }}
+              >
+                <div className="flex min-w-0 gap-2 pb-1">
                   {sponsored.map((ad) => (
                     <a
                       key={ad.id}
                       href={ad.ctaUrl || '#'}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="taly-card taly-card-hover group relative block w-64 shrink-0 overflow-hidden p-3"
+                      className="taly-card taly-card-hover group relative block min-w-[200px] shrink-0 snap-start overflow-hidden p-2"
                     >
                       <span className="inline-flex items-center rounded-md bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
                         Sponsored
@@ -679,11 +684,11 @@ export function DiscoverScreen({ onOpenChat }: DiscoverScreenProps = {}) {
                           <img
                             src={ad.imageUrl}
                             alt={ad.brandName}
-                            className="h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-border"
+                            className="h-10 w-10 shrink-0 rounded-lg object-cover ring-1 ring-border"
                           />
                         ) : (
-                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500/15 to-emerald-500/5 text-emerald-600">
-                            <Compass className="h-5 w-5" />
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500/15 to-emerald-500/5 text-emerald-600">
+                            <Compass className="h-4 w-4" />
                           </div>
                         )}
                         <div className="min-w-0 flex-1">
@@ -751,84 +756,39 @@ function Section({
   onPreview: (g: GroupItem) => void
   delay?: number
 }) {
-  // R8-11 — 2-at-a-time horizontal slider. Cards are 50% of the visible
-  // container width (calc(50% - 6px) so two cards + the 12px gap fit the
-  // viewport exactly). The slider uses CSS scroll-snap so each swipe
-  // advances by one card width, revealing the next pair.
-  const trackRef = useRef<HTMLDivElement | null>(null)
-
-  const scrollByCard = (direction: 1 | -1) => {
-    const el = trackRef.current
-    if (!el) return
-    // Advance by ~2 card widths (= ~one full viewport of 2 cards).
-    const cardWidth = el.clientWidth * 0.5
-    el.scrollBy({ left: direction * cardWidth * 2, behavior: 'smooth' })
-  }
-
-  // Show a chevron on either side only when there's something to scroll to.
-  // We use the simpler "more than 2 groups" check — the scroll container's
-  // overflow itself indicates scrollability.
-  const canScroll = !loading && groups.length > 2
-
+  // F3-4 — Removed the < > chevron arrow buttons next to each section title.
+  // Cards now scroll horizontally via swipe (overflow-x-auto + scroll-snap)
+  // and the scrollbar is hidden globally via .no-scrollbar / globals.css.
   return (
     <section
       className="mt-6 animate-fade-in-up"
       style={{ animationDelay: `${delay}s` }}
     >
-      {/* Sticky header — backdrop blur + category icon + slider nav */}
-      <div className="sticky top-0 z-10 -mx-4 mb-2 flex items-center gap-1.5 bg-background/95 px-4 py-2 backdrop-blur">
+      {/* Header — icon + title (no more chevron arrows). */}
+      <div className="mb-2 flex items-center gap-1.5 px-1 py-1">
         {icon && <span aria-hidden className="text-base">{icon}</span>}
         <h2 className="section-header flex-1">{title}</h2>
-        {canScroll && (
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => scrollByCard(-1)}
-              aria-label={`Previous ${title} groups`}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => scrollByCard(1)}
-              aria-label={`Next ${title} groups`}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-        )}
       </div>
 
-      {/* 2-cards-at-a-time horizontal slider with scroll-snap */}
+      {/* Horizontal swipe slider with scroll-snap; no scrollbar. */}
       <div
-        ref={trackRef}
-        className="no-scrollbar scroll-pan-y -mx-4 w-full overflow-x-auto px-4"
+        className="no-scrollbar scroll-pan-y w-full overflow-x-auto pb-2"
         style={{
           scrollSnapType: 'x mandatory',
-          scrollPaddingLeft: '16px',
-          scrollPaddingRight: '16px',
+          scrollPaddingLeft: '8px',
+          scrollPaddingRight: '8px',
         }}
       >
         {loading ? (
           <CardLoadingRow />
         ) : groups.length === 0 ? (
-          <p className="px-4 text-sm text-muted-foreground">No groups yet.</p>
+          <p className="px-2 text-sm text-muted-foreground">No groups yet.</p>
         ) : (
-          <div
-            className="flex min-w-0 pb-1"
-            style={{ columnGap: '12px' }}
-          >
+          <div className="flex min-w-0 gap-2 pb-1">
             {groups.map((g) => (
               <div
                 key={g.id}
-                className="shrink-0"
-                style={{
-                  width: 'calc(50% - 6px)',
-                  scrollSnapAlign: 'start',
-                  scrollSnapStop: 'normal',
-                }}
+                className="min-w-[140px] shrink-0 snap-start sm:min-w-[160px]"
               >
                 <GroupCard
                   g={g}
@@ -874,41 +834,41 @@ function GroupCard({
   const isActive = g.membersCount > 5
   return (
     <div
-      // R8-11 — Full-width inside the 50%-width slider slot. The parent
-      // wrapper (in Section) sets the 2-cards-at-a-time width + snap align.
-      className={`group-card relative w-full overflow-hidden border-t-2 ${categoryTopBorder(g.category)} p-3`}
+      // F3-4 — Smaller card: p-2 padding + h-10 avatar (was p-3 + h-14)
+      // so more cards fit per swipe. Card snaps via parent flex container.
+      className={`group-card relative w-full overflow-hidden border-t-2 ${categoryTopBorder(g.category)} p-2`}
     >
       {/* V12 — Category gradient overlay tinting the top portion of the card */}
       <div
         aria-hidden
-        className={`pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b ${categoryGradient(g.category)} to-transparent`}
+        className={`pointer-events-none absolute inset-x-0 top-0 h-12 bg-gradient-to-b ${categoryGradient(g.category)} to-transparent`}
       />
       <button
         onClick={onPreview}
         className="relative flex w-full flex-col items-center text-center"
       >
         <Avatar
-          className={`h-14 w-14 ring-2 ${categoryRing(g.category)}`}
+          className={`h-10 w-10 ring-2 ${categoryRing(g.category)}`}
         >
           <AvatarImage src={g.logo || undefined} alt={g.name} />
           <AvatarFallback className="bg-primary/10 text-primary">
             {(g.name || '?')[0]?.toUpperCase()}
           </AvatarFallback>
         </Avatar>
-        <p className="mt-2 flex items-center gap-1 text-sm font-semibold">
+        <p className="mt-1.5 flex items-center gap-1 text-xs font-semibold">
           {g.isPublic === false && <Lock className="h-3 w-3 shrink-0 text-muted-foreground" />}
           <span className="line-clamp-1">{g.name}</span>
         </p>
         {g.category && (
           <span
-            className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${categoryBadge(g.category)}`}
+            className={`mt-1 inline-block rounded-full px-1.5 py-0.5 text-[9px] font-medium ${categoryBadge(g.category)}`}
           >
             {g.category}
           </span>
         )}
         {/* Stacked mini avatars + member count + active dot */}
-        <div className="mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground">
-          <MiniStackedAvatars logo={g.logo} name={g.name} memberCount={g.membersCount} />
+        <div className="mt-1 flex items-center gap-1 text-[9px] text-muted-foreground">
+          <MiniStackedAvatars logo={g.logo} name={g.name} memberCount={g.membersCount} small />
           <span className="inline-flex items-center gap-1">
             {isActive && (
               <span
@@ -923,12 +883,12 @@ function GroupCard({
           </span>
         </div>
         {g.description && (
-          <p className="mt-1.5 line-clamp-2 w-full text-[11px] leading-snug text-muted-foreground">
+          <p className="mt-1 line-clamp-2 w-full text-[10px] leading-snug text-muted-foreground">
             {g.description}
           </p>
         )}
       </button>
-      <div className="relative mt-3">
+      <div className="relative mt-2">
         <JoinButton
           state={state}
           joining={joining}
@@ -1201,19 +1161,16 @@ function JoinButton({
 }
 
 function CardLoadingRow() {
-  // R8-11 — Show 2 loading cards at a time to match the new 2-card slider.
+  // F3-4 — Loading skeleton row matching the new swipe slider
+  // (min-w-[140px] cards, gap-2, snap-start). Shows 4 placeholders.
   return (
-    <div
-      className="flex min-w-0 pb-1"
-      style={{ columnGap: '12px' }}
-    >
-      {[0, 1].map((i) => (
+    <div className="flex min-w-0 gap-2 pb-1">
+      {[0, 1, 2, 3].map((i) => (
         <div
           key={i}
-          className="group-card shrink-0 p-3"
-          style={{ width: 'calc(50% - 6px)' }}
+          className="group-card min-w-[140px] shrink-0 snap-start p-2 sm:min-w-[160px]"
         >
-          <div className="mx-auto h-14 w-14 animate-pulse rounded-full bg-muted" />
+          <div className="mx-auto h-10 w-10 animate-pulse rounded-full bg-muted" />
           <div className="mt-2 h-3 w-3/4 animate-pulse rounded bg-muted" />
           <div className="mt-1 h-2 w-1/2 animate-pulse rounded bg-muted" />
         </div>

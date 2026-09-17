@@ -554,6 +554,11 @@ export const MessageBubble = React.forwardRef<MessageBubbleHandle, MessageBubble
                     isMine={isMine}
                     messageId={message.id}
                   />
+                ) : message.type === 'voice' ? (
+                  // F5-9 — voice message with no playable URL (upload failed
+                  // or stale). Show a clear "unavailable" notice instead of
+                  // rendering an empty bubble.
+                  <span className="italic opacity-70">🎤 Voice message unavailable</span>
                 ) : message.type === 'image' && message.mediaUrl ? (
                   <button
                     type="button"

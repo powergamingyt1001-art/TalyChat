@@ -1,0 +1,913 @@
+     1→'use client'
+     2→
+     3→import * as React from 'react'
+     4→import { motion } from 'framer-motion'
+     5→import { PremiumAvatar } from '@/components/premium-avatar'
+     6→import { LocationMessage } from './location-message'
+     7→import {
+     8→  Dialog,
+     9→  DialogContent,
+    10→  DialogDescription,
+    11→  DialogTitle,
+    12→} from '@/components/ui/dialog'
+    13→import {
+    14→  Reply,
+    15→  Copy,
+    16→  Forward,
+    17→  Pencil,
+    18→  Trash2,
+    19→  Pin,
+    20→  Check,
+    21→  CheckCheck,
+    22→  CornerUpLeft,
+    23→  Clock,
+    24→  SmilePlus,
+    25→} from 'lucide-react'
+    26→import { ChatMessage, ChatMember } from './chat-types'
+    27→import { QUICK_REACTIONS, EXTENDED_REACTIONS } from './chat-types'
+    28→import { VoiceMessage } from './voice-message'
+    29→import { SeenByPopover } from './seen-by-popover'
+    30→import { formatTime, messagePreview } from './chat-helpers'
+    31→import { cn } from '@/lib/utils'
+    32→
+    33→interface MessageBubbleProps {
+    34→  message: ChatMessage
+    35→  isMine: boolean
+    36→  isGroup: boolean
+    37→  currentUserId: string
+    38→  messageStyle: string // bubble | sharp | tail | none
+    39→  fontFamilyClass?: string
+    40→  fontSizePx?: number
+    41→  /** V13 — per-conversation sent bubble color override (hex). */
+    42→  sentBubbleColor?: string | null
+    43→  /** V13 — per-conversation received bubble color override (hex). */
+    44→  receivedBubbleColor?: string | null
+    45→  /** Whether this is the first message in a group from the same sender (consecutive). */
+    46→  isFirstInGroup?: boolean
+    47→  /** Whether this is the last message in a group from the same sender. */
+    48→  isLastInGroup?: boolean
+    49→  /** Whether to show the date separator above. */
+    50→  showDateSeparator?: boolean
+    51→  dateSeparatorLabel?: string
+    52→  /** Callbacks. */
+    53→  onReply: (m: ChatMessage) => void
+    54→  onReact: (m: ChatMessage, emoji: string) => void
+    55→  onEdit: (m: ChatMessage) => void
+    56→  onDelete: (m: ChatMessage) => void
+    57→  onPin: (m: ChatMessage) => void
+    58→  onForward: (m: ChatMessage) => void
+    59→  onCopy: (text: string) => void
+    60→  /** Used to find the anchor element for the action popover. */
+    61→  registerActionAnchor?: (el: HTMLElement | null, message: ChatMessage | null) => void
+    62→  /** Conversation members — used to populate the "Seen by" popover (sent messages only). */
+    63→  members?: ChatMember[] | null
+    64→}
+    65→
+    66→interface ActionMenuState {
+    67→  message: ChatMessage
+    68→  anchor: HTMLElement
+    69→}
+    70→
+    71→// Imperative handle so the parent ChatView can render the menu in a portal.
+    72→export interface MessageBubbleHandle {
+    73→  openActionMenu: (state: ActionMenuState) => void
+    74→}
+    75→
+    76→const SWIPE_THRESHOLD = 60 // px
+    77→
+    78→// Bubble style class helper
+    79→function bubbleStyleClass(style: string, isMine: boolean): string {
+    80→  switch (style) {
+    81→    case 'sharp':
+    82→      return 'bubble-sharp rounded-none'
+    83→    case 'tail':
+    84→      return isMine ? 'bubble-tail-sent' : 'bubble-tail-received'
+    85→    case 'none':
+    86→      return 'bubble-none'
+    87→    default:
+    88→      return '' // default bubble shape
+    89→  }
+    90→}
+    91→
+    92→// V13 — Determine readable text color (white/black) for a given hex bubble background.
+    93→// Used when applying per-conversation sent/received bubble color overrides.
+    94→function readableTextOn(hex: string | null): string {
+    95→  if (!hex) return '#ffffff'
+    96→  const m = /^#([0-9a-fA-F]{6})$/.exec(hex.trim())
+    97→  if (!m) return '#ffffff'
+    98→  const r = parseInt(m[1].slice(0, 2), 16)
+    99→  const g = parseInt(m[1].slice(2, 4), 16)
+   100→  const b = parseInt(m[1].slice(4, 6), 16)
+   101→  // YIQ contrast formula — light backgrounds get dark text, dark backgrounds get white.
+   102→  const yiq = (r * 299 + g * 587 + b * 114) / 1000
+   103→  return yiq >= 140 ? '#111111' : '#ffffff'
+   104→}
+   105→
+   106→// ---------------------------------------------------------------------------
+   107→// Read-receipt indicator — single check (sent, not seen) or double check (seen).
+   108→// Clicking opens a popover listing who has seen the message (sent msgs only).
+   109→// Touch target is at least 24px (with 8px+ padding) for accessibility.
+   110→// ---------------------------------------------------------------------------
+   111→interface ReadReceiptIndicatorProps {
+   112→  seen: boolean
+   113→  seenBy: string
+   114→  members?: ChatMember[] | null
+   115→  currentUserId: string
+   116→}
+   117→
+   118→function ReadReceiptIndicator({
+   119→  seen,
+   120→  seenBy,
+   121→  members,
+   122→  currentUserId,
+   123→}: ReadReceiptIndicatorProps) {
+   124→  const trigger = (
+   125→    <button
+   126→      type="button"
+   127→      aria-label={seen ? 'Seen by at least one person' : 'Sent — not seen yet'}
+   128→      className={cn(
+   129→        'flex min-h-[24px] min-w-[24px] items-center justify-center rounded p-1 transition-colors',
+   130→        'hover:bg-black/5 dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
+   131→        seen ? 'text-emerald-500' : 'text-muted-foreground/70'
+   132→      )}
+   133→      // Prevent the bubble's swipe/long-press handlers from firing on the button.
+   134→      onClick={(e) => {
+   135→        e.stopPropagation()
+   136→      }}
+   137→      onContextMenu={(e) => e.stopPropagation()}
+   138→    >
+   139→      {seen ? (
+   140→        <CheckCheck className="h-3.5 w-3.5" />
+   141→      ) : (
+   142→        <Check className="h-3.5 w-3.5" />
+   143→      )}
+   144→    </button>
+   145→  )
+   146→
+   147→  // The popover only makes sense for sent messages.
+   148→  return (
+   149→    <SeenByPopover
+   150→      seenBy={seenBy}
+   151→      members={members}
+   152→      currentUserId={currentUserId}
+   153→      alignEnd
+   154→    >
+   155→      {trigger}
+   156→    </SeenByPopover>
+   157→  )
+   158→}
+   159→
+   160→export const MessageBubble = React.forwardRef<MessageBubbleHandle, MessageBubbleProps>(
+   161→  function MessageBubble(props, ref) {
+   162→    const {
+   163→      message,
+   164→      isMine,
+   165→      isGroup,
+   166→      currentUserId,
+   167→      messageStyle,
+   168→      fontFamilyClass,
+   169→      fontSizePx,
+   170→      sentBubbleColor,
+   171→      receivedBubbleColor,
+   172→      isFirstInGroup,
+   173→      isLastInGroup,
+   174→      showDateSeparator,
+   175→      dateSeparatorLabel,
+   176→      onReply,
+   177→      onReact,
+   178→      onEdit,
+   179→      onDelete,
+   180→      onPin,
+   181→      onForward,
+   182→      onCopy,
+   183→      registerActionAnchor,
+   184→      members,
+   185→    } = props
+   186→
+   187→    // R1-3 — onForward prop is kept on the MessageBubble interface so the
+   188→    // existing chat-view wiring continues to typecheck, but the long-press
+   189→    // "Forward" action menu item has been removed. Forwarding as a
+   190→    // feature is parked under "Coming Soon" in the Profile screen.
+   191→    void onForward
+   192→
+   193→    // Refs for touch handling
+   194→    const rootRef = React.useRef<HTMLDivElement | null>(null)
+   195→    const touchStartRef = React.useRef<{ x: number; y: number; t: number } | null>(null)
+   196→    const longPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+   197→    const swipeDxRef = React.useRef<number>(0)
+   198→    const [swipeHint, setSwipeHint] = React.useState<number>(0)
+   199→    const lastTapRef = React.useRef<{ id: string; t: number; x: number; y: number } | null>(null)
+   200→
+   201→    // Lightbox state for images
+   202→    const [lightboxOpen, setLightboxOpen] = React.useState(false)
+   203→
+   204→    const isDeleted = !!message.deletedAt
+   205→    const isEdited = !!message.editedAt && !isDeleted
+   206→
+   207→    // Clean up long-press timer on unmount
+   208→    React.useEffect(() => {
+   209→      return () => {
+   210→        if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current)
+   211→      }
+   212→    }, [])
+   213→
+   214→    // ----- Reaction aggregation -----
+   215→    const aggregatedReactions = React.useMemo(() => {
+   216→      const map = new Map<string, { emoji: string; count: number; mine: boolean }>()
+   217→      for (const r of message.reactions || []) {
+   218→        const existing = map.get(r.emoji)
+   219→        if (existing) {
+   220→          existing.count += 1
+   221→          if (r.userId === currentUserId) existing.mine = true
+   222→        } else {
+   223→          map.set(r.emoji, { emoji: r.emoji, count: 1, mine: r.userId === currentUserId })
+   224→        }
+   225→      }
+   226→      return Array.from(map.values())
+   227→    }, [message.reactions, currentUserId])
+   228→
+   229→    // ----- Read status -----
+   230→    const seenByList = React.useMemo(() => {
+   231→      return (message.seenBy || '')
+   232→        .split(',')
+   233→        .map((s) => s.trim())
+   234→        .filter(Boolean)
+   235→    }, [message.seenBy])
+   236→
+   237→    // Other users (excluding the sender) who have seen the message.
+   238→    const seenByOthers = React.useMemo(() => {
+   239→      return seenByList.filter((id) => id !== currentUserId)
+   240→    }, [seenByList, currentUserId])
+   241→
+   242→    const seen = seenByOthers.length > 0
+   243→
+   244→    // Number of other members who haven't yet seen (group chats only).
+   245→    const pendingCount = React.useMemo(() => {
+   246→      if (!members || members.length === 0) return 0
+   247→      const otherMembers = members.filter((m) => m.userId !== currentUserId)
+   248→      return Math.max(0, otherMembers.length - seenByOthers.length)
+   249→    }, [members, currentUserId, seenByOthers.length])
+   250→
+   251→    // For group chats, show "Seen by N" next to the checkmarks.
+   252→    const showSeenCount = isGroup && seen && seenByOthers.length > 0
+   253→
+   254→    // ----- Touch handlers -----
+   255→    const clearLongPress = () => {
+   256→      if (longPressTimerRef.current) {
+   257→        clearTimeout(longPressTimerRef.current)
+   258→        longPressTimerRef.current = null
+   259→      }
+   260→    }
+   261→
+   262→    const openActionMenu = () => {
+   263→      if (rootRef.current) {
+   264→        registerActionAnchor?.(rootRef.current, message)
+   265→      }
+   266→    }
+   267→
+   268→    const handleTouchStart = (e: React.TouchEvent) => {
+   269→      if (isDeleted) return
+   270→      const t = e.touches[0]
+   271→      if (!t) return
+   272→      touchStartRef.current = { x: t.clientX, y: t.clientY, t: Date.now() }
+   273→      swipeDxRef.current = 0
+   274→      setSwipeHint(0)
+   275→      // Long-press timer (600ms)
+   276→      clearLongPress()
+   277→      longPressTimerRef.current = setTimeout(() => {
+   278→        // Long press fired — show action menu
+   279→        longPressTimerRef.current = null
+   280→        // Stop swipe hint
+   281→        setSwipeHint(0)
+   282→        openActionMenu()
+   283→      }, 600)
+   284→    }
+   285→
+   286→    const handleTouchMove = (e: React.TouchEvent) => {
+   287→      if (!touchStartRef.current) return
+   288→      const t = e.touches[0]
+   289→      if (!t) return
+   290→      const dx = t.clientX - touchStartRef.current.x
+   291→      const dy = t.clientY - touchStartRef.current.y
+   292→      // Cancel long-press on any significant move
+   293→      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+   294→        clearLongPress()
+   295→      }
+   296→      // Only horizontal swipe (and only if movement is mostly horizontal)
+   297→      if (Math.abs(dx) > Math.abs(dy) * 1.4) {
+   298→        // For incoming (left-aligned) — swipe right (dx>0)
+   299→        // For outgoing (right-aligned) — swipe left (dx<0)
+   300→        const effective = isMine ? Math.min(0, dx) : Math.max(0, dx)
+   301→        swipeDxRef.current = effective
+   302→        setSwipeHint(Math.min(80, Math.abs(effective)))
+   303→      } else {
+   304→        swipeDxRef.current = 0
+   305→        setSwipeHint(0)
+   306→      }
+   307→    }
+   308→
+   309→    const handleTouchEnd = (e: React.TouchEvent) => {
+   310→      clearLongPress()
+   311→      const start = touchStartRef.current
+   312→      touchStartRef.current = null
+   313→      const dx = swipeDxRef.current
+   314→      setSwipeHint(0)
+   315→      swipeDxRef.current = 0
+   316→
+   317→      if (!start) return
+   318→
+   319→      // Double-tap detection (2 taps within 300ms on same message)
+   320→      const now = Date.now()
+   321→      const last = lastTapRef.current
+   322→      const moved = Math.abs(start.x - (last?.x ?? start.x)) > 30 || Math.abs(start.y - (last?.y ?? start.y)) > 30
+   323→      if (
+   324→        last &&
+   325→        last.id === message.id &&
+   326→        !moved &&
+   327→        now - last.t < 300 &&
+   328→        Math.abs(dx) < 10
+   329→      ) {
+   330→        // Double tap → ❤️ reaction
+   331→        lastTapRef.current = null
+   332→        onReact(message, '❤️')
+   333→        return
+   334→      }
+   335→
+   336→      // Swipe-to-reply threshold
+   337→      if (Math.abs(dx) > SWIPE_THRESHOLD) {
+   338→        onReply(message)
+   339→        lastTapRef.current = null
+   340→        return
+   341→      }
+   342→
+   343→      // Single tap — record for double-tap detection
+   344→      lastTapRef.current = { id: message.id, t: now, x: start.x, y: start.y }
+   345→    }
+   346→
+   347→    const handleContextMenu = (e: React.MouseEvent) => {
+   348→      if (isDeleted) return
+   349→      e.preventDefault()
+   350→      e.stopPropagation()
+   351→      openActionMenu()
+   352→    }
+   353→
+   354→    // ----- Click handlers for sticker / image -----
+   355→    const handleImageClick = (e: React.MouseEvent) => {
+   356→      e.stopPropagation()
+   357→      if (!isDeleted && message.type === 'image' && message.mediaUrl) {
+   358→        setLightboxOpen(true)
+   359→      }
+   360→    }
+   361→
+   362→    // ----- Render -----
+   363→    const bubbleBase = isMine ? 'bubble-sent' : 'bubble-received'
+   364→    const styleCls = bubbleStyleClass(messageStyle, isMine)
+   365→    const isTail = messageStyle === 'tail'
+   366→
+   367→    // Avatar (only for received messages in group chats, and only at the end of a group)
+   368→    const showAvatar = isGroup && !isMine
+   369→
+   370→    // Translate via swipeHint
+   371→    const swipeTransform = swipeHint > 0
+   372→      ? `translateX(${isMine ? -swipeHint : swipeHint}px)`
+   373→      : undefined
+   374→
+   375→    return (
+   376→      <>
+   377→        {showDateSeparator && (
+   378→          <div className="my-3 flex items-center justify-center">
+   379→            <span className="rounded-full bg-black/30 px-3 py-1 text-[11px] font-medium text-white backdrop-blur-sm">
+   380→              {dateSeparatorLabel}
+   381→            </span>
+   382→          </div>
+   383→        )}
+   384→
+   385→        <div
+   386→          ref={rootRef}
+   387→          className={cn(
+   388→            'flex w-full items-end gap-2',
+   389→            isMine ? 'justify-end' : 'justify-start',
+   390→            isLastInGroup ? 'mb-2' : 'mb-0.5'
+   391→          )}
+   392→          style={{ transform: swipeTransform, transition: swipeTransform ? 'transform 0.1s ease-out' : undefined }}
+   393→          onTouchStart={handleTouchStart}
+   394→          onTouchMove={handleTouchMove}
+   395→          onTouchEnd={handleTouchEnd}
+   396→          onTouchCancel={() => {
+   397→            clearLongPress()
+   398→            touchStartRef.current = null
+   399→            setSwipeHint(0)
+   400→            swipeDxRef.current = 0
+   401→          }}
+   402→          onContextMenu={handleContextMenu}
+   403→        >
+   404→          {/* Swipe-to-reply hint */}
+   405→          {swipeHint > 0 && (
+   406→            <div
+   407→              className={cn(
+   408→                'flex h-8 w-8 shrink-0 items-center justify-center self-center rounded-full bg-primary/20 text-primary',
+   409→                isMine ? 'mr-1 order-2' : 'ml-1 order-1'
+   410→              )}
+   411→              aria-hidden
+   412→            >
+   413→              <Reply className="h-4 w-4" />
+   414→            </div>
+   415→          )}
+   416→
+   417→          {/* Avatar */}
+   418→          {showAvatar ? (
+   419→            <PremiumAvatar
+   420→              user={{
+   421→                isPremium: (message.sender as any)?.isPremium,
+   422→                premiumTier: (message.sender as any)?.premiumTier,
+   423→                avatar: message.sender?.avatar || undefined,
+   424→                name: message.sender?.name || message.sender?.username || '?',
+   425→              }}
+   426→              size={28}
+   427→              showAura={false}
+   428→              isOnline={!!message.sender?.isOnline}
+   429→              className={cn(
+   430→                'shrink-0',
+   431→                !isLastInGroup && 'opacity-0'
+   432→              )}
+   433→            />
+   434→          ) : null}
+   435→
+   436→          {/* Bubble column */}
+   437→          <div
+   438→            className={cn(
+   439→              'flex max-w-[78%] min-w-0 flex-col',
+   440→              isMine ? 'items-end order-1' : 'items-start order-2'
+   441→            )}
+   442→          >
+   443→            {/* Sender name (group only) */}
+   444→            {isGroup && !isMine && isFirstInGroup && !isDeleted && (
+   445→              <div className="mb-0.5 truncate text-xs font-medium text-primary">
+   446→                {message.sender?.name || message.sender?.username || 'Unknown'}
+   447→              </div>
+   448→            )}
+   449→
+   450→            {/* Reply preview above bubble */}
+   451→            {message.replyTo && !isDeleted && (
+   452→              <div
+   453→                className={cn(
+   454→                  'mb-1 flex max-w-full items-center gap-1.5 truncate rounded-md border-l-2 border-primary/70 px-2 py-1 text-[13px]',
+   455→                  isMine
+   456→                    ? 'self-end bg-black/10 text-foreground'
+   457→                    : 'self-start bg-muted/80 text-foreground'
+   458→                )}
+   459→              >
+   460→                <CornerUpLeft className="h-3 w-3 shrink-0 text-primary" />
+   461→                <span className="truncate">
+   462→                  <span className="font-bold text-primary">
+   463→                    @{message.replyTo.sender?.username || message.replyTo.sender?.name || 'user'}
+   464→                    {': '}
+   465→                  </span>
+   466→                  <span className="font-medium opacity-90">
+   467→                    {message.replyTo.deletedAt
+   468→                      ? 'Message deleted'
+   469→                      : messagePreview({
+   470→                          type: message.replyTo.type,
+   471→                          content: message.replyTo.content,
+   472→                          mediaUrl: null,
+   473→                          deletedAt: message.replyTo.deletedAt,
+   474→                        })}
+   475→                  </span>
+   476→                </span>
+   477→              </div>
+   478→            )}
+   479→
+   480→            {/* Forwarded badge above bubble */}
+   481→            {message.forwardedFrom && !isDeleted && (
+   482→              <div
+   483→                className={cn(
+   484→                  'forward-badge max-w-full',
+   485→                  isMine ? 'self-end' : 'self-start'
+   486→                )}
+   487→                title={`Forwarded from @${message.forwardedFrom.sender?.username || message.forwardedFrom.sender?.name || 'user'}`}
+   488→              >
+   489→                <Forward className="h-3 w-3 shrink-0" />
+   490→                <span className="truncate">
+   491→                  Forwarded from @{message.forwardedFrom.sender?.username || message.forwardedFrom.sender?.name || 'user'}
+   492→                </span>
+   493→              </div>
+   494→            )}
+   495→
+   496→            {/* Pinned badge — small 📌 above the bubble */}
+   497→            {message.pinnedAt && !isDeleted && (
+   498→              <div
+   499→                className={cn(
+   500→                  'mb-0.5 flex items-center gap-0.5 text-[10px] font-medium text-primary',
+   501→                  isMine ? 'self-end' : 'self-start'
+   502→                )}
+   503→                aria-label="Pinned message"
+   504→              >
+   505→                <Pin className="h-3 w-3" />
+   506→                <span>Pinned</span>
+   507→              </div>
+   508→            )}
+   509→
+   510→            {/* Bubble */}
+   511→            <div
+   512→              className={cn(
+   513→                'rounded-2xl px-3 py-2 shadow-sm',
+   514→                bubbleBase,
+   515→                styleCls,
+   516→                // For tail style, last-in-group bubbles get the tail radius.
+   517→                // We've already applied bubble-tail-sent/received via styleCls.
+   518→                isTail && isMine && 'rounded-br-md',
+   519→                isTail && !isMine && 'rounded-bl-md',
+   520→                // V13 — when a per-conversation bubble color override is set,
+   521→                // drop the default .bubble-sent / .bubble-received classes so
+   522→                // the inline style is the only background source.
+   523→                isMine && sentBubbleColor && 'bg-none !bg-transparent',
+   524→                !isMine && receivedBubbleColor && 'bg-none !bg-transparent'
+   525→              )}
+   526→              style={{
+   527→                fontSize: fontSizePx ? `${fontSizePx}px` : undefined,
+   528→                fontFamily: fontFamilyClass ? undefined : undefined,
+   529→                // V13 — apply per-conversation bubble color overrides.
+   530→                ...(sentBubbleColor && isMine
+   531→                  ? {
+   532→                      backgroundColor: sentBubbleColor,
+   533→                      color: readableTextOn(sentBubbleColor),
+   534→                      border: 'none',
+   535→                    }
+   536→                  : {}),
+   537→                ...(receivedBubbleColor && !isMine
+   538→                  ? {
+   539→                      backgroundColor: receivedBubbleColor,
+   540→                      color: readableTextOn(receivedBubbleColor),
+   541→                      border: 'none',
+   542→                    }
+   543→                  : {}),
+   544→              }}
+   545→            >
+   546→              {/* Apply font family class on bubble content */}
+   547→              <div className={cn('bubble-content', fontFamilyClass)}>
+   548→                {isDeleted ? (
+   549→                  <span className="italic opacity-70">🚫 This message was deleted</span>
+   550→                ) : message.type === 'voice' && message.mediaUrl ? (
+   551→                  <VoiceMessage
+   552→                    mediaUrl={message.mediaUrl}
+   553→                    voiceDuration={message.voiceDuration}
+   554→                    isMine={isMine}
+   555→                    messageId={message.id}
+   556→                  />
+   557→                ) : message.type === 'image' && message.mediaUrl ? (
+   558→                  <button
+   559→                    type="button"
+   560→                    onClick={handleImageClick}
+   561→                    className="block min-h-[44px] min-w-[44px] cursor-zoom-in overflow-hidden rounded-md"
+   562→                    aria-label="Open image"
+   563→                  >
+   564→                    <img
+   565→                      src={message.mediaUrl}
+   566→                      alt={message.content || 'Sent image'}
+   567→                      className="max-h-[260px] max-w-full rounded-md object-cover"
+   568→                    />
+   569→                  </button>
+   570→                ) : message.type === 'sticker' ? (
+   571→                  <div className="select-none py-1 text-center text-6xl leading-none">
+   572→                    {message.stickerId || message.content || '🎨'}
+   573→                  </div>
+   574→                ) : message.type === 'location' && message.lat != null && message.lng != null ? (
+   575→                  <LocationMessage
+   576→                    lat={message.lat}
+   577→                    lng={message.lng}
+   578→                    isMine={isMine}
+   579→                    expiresAt={null}
+   580→                  />
+   581→                ) : (
+   582→                  <span className="whitespace-pre-wrap break-words">
+   583→                    {message.content || ''}
+   584→                  </span>
+   585→                )}
+   586→              </div>
+   587→            </div>
+   588→
+   589→            {/* Reactions row */}
+   590→            {aggregatedReactions.length > 0 && (
+   591→              <div
+   592→                className={cn(
+   593→                  'mt-1 flex flex-wrap gap-1',
+   594→                  isMine ? 'justify-end' : 'justify-start'
+   595→                )}
+   596→              >
+   597→                {aggregatedReactions.map((r) => (
+   598→                  <button
+   599→                    key={r.emoji}
+   600→                    type="button"
+   601→                    onClick={(e) => {
+   602→                      e.stopPropagation()
+   603→                      onReact(message, r.emoji)
+   604→                    }}
+   605→                    className={cn(
+   606→                      'reaction-pill min-h-[28px]',
+   607→                      r.mine && 'ring-2 ring-primary/40'
+   608→                    )}
+   609→                    aria-label={`React with ${r.emoji}`}
+   610→                  >
+   611→                    <span aria-hidden>{r.emoji}</span>
+   612→                    <span className="font-medium">{r.count}</span>
+   613→                  </button>
+   614→                ))}
+   615→              </div>
+   616→            )}
+   617→
+   618→            {/* Timestamp + status line */}
+   619→            <div
+   620→              className={cn(
+   621→                'mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground',
+   622→                isMine ? 'flex-row-reverse' : 'flex-row'
+   623→              )}
+   624→            >
+   625→              <span>{formatTime(new Date(message.createdAt))}</span>
+   626→              {isEdited && <span className="italic">edited</span>}
+   627→              {isMine && !isDeleted && (
+   628→                <>
+   629→                  {showSeenCount && (
+   630→                    <span className="text-muted-foreground/80">· Seen by {seenByOthers.length}</span>
+   631→                  )}
+   632→                  <ReadReceiptIndicator
+   633→                    seen={seen}
+   634→                    seenBy={message.seenBy || ''}
+   635→                    members={members}
+   636→                    currentUserId={currentUserId}
+   637→                  />
+   638→                </>
+   639→              )}
+   640→            </div>
+   641→          </div>
+   642→        </div>
+   643→
+   644→        {/* Image lightbox */}
+   645→        {message.type === 'image' && message.mediaUrl && (
+   646→          <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
+   647→            <DialogContent
+   648→              showCloseButton
+   649→              className="max-w-fit border-0 bg-black/90 p-0 sm:max-w-fit"
+   650→            >
+   651→              <DialogTitle className="sr-only">Image preview</DialogTitle>
+   652→              <DialogDescription className="sr-only">
+   653→                Enlarged view of the shared image. Press Escape or click outside to close.
+   654→              </DialogDescription>
+   655→              <img
+   656→                src={message.mediaUrl}
+   657→                alt={message.content || 'Image'}
+   658→                className="max-h-[85dvh] max-w-[92vw] object-contain"
+   659→              />
+   660→            </DialogContent>
+   661→          </Dialog>
+   662→        )}
+   663→      </>
+   664→    )
+   665→  },
+   666→)
+   667→MessageBubble.displayName = 'MessageBubble'
+   668→
+   669→// ---------------------------------------------------------------------------
+   670→// Action menu (popover) shown above a message after long-press / right-click.
+   671→// Rendered at the parent level so it can portal correctly.
+   672→// ---------------------------------------------------------------------------
+   673→
+   674→interface MessageActionMenuProps {
+   675→  open: boolean
+   676→  message: ChatMessage | null
+   677→  isMine: boolean
+   678→  anchorRect: DOMRect | null
+   679→  onClose: () => void
+   680→  onReply: () => void
+   681→  onCopy: () => void
+   682→  onEdit: () => void
+   683→  onDelete: () => void
+   684→  onPin: () => void
+   685→  onReact: (emoji: string) => void
+   686→  /** R1-3 — onForward is kept on the interface for backward-compat with
+   687→   *  chat-view's wiring, but the "Forward" action menu item is removed
+   688→   *  (feature parked under "Coming Soon" in Profile). */
+   689→  onForward?: () => void
+   690→  /** R1-3 — onSchedule is kept on the interface for backward-compat with
+   691→   *  chat-view's wiring, but the "Schedule" action menu item is removed
+   692→   *  (feature parked under "Coming Soon" in Profile). */
+   693→  onSchedule?: () => void
+   694→}
+   695→
+   696→export function MessageActionMenu({
+   697→  open,
+   698→  message,
+   699→  isMine,
+   700→  anchorRect,
+   701→  onClose,
+   702→  onReply,
+   703→  onCopy,
+   704→  onForward,
+   705→  onEdit,
+   706→  onDelete,
+   707→  onPin,
+   708→  onReact,
+   709→  onSchedule,
+   710→}: MessageActionMenuProps) {
+   711→  // R1-3 — onForward / onSchedule are no longer rendered in this menu,
+   712→  // but kept on the interface for backward-compat. Mark them as used so
+   713→  // eslint doesn't complain.
+   714→  void onForward
+   715→  void onSchedule
+   716→  // Backdrop + a popover positioned above the anchor.
+   717→  const [showExpandedReactions, setShowExpandedReactions] = React.useState(false)
+   718→  if (!open || !message) return null
+   719→
+   720→  // Compute position (default: above anchor, centered). Fall back to top center.
+   721→  const style: React.CSSProperties = (() => {
+   722→    if (anchorRect) {
+   723→      const top = Math.max(8, anchorRect.top - 64)
+   724→      const left = Math.min(
+   725→        Math.max(8, anchorRect.left + anchorRect.width / 2 - 150),
+   726→        typeof window !== 'undefined' ? window.innerWidth - 308 : 1000
+   727→      )
+   728→      return { top, left }
+   729→    }
+   730→    return { top: 80, left: 8 }
+   731→  })()
+   732→
+   733→  return (
+   734→    <div
+   735→      className="fixed inset-0 z-50"
+   736→      onClick={onClose}
+   737→      onContextMenu={(e) => {
+   738→        e.preventDefault()
+   739→        onClose()
+   740→      }}
+   741→    >
+   742→      <div
+   743→        className="absolute"
+   744→        style={style}
+   745→        onClick={(e) => e.stopPropagation()}
+   746→      >
+   747→        {/* Reaction emoji row */}
+   748→        <div className="mb-1 flex items-center gap-1 rounded-full border bg-popover px-2 py-1 shadow-md">
+   749→          {QUICK_REACTIONS.map((emoji) => (
+   750→            <button
+   751→              key={emoji}
+   752→              type="button"
+   753→              onClick={() => {
+   754→                onReact(emoji)
+   755→                onClose()
+   756→              }}
+   757→              aria-label={`React with ${emoji}`}
+   758→              className="flex h-9 w-9 min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-xl transition-transform hover:scale-125"
+   759→            >
+   760→              {emoji}
+   761→            </button>
+   762→          ))}
+   763→          {/* Expand button for more reactions */}
+   764→          <button
+   765→            type="button"
+   766→            onClick={(e) => {
+   767→              e.stopPropagation()
+   768→              setShowExpandedReactions((v) => !v)
+   769→            }}
+   770→            aria-label="More reactions"
+   771→            aria-expanded={showExpandedReactions}
+   772→            className="flex h-9 w-9 min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent"
+   773→          >
+   774→            <SmilePlus className="h-5 w-5" />
+   775→          </button>
+   776→        </div>
+   777→
+   778→        {/* Expanded reactions grid */}
+   779→        {showExpandedReactions && (
+   780→          <div className="mb-1 grid w-[280px] max-w-[calc(100vw-16px)] grid-cols-8 gap-1 rounded-md border bg-popover p-2 shadow-md">
+   781→            {EXTENDED_REACTIONS.map((emoji) => (
+   782→              <button
+   783→                key={emoji}
+   784→                type="button"
+   785→                onClick={() => {
+   786→                  onReact(emoji)
+   787→                  onClose()
+   788→                }}
+   789→                aria-label={`React with ${emoji}`}
+   790→                className="flex h-8 w-8 items-center justify-center rounded-full text-lg transition-transform hover:scale-125 hover:bg-accent"
+   791→              >
+   792→                {emoji}
+   793→              </button>
+   794→            ))}
+   795→          </div>
+   796→        )}
+   797→
+   798→        {/* Action items */}
+   799→        <div className="flex w-[300px] max-w-[calc(100vw-16px)] flex-col gap-0.5 rounded-md border bg-popover p-1 shadow-md">
+   800→          <ActionMenuItem icon={<Reply className="h-4 w-4" />} label="Reply" onClick={() => { onReply(); onClose() }} />
+   801→          <ActionMenuItem icon={<Copy className="h-4 w-4" />} label="Copy" onClick={() => { onCopy(); onClose() }} />
+   802→          {isMine && message.type === 'text' && !message.deletedAt && (
+   803→            <ActionMenuItem icon={<Pencil className="h-4 w-4" />} label="Edit" onClick={() => { onEdit(); onClose() }} />
+   804→          )}
+   805→          {isMine && !message.deletedAt && (
+   806→            <ActionMenuItem
+   807→              icon={<Trash2 className="h-4 w-4" />}
+   808→              label="Delete"
+   809→              destructive
+   810→              onClick={() => { onDelete(); onClose() }}
+   811→            />
+   812→          )}
+   813→          <ActionMenuItem icon={<Pin className="h-4 w-4" />} label={message.pinnedAt ? 'Unpin' : 'Pin'} onClick={() => { onPin(); onClose() }} />
+   814→        </div>
+   815→      </div>
+   816→    </div>
+   817→  )
+   818→}
+   819→
+   820→function ActionMenuItem({
+   821→  icon,
+   822→  label,
+   823→  onClick,
+   824→  destructive,
+   825→}: {
+   826→  icon: React.ReactNode
+   827→  label: string
+   828→  onClick: () => void
+   829→  destructive?: boolean
+   830→}) {
+   831→  return (
+   832→    <button
+   833→      type="button"
+   834→      onClick={onClick}
+   835→      className={cn(
+   836→        'flex min-h-[40px] w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors hover:bg-accent',
+   837→        destructive && 'text-destructive hover:bg-destructive/10'
+   838→      )}
+   839→    >
+   840→      {icon}
+   841→      <span>{label}</span>
+   842→    </button>
+   843→  )
+   844→}
+   845→
+   846→export type { ActionMenuState }
+   847→
+   848→// ---------------------------------------------------------------------------
+   849→// TypingBubble — a received-style bubble with 3 animated typing dots.
+   850→// Rendered at the bottom of the chat (above the composer) when the other
+   851→// user is typing. Uses the `.typing-dot` CSS class for the bounce animation.
+   852→// ---------------------------------------------------------------------------
+   853→
+   854→interface TypingBubbleProps {
+   855→  /** Group chat? — show "@username is typing…" label above the dots. */
+   856→  isGroup?: boolean
+   857→  /** Username to display when isGroup (the user who is typing). */
+   858→  typingUsername?: string | null
+   859→  /** Bubble style — passed through for consistency with message bubbles. */
+   860→  messageStyle?: string
+   861→}
+   862→
+   863→export function TypingBubble({
+   864→  isGroup = false,
+   865→  typingUsername,
+   866→  messageStyle = 'bubble',
+   867→}: TypingBubbleProps) {
+   868→  const styleCls = (() => {
+   869→    switch (messageStyle) {
+   870→      case 'sharp':
+   871→        return 'rounded-none'
+   872→      case 'tail':
+   873→        return 'bubble-tail-received'
+   874→      case 'none':
+   875→        return 'bubble-none'
+   876→      default:
+   877→        return ''
+   878→    }
+   879→  })()
+   880→  return (
+   881→    <motion.div
+   882→      initial={{ opacity: 0, y: 6, scale: 0.94 }}
+   883→      animate={{ opacity: 1, y: 0, scale: 1 }}
+   884→      exit={{ opacity: 0, y: 4, scale: 0.96 }}
+   885→      transition={{ duration: 0.25, ease: [0.34, 1.56, 0.64, 1] }}
+   886→      className="flex w-full items-end justify-start gap-2 px-3 pb-1 pt-0"
+   887→      aria-live="polite"
+   888→      aria-label={
+   889→        isGroup && typingUsername
+   890→          ? `${typingUsername} is typing`
+   891→          : 'Other user is typing'
+   892→      }
+   893→    >
+   894→      <div
+   895→        className={cn(
+   896→          'rounded-2xl bg-muted/80 px-3 py-2.5 shadow-sm',
+   897→          'flex items-center gap-1',
+   898→          styleCls
+   899→        )}
+   900→      >
+   901→        <span className="typing-dot" />
+   902→        <span className="typing-dot" />
+   903→        <span className="typing-dot" />
+   904→      </div>
+   905→      {isGroup && typingUsername && (
+   906→        <span className="self-center text-[11px] italic text-muted-foreground">
+   907→          {typingUsername} is typing…
+   908→        </span>
+   909→      )}
+   910→    </motion.div>
+   911→  )
+   912→}
+   913→

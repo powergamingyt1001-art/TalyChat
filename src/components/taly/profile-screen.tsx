@@ -507,7 +507,7 @@ export function ProfileScreen() {
         : 'ring-red-500/60'
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8 p-4">
+    <div className="mx-auto max-w-2xl space-y-6 overflow-x-hidden px-3 pb-20 pt-4">
       {/* V12 — Group 1: Identity & Status.
           Wraps the profile header, story highlights, behavior bar, and
           watch-behavior card into a single tinted container so the user
@@ -517,7 +517,7 @@ export function ProfileScreen() {
           <UserCheck className="h-3.5 w-3.5" /> Your Profile
         </p>
       {/* Profile header card — V3: taly-card with shadow, larger avatar, online dot, joined date */}
-      <div className="taly-card taly-card-hover animate-fade-in-up p-5" style={{ animationDelay: '0ms' }}>
+      <div className="taly-card taly-card-hover w-full max-w-full animate-fade-in-up overflow-hidden p-4" style={{ animationDelay: '0ms' }}>
         <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
           <div className="relative shrink-0">
             {/* V5 — behavior ring (static emerald/amber/red) around the
@@ -663,7 +663,7 @@ export function ProfileScreen() {
       </div>
 
       {/* Redeem code */}
-      <div className="taly-card animate-fade-in-up p-5" style={{ animationDelay: '240ms' }}>
+      <div className="taly-card w-full max-w-full animate-fade-in-up overflow-hidden p-4" style={{ animationDelay: '240ms' }}>
         <div className="section-header mb-3">
           <Gift className="h-4 w-4 text-primary" /> Redeem a Code
         </div>
@@ -672,7 +672,7 @@ export function ProfileScreen() {
             value={redeemCode}
             onChange={(e) => setRedeemCode(e.target.value)}
             placeholder="Enter redeem code (e.g., TALY-XXXXXXXX)"
-            className="min-h-[44px] flex-1 uppercase"
+            className="min-h-[44px] min-w-0 flex-1 uppercase"
             onKeyDown={(e) => {
               if (e.key === 'Enter') handleRedeem()
             }}
@@ -680,7 +680,7 @@ export function ProfileScreen() {
           <button
             onClick={handleRedeem}
             disabled={redeemLoading}
-            className="action-btn min-h-[44px] px-5 disabled:opacity-60"
+            className="action-btn min-h-[44px] shrink-0 px-5 disabled:opacity-60"
           >
             {redeemLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -781,7 +781,7 @@ export function ProfileScreen() {
         </p>
 
       {/* Privacy and Safety */}
-      <div className="taly-card animate-fade-in-up p-5" style={{ animationDelay: '360ms' }}>
+      <div className="taly-card w-full max-w-full animate-fade-in-up overflow-hidden p-4" style={{ animationDelay: '360ms' }}>
         <div className="section-header mb-3">
           <Shield className="h-4 w-4 text-primary" /> Privacy and Safety
           {blockedCount > 0 && (
@@ -814,7 +814,7 @@ export function ProfileScreen() {
 
       {/* V5 — Account container: red-tinted bg, holds Block List + Logout */}
       <div
-        className="animate-fade-in-up rounded-xl border border-red-500/20 bg-red-50/50 p-5 dark:bg-red-950/10"
+        className="w-full max-w-full animate-fade-in-up overflow-hidden rounded-xl border border-red-500/20 bg-red-50/50 p-4 dark:bg-red-950/10"
         style={{ animationDelay: '420ms' }}
       >
         <div className="section-header mb-3 text-red-600 dark:text-red-400">
@@ -974,7 +974,7 @@ function PremiumSection({
       : null
 
     return (
-      <div className="taly-card taly-card-hover animate-fade-in-up relative overflow-hidden border-amber-500/30 bg-gradient-to-br from-amber-50 to-yellow-50 p-5 dark:from-amber-950/20 dark:to-yellow-950/10">
+      <div className="taly-card taly-card-hover relative w-full max-w-full animate-fade-in-up overflow-hidden border-amber-500/30 bg-gradient-to-br from-amber-50 to-yellow-50 p-4 dark:from-amber-950/20 dark:to-yellow-950/10">
         {/* V12 — Faint crown watermark in the background */}
         <Crown
           className="pointer-events-none absolute -right-3 -top-3 h-28 w-28 text-amber-500/10"
@@ -1045,13 +1045,13 @@ function PremiumSection({
   ]
 
   return (
-    <div className="taly-card animate-fade-in-up p-5">
+    <div className="taly-card w-full max-w-full animate-fade-in-up overflow-hidden p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="section-header">
-          <Sparkles className="h-4 w-4 text-primary" /> Upgrade to Premium
+        <div className="section-header min-w-0">
+          <Sparkles className="h-4 w-4 shrink-0 text-primary" /> Upgrade to Premium
         </div>
         {offerMsLeft && offerMsLeft > 0 && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
             <Clock className="h-3 w-3" />
             {formatCountdown(offerMsLeft)}
           </span>
@@ -1066,7 +1066,7 @@ function PremiumSection({
           Offer ended — 1-year plan is back to ₹{REGULAR_PRICE}
         </p>
       )}
-      <div className="grid gap-3 sm:grid-cols-3 sm:items-center">
+      <div className="grid gap-2 sm:grid-cols-3 sm:items-stretch">
         {plans.map((p) => {
           // V8 — Best Value elevation: scale-105, emerald bg tint, larger
           // BEST VALUE badge with crown icon, larger pulsing Choose button.
@@ -1075,10 +1075,10 @@ function PremiumSection({
           return (
             <div
               key={p.id}
-              className={`taly-card relative flex flex-col gap-1 overflow-hidden p-4 transition-all ${
+              className={`taly-card relative flex min-w-0 flex-col gap-1 overflow-hidden p-3 transition-all ${
                 isBest
-                  ? 'taly-card-hover scale-105 border-2 border-emerald-500/50 bg-emerald-50/70 shadow-xl shadow-emerald-500/20 dark:bg-emerald-950/30'
-                  : 'taly-card-hover opacity-95 scale-[0.98] border-border bg-card'
+                  ? 'taly-card-hover scale-[1.02] border-2 border-emerald-500/50 bg-emerald-50/70 shadow-xl shadow-emerald-500/20 dark:bg-emerald-950/30'
+                  : 'taly-card-hover opacity-95 border-border bg-card'
               }`}
             >
               {/* Best value ribbon + shimmer overlay (larger + crown icon) */}
@@ -1752,15 +1752,15 @@ function BehaviorBar({ behavior }: { behavior: BehaviorData | null }) {
   const currentIdx = Math.min(4, Math.max(0, Math.floor(score / 20)))
 
   return (
-    <div className="taly-card animate-fade-in-up p-5">
-      <div className="mb-3 flex items-center justify-between">
-        <div className="section-header">
-          <Target className="h-4 w-4 text-primary" /> Behavior
+    <div className="taly-card w-full max-w-full animate-fade-in-up overflow-hidden p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="section-header min-w-0">
+          <Target className="h-4 w-4 shrink-0 text-primary" /> Behavior
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 shrink-0 items-center gap-2">
           {/* V8 — status label badge */}
           <span
-            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${statusBadgeClass}`}
+            className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${statusBadgeClass}`}
             title={`Status: ${statusLabel}`}
           >
             <TrendingUp className="h-3 w-3" />
@@ -1768,7 +1768,7 @@ function BehaviorBar({ behavior }: { behavior: BehaviorData | null }) {
           </span>
           <Badge
             variant={canMessage ? 'default' : 'destructive'}
-            className={`${
+            className={`shrink-0 ${
               canMessage
                 ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
                 : 'bg-red-500/10 text-red-600 border-red-500/30'
@@ -1780,8 +1780,8 @@ function BehaviorBar({ behavior }: { behavior: BehaviorData | null }) {
       </div>
 
       {/* Big score number + descriptive label + ads watched */}
-      <div className="mb-2 flex items-end justify-between gap-3">
-        <div className="flex items-baseline gap-2">
+      <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+        <div className="flex min-w-0 items-baseline gap-2">
           <span className={`text-2xl font-bold tabular-nums ${colorClass}`}>{score}%</span>
           <span className={`text-xs font-semibold uppercase tracking-wide ${colorClass}`}>
             {statusLabel}
@@ -1799,8 +1799,8 @@ function BehaviorBar({ behavior }: { behavior: BehaviorData | null }) {
           they are on the ladder. Trophy icon marks the 100% goal.
           A tooltip on hover tells them how many ads they need to watch
           to reach the next level. */}
-      <div className="group relative mt-2">
-        <div className="behavior-bar flex gap-1 px-0" style={{ height: '14px' }}>
+      <div className="group relative mt-2 w-full max-w-full overflow-hidden">
+        <div className="behavior-bar flex w-full gap-1 px-0" style={{ height: '14px' }}>
           {blocks.map((block, i) => {
             const isCurrent = i === currentIdx
             return (
@@ -1866,7 +1866,7 @@ function WatchBehaviorCard({
   const reachedMax = adsWatchedToday >= maxAdsPerDay
 
   return (
-    <div className="taly-card animate-fade-in-up p-5">
+    <div className="taly-card w-full max-w-full animate-fade-in-up overflow-hidden p-4">
       <div className="flex items-start gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
           <Megaphone className="h-5 w-5" />
@@ -1881,8 +1881,8 @@ function WatchBehaviorCard({
         </div>
       </div>
 
-      <div className="mt-3 flex items-center justify-between gap-3">
-        <div className="text-sm">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0 flex-1 text-sm">
           <p className="font-medium">
             Today: <span className="text-primary">{adsWatchedToday}/{maxAdsPerDay}</span>{' '}
             ads watched
@@ -1896,7 +1896,7 @@ function WatchBehaviorCard({
         <button
           onClick={onWatchAd}
           disabled={watching || reachedMax}
-          className="action-btn min-h-[40px] disabled:opacity-60"
+          className="action-btn min-h-[40px] shrink-0 disabled:opacity-60"
         >
           {watching ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -1913,7 +1913,7 @@ function WatchBehaviorCard({
       </div>
 
       {/* V3 — behavior-bar style progress for today's ads */}
-      <div className="behavior-bar mt-3">
+      <div className="behavior-bar mt-3 w-full max-w-full overflow-hidden">
         <div
           className="behavior-bar-fill"
           style={{
@@ -2065,14 +2065,14 @@ function ReferralSection({
   const hasActiveTask = !!activeTask
 
   return (
-    <div className="taly-card animate-fade-in-up p-5">
+    <div className="taly-card w-full max-w-full animate-fade-in-up overflow-hidden p-4">
       <div className="flex items-center justify-between gap-2">
-        <div className="section-header">
-          <Users className="h-4 w-4 text-primary" /> Refer & Earn
+        <div className="section-header min-w-0">
+          <Users className="h-4 w-4 shrink-0 text-primary" /> Refer & Earn
         </div>
         <button
           onClick={onViewTeam}
-          className="ghost-btn min-h-[36px]"
+          className="ghost-btn min-h-[36px] shrink-0"
         >
           <Users className="mr-1 h-3.5 w-3.5" /> View Team
         </button>
@@ -2362,14 +2362,14 @@ function ActiveTaskCard({
       </div>
 
       {/* Progress — V3 behavior-bar style */}
-      <div className="mt-3">
+      <div className="mt-3 w-full max-w-full overflow-hidden">
         <div className="mb-1 flex items-center justify-between text-xs">
           <span className="font-medium text-foreground">
             Progress: {progress}/{task.requiredCount} members
           </span>
           <span className="text-muted-foreground/80">{Math.round(pct)}%</span>
         </div>
-        <div className="behavior-bar">
+        <div className="behavior-bar w-full">
           <div
             className="behavior-bar-fill"
             style={{ width: `${Math.max(2, Math.min(100, pct))}%` }}
@@ -2848,7 +2848,7 @@ function AboutComingSoonSection() {
         <Info className="h-3.5 w-3.5" /> About TalyChat
       </p>
 
-      <div className="taly-card taly-card-hover animate-fade-in-up p-5">
+      <div className="taly-card taly-card-hover w-full max-w-full animate-fade-in-up overflow-hidden p-4">
         {/* 2-tab toggle (About | Coming Soon) */}
         <div className="mb-4 inline-flex rounded-full border bg-muted/40 p-1">
           <button
