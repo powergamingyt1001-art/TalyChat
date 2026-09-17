@@ -325,6 +325,8 @@ export function HomeScreen({ user, onOpenChat, onNavigate, onOpenTaly }: HomePro
                       premiumTier: (c.otherUser as any)?.premiumTier,
                       avatar: convAvatar(c),
                       name: c.name || c.otherUser?.name || '?',
+                      id: (c.otherUser as any)?.id || (c.otherUser as any)?.userId || c.id || undefined,
+                      username: (c.otherUser as any)?.username || undefined,
                     }}
                     size={44}
                     showAura

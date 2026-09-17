@@ -206,7 +206,7 @@ export function AdminSubscriptions() {
                         <div className="min-w-0">
                           <p className="flex items-center gap-1 truncate text-sm font-medium">
                             {s.user.name}
-                            {s.user.isPremium && <Crown className="size-3 shrink-0 text-amber-500" />}
+                            {s.user.isPremium && <Crown className="size-3 shrink-0 text-premium-gold" />}
                           </p>
                           <p className="truncate text-xs text-muted-foreground">@{s.user.username}</p>
                         </div>
@@ -246,7 +246,7 @@ function SubCard({ s }: { s: AdminSubscription }) {
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-1 truncate text-sm font-medium">
             {s.user.name}
-            {s.user.isPremium && <Crown className="size-3 shrink-0 text-amber-500" />}
+            {s.user.isPremium && <Crown className="size-3 shrink-0 text-premium-gold" />}
           </p>
           <p className="truncate text-xs text-muted-foreground">@{s.user.username}</p>
           <p className="truncate text-xs text-muted-foreground">{s.user.email}</p>

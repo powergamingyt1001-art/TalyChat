@@ -422,6 +422,8 @@ export const MessageBubble = React.forwardRef<MessageBubbleHandle, MessageBubble
                 premiumTier: (message.sender as any)?.premiumTier,
                 avatar: message.sender?.avatar || undefined,
                 name: message.sender?.name || message.sender?.username || '?',
+                id: message.sender?.id || undefined,
+                username: message.sender?.username || undefined,
               }}
               size={28}
               showAura={false}

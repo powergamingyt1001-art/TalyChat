@@ -109,8 +109,10 @@ export function AdminApp() {
           </aside>
         )}
 
-        {/* Main content */}
-        <main className="scroll-pan-y min-w-0 flex-1 overflow-y-auto p-3 sm:p-5 md:p-6">
+        {/* Main content — PRD-1: spacing reduced to px-3 max (was sm:p-5
+            md:p-6) so cards have less left/right empty space on tablet +
+            desktop, matching the profile screen's tighter layout. */}
+        <main className="scroll-pan-y min-w-0 flex-1 overflow-y-auto p-3">
           <div className="mx-auto max-w-6xl">
             {tab === 'dashboard' && <AdminDashboard />}
             {tab === 'redeem' && <AdminRedeem />}

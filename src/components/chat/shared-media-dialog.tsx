@@ -141,6 +141,8 @@ function ImageLightbox({
                 premiumTier: item.sender?.premiumTier,
                 avatar: senderAvatar(item.sender),
                 name,
+                id: item.sender?.id || undefined,
+                username: item.sender?.username || undefined,
               }}
               size={32}
               showAura={false}

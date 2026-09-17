@@ -53,11 +53,15 @@
   --brand-foreground: oklch(0.985 0 0);
   --brand-muted: oklch(0.92 0.06 152);
 
-  --background: oklch(0.985 0 0);
+  /* PRD-1 — Light mode: subtle green tint on white elements so card
+     backgrounds aren't pure white/invisible. Background uses an even
+     subtler green tint (0.003 chroma) and cards use 0.005 chroma so
+     cards remain visually distinguishable from the background. */
+  --background: oklch(0.99 0.003 152);
   --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
+  --card: oklch(0.99 0.005 152);
   --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
+  --popover: oklch(0.99 0.005 152);
   --popover-foreground: oklch(0.145 0 0);
   --primary: var(--brand);
   --primary-foreground: var(--brand-foreground);
@@ -76,7 +80,7 @@
   --chart-3: oklch(0.6 0.18 80);
   --chart-4: oklch(0.55 0.2 30);
   --chart-5: oklch(0.7 0.15 300);
-  --sidebar: oklch(0.985 0 0);
+  --sidebar: oklch(0.99 0.003 152);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: var(--brand);
   --sidebar-primary-foreground: var(--brand-foreground);
@@ -260,10 +264,12 @@
 .font-syne-tactile { font-family: 'Syne Tactile', cursive; }
 .font-yuyu { font-family: 'Yuyu', cursive; }
 
-/* Premium crown */
+/* Premium crown — PRD-1: subtle premium gold gradient (was bright
+   amber #fbbf24/#f59e0b). Now uses metallic gold #D4AF37 → light gold
+   #E8C547 so the badge reads as classy gold, not a bright yellow. */
 .premium-badge {
-  background: linear-gradient(135deg, #fbbf24, #f59e0b);
-  color: white;
+  background: linear-gradient(135deg, #D4AF37, #E8C547);
+  color: #3b2f0a;
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 10px;
@@ -271,6 +277,24 @@
   display: inline-flex;
   align-items: center;
   gap: 2px;
+  border: 1px solid #B8860B;
+}
+
+/* PRD-1 — Subtle premium gold text + ring color utility classes.
+   Used by Crown icons + premium accents in the admin panel + chat
+   headers so they all share the same controlled gold tone (#D4AF37)
+   instead of the previous bright amber #f59e0b. */
+.text-premium-gold {
+  color: #D4AF37;
+}
+.dark .text-premium-gold {
+  color: #E8C547;
+}
+.border-premium-gold {
+  border-color: #D4AF37;
+}
+.bg-premium-gold {
+  background-color: #D4AF37;
 }
 
 /* Ad box */
@@ -429,9 +453,11 @@
   box-shadow: 0 2px 8px oklch(0.6 0.24 25 / 0.4);
 }
 
-/* Premium shimmer — for premium cards */
+/* Premium shimmer — for premium cards — PRD-1: subtle gold shimmer
+   (was bright amber). Uses the #D4AF37 metallic gold tone at low alpha
+   so the shimmer reads as a soft classy gold sweep. */
 .premium-shimmer {
-  background: linear-gradient(110deg, transparent 35%, oklch(0.85 0.15 80 / 0.35) 50%, transparent 65%);
+  background: linear-gradient(110deg, transparent 35%, rgba(212, 175, 55, 0.30) 50%, transparent 65%);
   background-size: 200% 100%;
   animation: shimmer 2.5s ease-in-out infinite;
 }
@@ -652,8 +678,12 @@
    header avatar and any user's profile dialog avatar.
    The `!important` is needed to override Tailwind's `ring-*`
    utilities which also use box-shadow for the ring effect.
+   PRD-1 — Adds an explicit `.profile-avatar-border` selector as
+   the canonical class for the profile avatar ring (the legacy
+   `.dark-avatar-glow` selector still works as an alias).
    ============================================================ */
-.dark .dark-avatar-glow {
+.dark .dark-avatar-glow,
+.dark .profile-avatar-border {
   position: relative;
   border-radius: 9999px;
   /* Emerald ring — overrides the behavior-score ring in dark theme */
@@ -672,21 +702,17 @@
 }
 
 /* ============================================================
-   F5-9 — Floating AI Agent radiation glow
-   4 concentric rings expanding outward like radiation waves.
-   Outer ring is VERY dark green (#022c22) and very large (250px
-   diameter) so the glow reaches 80-100px beyond the 48px avatar
-   (avatar radius 24px + ~100px outer ring = ~124px reach).
-   Inner rings are progressively smaller and brighter. The
-   avatar image stays SHARP in the center (separate element, z-30)
-   — only the aura/glow animates.
+   PRD-2 — AI Agent subtle green radiation glow
+   ------------------------------------------------------------
+   Three concentric rings: innermost (darkest, close to avatar)
+   → outer (slightly lighter but still dark green). NO rainbow /
+   bright effect — just dark green radiation. Spread is capped at
+   ~30px beyond the 48px avatar (max ~108px diameter).
 
-   Animation cycle = 1.5s (faster than the old 3.6s outer ring).
-   Each ring has a 0.2s delay so they radiate sequentially, like
-   ripples expanding from a single point.
-
-   The rings use translate(-50%, -50%) centering + scale() to
-   expand outward from the avatar's center.
+   Animation = subtle breathing pulse (2s cycle, scale 1.0 → 1.04
+   → 1.0) — 30% calmer than the previous 1.0 → 1.15 → 1.0 vibration.
+   The avatar image is rendered as a separate element on top
+   (z-30) so it never scales, flips, or moves with the rings.
    ============================================================ */
 .floating-ai-glow {
   position: absolute;
@@ -699,94 +725,68 @@
   will-change: transform, opacity;
 }
 
-/* Ring 1 — OUTER: very dark green (#022c22 = oklch(0.15 0.05 152)),
-   250px diameter, blur 12px. Expands 0.6 → 1.6 scale (1.5s cycle). */
+/* Ring 1 — OUTER: medium dark green oklch(0.35 0.08 152), 108px
+   diameter (extends ~30px beyond the 48px avatar). Subtle outward
+   breathing, blur 8px so it stays close to the avatar. */
 .floating-ai-glow-outer {
-  width: 250px;
-  height: 250px;
+  width: 108px;
+  height: 108px;
   background: radial-gradient(
     circle,
-    rgba(2, 44, 34, 0.55) 0%,
-    rgba(2, 44, 34, 0.30) 40%,
-    rgba(0, 0, 0, 0) 75%
+    oklch(0.35 0.08 152 / 0.45) 0%,
+    oklch(0.35 0.08 152 / 0.18) 55%,
+    oklch(0.35 0.08 152 / 0) 80%
   );
-  filter: blur(12px);
+  filter: blur(8px);
   z-index: 1;
-  animation: floating-ai-radiate 1.5s ease-out infinite;
+  animation: floating-ai-breathe 2s ease-in-out infinite;
 }
 
-/* Ring 2 — MIDDLE: dark green, 180px diameter, blur 6px.
-   0.2s delay so it follows the outer ring like a radiation wave. */
+/* Ring 2 — MIDDLE: dark green oklch(0.25 0.10 152), 88px diameter
+   (extends ~20px beyond avatar). 0.25s delay so it follows the
+   outer ring like a soft radiation wave. */
 .floating-ai-glow-middle {
-  width: 180px;
-  height: 180px;
+  width: 88px;
+  height: 88px;
   background: radial-gradient(
     circle,
-    rgba(5, 90, 60, 0.55) 0%,
-    rgba(10, 120, 80, 0.35) 40%,
-    rgba(0, 0, 0, 0) 75%
+    oklch(0.25 0.10 152 / 0.55) 0%,
+    oklch(0.25 0.10 152 / 0.22) 55%,
+    oklch(0.25 0.10 152 / 0) 85%
   );
-  filter: blur(6px);
+  filter: blur(5px);
   z-index: 2;
-  animation: floating-ai-radiate 1.5s ease-out infinite 0.2s;
+  animation: floating-ai-breathe 2s ease-in-out infinite 0.25s;
 }
 
-/* Ring 3 — INNER: parrot green, 120px diameter, blur 3px. 0.4s delay. */
+/* Ring 3 — INNER: very dark green oklch(0.15 0.05 152), 70px
+   diameter (extends ~11px beyond avatar, close = darkest). 0.5s
+   delay so it follows the outer rings. */
 .floating-ai-glow-inner {
-  width: 120px;
-  height: 120px;
+  width: 70px;
+  height: 70px;
   background: radial-gradient(
     circle,
-    rgba(50, 203, 52, 0.65) 0%,
-    rgba(40, 180, 50, 0.40) 50%,
-    rgba(0, 0, 0, 0) 100%
+    oklch(0.15 0.05 152 / 0.7) 0%,
+    oklch(0.15 0.05 152 / 0.3) 55%,
+    oklch(0.15 0.05 152 / 0) 90%
   );
   filter: blur(3px);
   z-index: 3;
-  animation: floating-ai-radiate 1.5s ease-out infinite 0.4s;
+  animation: floating-ai-breathe 2s ease-in-out infinite 0.5s;
 }
 
-/* Ring 4 — CORE: light green, 80px diameter, blur 1.5px.
-   Steady pulse (scale 0.85 ↔ 1.06) rather than outward radiation. */
-.floating-ai-glow-core {
-  width: 80px;
-  height: 80px;
-  background: radial-gradient(
-    circle,
-    rgba(170, 255, 170, 0.85) 0%,
-    rgba(120, 240, 140, 0.40) 45%,
-    rgba(0, 0, 0, 0) 90%
-  );
-  filter: blur(1.5px);
-  z-index: 4;
-  animation: floating-ai-pulse 1.5s ease-in-out infinite;
-}
-
-/* Outward radiation: ring starts small + bright, expands outward
-   while fading. The translate(-50%, -50%) keeps it centered on the
-   avatar as it scales. */
-@keyframes floating-ai-radiate {
-  0% {
-    transform: translate(-50%, -50%) scale(0.6);
-    opacity: 0.9;
-  }
-  70% {
-    opacity: 0.2;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(1.6);
-    opacity: 0;
-  }
-}
-
-/* Steady core pulse: ring grows and shrinks slightly (no outward travel). */
-@keyframes floating-ai-pulse {
+/* PRD-2 — Subtle breathing pulse (vibration reduced 30%):
+   scale 1.0 → 1.04 → 1.0 over a 2s cycle. The rings never "explode"
+   outward; they just gently breathe so the glow reads as elegant
+   green radiation, not a flashy "dhamaaka". */
+@keyframes floating-ai-breathe {
   0%, 100% {
-    transform: translate(-50%, -50%) scale(0.85);
+    transform: translate(-50%, -50%) scale(1);
     opacity: 0.7;
   }
   50% {
-    transform: translate(-50%, -50%) scale(1.06);
+    transform: translate(-50%, -50%) scale(1.04);
     opacity: 1;
   }
 }

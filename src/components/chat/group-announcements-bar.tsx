@@ -450,6 +450,8 @@ function AnnouncementCard({
             premiumTier: author?.premiumTier,
             avatar: author?.avatar || undefined,
             name: authorName,
+            id: author?.id || undefined,
+            username: author?.username || undefined,
           }}
           size={28}
           showAura={false}

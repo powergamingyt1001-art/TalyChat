@@ -169,6 +169,8 @@ export function PinnedMessagesDialog({
                           premiumTier,
                           avatar: senderAvatar || undefined,
                           name: senderName,
+                          id: sender?.id || m.senderId || undefined,
+                          username: sender?.username || undefined,
                         }}
                         size={28}
                         showAura={false}

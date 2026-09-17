@@ -53,7 +53,10 @@ import {
   FONT_OPTIONS,
 } from '@/components/taly/customizer-context'
 import { CustomizeDialog } from '@/components/taly/customize-dialog'
-import { GroupAnnouncementsBar } from '@/components/chat/group-announcements-bar'
+// PRD-1 — GroupAnnouncementsBar removed from the chat view per user
+// request. The "Group Announcements" feature is now parked under the
+// "Coming Soon" list on the Profile screen.
+// import { GroupAnnouncementsBar } from '@/components/chat/group-announcements-bar'
 import { PremiumAvatar } from '@/components/premium-avatar'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -139,20 +142,71 @@ function useCustomizerSafe(preferences: any) {
 // ---------------------------------------------------------------------------
 
 const PAGE_SIZE = 50
-// F5-9 — Ad timing: private chat = 45s, group chat = 35s after the chat
-// is opened. Cross button appears after 6s (handled in ChatAdBox). Loop:
-// after the ad is closed, the 45s/35s timer restarts so the ad reappears
-// continuously while the chat is open. The timer starts on chat open and
-// is NOT reset by new messages — ads appear even during active
-// conversation (per task spec), but the ad is rendered below the last
-// message inside the scroll area so it never covers anything.
-const AD_DELAY_PRIVATE = 45_000 // 45s
-const AD_DELAY_GROUP = 35_000 // 35s
+// PRD-2 — Ad timing: 35s for ALL chats (private, group, Taly Support).
+// Previously private was 45s and group was 35s — unified to 35s so the
+// experience is consistent across every chat type. The ad is rendered
+// BELOW the last message inside the scroll area (native in-stream), so
+// it never covers the composer, keyboard, or existing messages. The
+// composer is never disabled while an ad is visible — the user can
+// keep typing/sending normally.
+//   • 35s after the chat is opened → ad appears
+//   • Cross (✕) appears after 6s  (handled in ChatAdBox)
+//   • After close → 35s timer restarts (per-user + per-chat)
+//   • Per-user tracking: localStorage `talychat-ad-state-{userId}-{chatId}`
+//     = { lastShown, adId, position } — each user's timer is separate.
+//   • Reopening the chat: if 35s already elapsed since lastShown the ad
+//     shows immediately, otherwise we wait the remaining time.
+//   • Offline users don't see live ads (fetchAd checks navigator.onLine).
+const AD_DELAY = 35_000 // 35s
 const TYPING_DEBOUNCE = 300 // ms
 const TYPING_STOP_DEBOUNCE = 1000 // ms
 const SWIPE_REPLY_THRESHOLD = 60 // px
 const MAX_RECORD_SECONDS = 120 // 2 minutes
 const TEXTAREA_MAX_LINES = 4
+
+// PRD-2 — Per-user + per-chat ad state in localStorage so each user's
+// ad timer is independent (one ad at a time per user per chat). The
+// state stores the timestamp of the last shown ad so we can resume the
+// timer when the user re-opens the chat (if 35s already passed, the ad
+// shows immediately; otherwise we wait the remaining time).
+interface AdState {
+  lastShown: number // ms epoch
+  adId: string | null
+  position: string | null // last message id when ad was shown
+}
+
+function adStateKey(userId: string, chatId: string) {
+  return `talychat-ad-state-${userId}-${chatId}`
+}
+
+function readAdState(userId: string, chatId: string): AdState | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(adStateKey(userId, chatId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (typeof parsed?.lastShown !== 'number') return null
+    return {
+      lastShown: parsed.lastShown,
+      adId: parsed.adId || null,
+      position: parsed.position || null,
+    }
+  } catch {
+    return null
+  }
+}
+
+function writeAdState(userId: string, chatId: string, state: AdState) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(
+      adStateKey(userId, chatId),
+      JSON.stringify(state)
+    )
+  } catch {
+    // localStorage might be unavailable (private mode, quota) — silent.
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Public component
@@ -584,20 +638,41 @@ export function ChatView({
   }, [connected, conversationId])
 
   // ----- Ad system -----
-  // F5-9 — Ad timing per task spec:
-  //   • Private chat: 45s after the chat is opened → ad appears
-  //   • Group chat:    35s after the chat is opened → ad appears
+  // PRD-2 — Ad timing per task spec:
+  //   • ALL chats (private, group, Taly Support): 35s after the chat
+  //     is opened → ad appears.
   //   • Cross (✕) appears after 6s  (handled in ChatAdBox)
-  //   • After close → 45s/35s timer restarts
-  //   • Ads loop continuously while the chat is open
+  //   • After close → 35s timer restarts (per-user + per-chat)
+  //   • Per-user tracking: localStorage `talychat-ad-state-{userId}-{chatId}`
+  //     = { lastShown, adId, position } — each user's timer is separate.
+  //   • Reopening the chat: if 35s already elapsed since lastShown the ad
+  //     shows immediately, otherwise we wait the remaining time.
+  //   • Offline users don't see live ads (fetchAd checks navigator.onLine).
   // The timer is NOT reset by incoming/outgoing messages — it starts the
   // moment the chat opens and runs continuously until the user leaves.
   // A ref is used to break the fetchAd ↔ scheduleNextAd circular dep so
-  // fetchAd always calls the LATEST scheduleNextAd (which captures the
-  // current isGroup) without re-creating itself.
+  // fetchAd always calls the LATEST scheduleNextAd without re-creating itself.
   const scheduleNextAdRef = React.useRef<() => void>(() => {})
 
+  // Refs for current user id + latest messages so the (memoized)
+  // fetchAd callback can read them without re-creating on every state
+  // change.
+  const userIdRef = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    userIdRef.current = user?.id || null
+  }, [user?.id])
+  const messagesRef = React.useRef<ChatMessage[]>([])
+  React.useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
+
   const fetchAd = React.useCallback(async () => {
+    // PRD-2 — Offline users don't see live ads. Re-schedule so the loop
+    // continues once they're back online.
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      scheduleNextAdRef.current()
+      return
+    }
     try {
       const res: any = await apiFetch('/api/ads?placement=in-chat')
       // Defensive: API returns { ad: {...} | null } for in-chat placement.
@@ -605,6 +680,18 @@ export function ChatView({
       if (adObj) {
         setAd(adObj)
         setAdVisible(true)
+        // PRD-2 — Track per-user + per-chat state so each user's timer is
+        // independent. Save current time + ad id + last message id so we
+        // can resume the timer correctly when the chat is re-opened.
+        const uid = userIdRef.current
+        if (uid) {
+          const lastMsg = messagesRef.current[messagesRef.current.length - 1]
+          writeAdState(uid, conversationId, {
+            lastShown: Date.now(),
+            adId: adObj.id || null,
+            position: lastMsg?.id || null,
+          })
+        }
       } else {
         // No active ads — stay invisible, but still re-schedule so a new
         // ad campaign can appear later without needing a chat re-open.
@@ -618,25 +705,38 @@ export function ChatView({
       setAdVisible(false)
       scheduleNextAdRef.current()
     }
-  }, [])
+  }, [conversationId])
 
   const scheduleNextAd = React.useCallback(() => {
     if (adTimerRef.current) clearTimeout(adTimerRef.current)
-    const delay = isGroup ? AD_DELAY_GROUP : AD_DELAY_PRIVATE
+    // PRD-2 — All chats use 35s. If the user has a stored "lastShown"
+    // timestamp, only wait the remaining time so we don't show the ad
+    // too soon after reopening the chat. If 35s already passed (or there
+    // is no stored state), fetch immediately.
+    let delay = AD_DELAY
+    const uid = userIdRef.current
+    if (uid) {
+      const state = readAdState(uid, conversationId)
+      if (state) {
+        const elapsed = Date.now() - state.lastShown
+        const remaining = AD_DELAY - elapsed
+        delay = remaining > 0 ? remaining : 0
+      }
+    }
     adTimerRef.current = setTimeout(() => {
       fetchAd()
     }, delay)
-  }, [fetchAd, isGroup])
+  }, [fetchAd, conversationId])
 
   // Keep the ref in sync so fetchAd (which never re-creates) always calls
-  // the latest scheduleNextAd (which changes when isGroup changes).
+  // the latest scheduleNextAd (which changes when conversationId changes).
   React.useEffect(() => {
     scheduleNextAdRef.current = scheduleNextAd
   }, [scheduleNextAd])
 
   // Start the ad loop on mount + whenever the conversation changes (so
-  // opening a different chat resets the 45s/35s clock). Also restarts
-  // after the user closes an ad (via handleCloseAd → scheduleNextAd).
+  // opening a different chat resets the 35s clock). Also restarts after
+  // the user closes an ad (via handleCloseAd → scheduleNextAd).
   React.useEffect(() => {
     // Reset state for the new chat and kick off the timer.
     setAd(null)
@@ -650,6 +750,17 @@ export function ChatView({
   const handleCloseAd = () => {
     setAdVisible(false)
     setAd(null)
+    // PRD-2 — After closing the ad, reset the per-user + per-chat timer
+    // to now + 35s. Writing `lastShown = Date.now()` means the next ad
+    // won't appear for at least 35s.
+    const uid = userIdRef.current
+    if (uid) {
+      writeAdState(uid, conversationId, {
+        lastShown: Date.now(),
+        adId: null,
+        position: null,
+      })
+    }
     scheduleNextAd()
   }
 
@@ -1325,9 +1436,9 @@ export function ChatView({
 
   // ----- Render -----
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-background text-foreground">
+    <div className="fixed inset-0 flex flex-col bg-background text-foreground">
       {/* =========================== HEADER =========================== */}
-      <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background px-2">
         <button
           type="button"
           onClick={onBack}
@@ -1357,6 +1468,8 @@ export function ChatView({
                 premiumTier: (conversation?.otherUser as any)?.premiumTier,
                 avatar: avatar || conversation?.otherUser?.avatar || undefined,
                 name: name || conversation?.otherUser?.name || 'U',
+                id: (conversation?.otherUser as any)?.id || (conversation?.otherUser as any)?.userId || undefined,
+                username: (conversation?.otherUser as any)?.username || undefined,
               }}
               size={36}
               showAura
@@ -1627,21 +1740,13 @@ export function ChatView({
         </div>
       )}
 
-      {/* =========================== GROUP ANNOUNCEMENTS BAR =========================== */}
-      {isGroup && conversation?.groupId && (() => {
-        const myMembership = conversation?.members?.find(
-          (m) => m.userId === user?.id,
-        )
-        const role = (myMembership?.role as string) || null
-        const isOwnerOrAdmin = role === 'owner' || role === 'admin'
-        return (
-          <GroupAnnouncementsBar
-            conversationId={conversationId}
-            groupId={conversation.groupId}
-            isOwnerOrAdmin={isOwnerOrAdmin}
-          />
-        )
-      })()}
+      {/* =========================== GROUP ANNOUNCEMENTS BAR ===========================
+          PRD-1 — Removed per user request. The GroupAnnouncementsBar used
+          to render here when the conversation was a group with a groupId.
+          It is now parked under the "Coming Soon" list on the Profile
+          screen. Block intentionally left blank to keep the comment + the
+          surrounding structure (PinnedBar below) intact.
+      */}
 
       {/* =========================== PINNED BAR =========================== */}
       {pinnedMessages.length > 0 && showPinnedBar && (() => {
@@ -1702,7 +1807,7 @@ export function ChatView({
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="scroll-pan-y relative flex-1 overflow-y-auto"
+        className="scroll-pan-y relative flex-1 overflow-y-auto overflow-x-hidden"
         style={messageListStyle}
       >
         {/* Top loader */}
@@ -1774,7 +1879,14 @@ export function ChatView({
             })
           )}
 
-          {/* Ad box (after last message) */}
+          {/* PRD-2 — Native in-stream ad card. Rendered below the last
+              message INSIDE the scroll area (not a floating overlay), so
+              it never covers the composer, keyboard, or existing
+              messages. The composer is never disabled — the user can
+              keep typing / sending while the ad is visible. One ad at
+              a time per user per chat (tracked via localStorage). The
+              ✕ close button appears after 6s (handled inside ChatAdBox);
+              closing is optional and restarts the 35s timer. */}
           {adVisible && ad && (
             <ChatAdBox
               ad={ad}
@@ -1795,7 +1907,7 @@ export function ChatView({
       </div>
 
       {/* =========================== COMPOSER =========================== */}
-      <div className="sticky bottom-0 z-20 shrink-0 border-t bg-background/95 px-2 pt-2 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <div className="shrink-0 border-t bg-background px-2 pt-2 pb-[env(safe-area-inset-bottom)]">
         {/* Reply / Edit preview */}
         {(replyingTo || editingMessage) && (
           <div className="mb-2 flex items-start gap-2 rounded-md border bg-accent/30 px-2 py-1.5">
@@ -2388,6 +2500,8 @@ function UserProfileBody({
               premiumTier: display.premiumTier,
               avatar: avatarUrl || undefined,
               name: displayName,
+              id: display.id || display.userId || undefined,
+              username: display.username || undefined,
             }}
             size={96}
             showAura
@@ -2607,6 +2721,8 @@ function GroupInfoBody({
                         premiumTier: (u as any).premiumTier,
                         avatar: u.avatar || undefined,
                         name: u.name || u.username || 'U',
+                        id: u.id || undefined,
+                        username: u.username || undefined,
                       }}
                       size={32}
                       showAura={false}

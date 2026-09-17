@@ -106,6 +106,8 @@ export function StoriesRow({
                   premiumTier: myStoryAuthor.premiumTier,
                   avatar: myStoryAuthor.avatar || undefined,
                   name: myStoryAuthor.name || 'Me',
+                  id: myStoryAuthor.id || undefined,
+                  username: myStoryAuthor.username || undefined,
                 }}
                 size={60}
                 showAura={false}
@@ -158,6 +160,8 @@ export function StoriesRow({
                           premiumTier: g.user.premiumTier,
                           avatar: g.user.avatar || undefined,
                           name: g.user.name || 'U',
+                          id: g.user.id || undefined,
+                          username: g.user.username || undefined,
                         }}
                         size={60}
                         showAura={false}

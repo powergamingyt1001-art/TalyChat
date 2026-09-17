@@ -241,13 +241,15 @@ export interface DiscoverScreenProps {
 }
 
 // ============================================================
-// R8-11 — CapsuleCategorySlider
-// Horizontal scrolling capsule / pill chips for the Discover category
-// filter. Each capsule is a rounded-full button with scroll-snap-align
-// start so the slider snaps one capsule at a time. The active capsule
-// uses the brand emerald gradient + white text; inactive capsules are
-// subtle tinted pills. The whole row is horizontally scrollable with
-// hidden scrollbar (.no-scrollbar) so it stays clean on mobile.
+// PRD-1 — CapsuleCategorySlider
+// Bigger rounded capsule / pill chips for the Discover category filter.
+// All categories sit in ONE horizontal row (left-to-right) and the row
+// scrolls horizontally with hidden scrollbar (.no-scrollbar) + scroll
+// snapping for fast and smooth swipe on mobile. Each capsule is a tall
+// rounded-full pill (h-10 / 40px) — NOT a small square card — so the
+// categories read as bigger rounded capsules. The active capsule uses
+// the brand emerald gradient + white text; inactive capsules are subtle
+// tinted pills. Tap a capsule → show that category's groups.
 // ============================================================
 function CapsuleCategorySlider({
   categories,
@@ -260,14 +262,15 @@ function CapsuleCategorySlider({
 }) {
   return (
     <div
-      className="no-scrollbar scroll-pan-y mt-3 w-full overflow-x-auto pb-1"
+      className="no-scrollbar scroll-pan-y mt-2 w-full overflow-x-auto pb-0.5"
       style={{
-        scrollSnapType: 'x mandatory',
+        scrollSnapType: 'x proximity',
+        WebkitOverflowScrolling: 'touch',
         scrollPaddingLeft: '8px',
         scrollPaddingRight: '8px',
       }}
     >
-      <div className="flex min-w-0 gap-1.5 pb-1">
+      <div className="flex min-w-0 gap-2 pb-0.5">
         {categories.map((cat) => {
           const active = activeCategory === cat
           return (
@@ -277,7 +280,7 @@ function CapsuleCategorySlider({
               onClick={() => onSelect(cat)}
               aria-pressed={active}
               className={
-                'min-h-[36px] shrink-0 snap-start rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ' +
+                'inline-flex h-10 min-h-[40px] shrink-0 snap-start items-center rounded-full border px-4 text-sm font-medium transition-all active:scale-95 ' +
                 (active
                   ? 'btn-brand border-transparent text-primary-foreground shadow-sm'
                   : 'border-border bg-card text-foreground/80 hover:bg-accent hover:text-foreground')
@@ -499,23 +502,21 @@ export function DiscoverScreen({ onOpenChat }: DiscoverScreenProps = {}) {
 
   return (
     <div className="w-full px-2 pb-20 pt-4 lg:pb-6 lg:pt-6">
-      {/* Header */}
+      {/* Header — heading only, no subtitle (PRD-1). */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
         <h1 className="section-header">Discover</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Find communities that match your interests
-        </p>
       </motion.div>
 
-      {/* R8-11 — Capsule slider: horizontal scrolling capsule/pill chips for
-          the new category list (AI, Game, Fun, …). Each capsule is a pill
-          with rounded-full + scroll-snap-align start so the slider snaps
-          one capsule at a time. The active capsule uses the brand gradient
-          (btn-brand look) so it stands out from the rest. */}
+      {/* PRD-1 — Capsule slider: bigger rounded pill chips in one horizontal
+          row. Each capsule is a rounded-full pill (h-10, px-4, text-sm) so
+          they read as bigger capsule/chip style — NOT small square cards.
+          The whole row is horizontally scrollable with hidden scrollbar
+          (.no-scrollbar) for fast and smooth horizontal swipe on mobile.
+          Tap a capsule → show that category's groups. */}
       <CapsuleCategorySlider
         categories={CAPSULE_CATEGORIES as unknown as string[]}
         activeCategory={activeCategory}

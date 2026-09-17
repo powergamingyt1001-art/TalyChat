@@ -191,6 +191,8 @@ export function MembersListDialog({
                         premiumTier: u.premiumTier,
                         avatar: u.avatar || undefined,
                         name: displayName,
+                        id: u.id || m.userId || undefined,
+                        username: u.username || undefined,
                       }}
                       size={40}
                       showAura={false}

@@ -507,7 +507,7 @@ export function ProfileScreen() {
         : 'ring-red-500/60'
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 overflow-x-hidden px-3 pb-20 pt-4">
+    <div className="mx-auto max-w-2xl space-y-4 overflow-x-hidden px-2 pb-20 pt-4 sm:px-3">
       {/* V12 — Group 1: Identity & Status.
           Wraps the profile header, story highlights, behavior bar, and
           watch-behavior card into a single tinted container so the user
@@ -528,7 +528,7 @@ export function ProfileScreen() {
                 V13 — `dark-avatar-glow` adds an emerald + cream glow
                 around the avatar in dark theme so it stays visible. */}
             <div
-              className={`relative inline-flex rounded-full ring-4 ${behaviorRingClass} dark-avatar-glow`}
+              className={`relative inline-flex rounded-full ring-4 ${behaviorRingClass} dark-avatar-glow profile-avatar-border`}
             >
               <PremiumAvatar
                 user={{
@@ -536,6 +536,8 @@ export function ProfileScreen() {
                   premiumTier: profile.premiumTier,
                   avatar: profile.avatar || undefined,
                   name: profile.name || 'U',
+                  id: profile.id || profile.userId || undefined,
+                  username: profile.username || undefined,
                 }}
                 size={80}
                 showAura
@@ -1752,15 +1754,19 @@ function BehaviorBar({ behavior }: { behavior: BehaviorData | null }) {
   const currentIdx = Math.min(4, Math.max(0, Math.floor(score / 20)))
 
   return (
-    <div className="taly-card w-full max-w-full animate-fade-in-up overflow-hidden p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
+    <div className="taly-card w-full max-w-full animate-fade-in-up overflow-hidden p-3">
+      {/* PRD-1 — header row: section title on left, status badges on right.
+          Badges now flex-wrap so "Excellent" + "Can message" never overflow
+          the card edge. Removed shrink-0 on the badges wrapper so they can
+          wrap to a new line on narrow screens (414px). Reduced gap to 1.5. */}
+      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-1.5">
         <div className="section-header min-w-0">
           <Target className="h-4 w-4 shrink-0 text-primary" /> Behavior
         </div>
-        <div className="flex min-w-0 shrink-0 items-center gap-2">
-          {/* V8 — status label badge */}
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+          {/* V8 — status label badge (thin border, compact padding) */}
           <span
-            className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${statusBadgeClass}`}
+            className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusBadgeClass}`}
             title={`Status: ${statusLabel}`}
           >
             <TrendingUp className="h-3 w-3" />
@@ -1768,11 +1774,11 @@ function BehaviorBar({ behavior }: { behavior: BehaviorData | null }) {
           </span>
           <Badge
             variant={canMessage ? 'default' : 'destructive'}
-            className={`shrink-0 ${
+            className={`shrink-0 border px-2 py-0.5 text-[11px] font-semibold ${
               canMessage
                 ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
                 : 'bg-red-500/10 text-red-600 border-red-500/30'
-            } border`}
+            }`}
           >
             {canMessage ? 'Can message' : 'Blocked'}
           </Badge>
@@ -1866,7 +1872,7 @@ function WatchBehaviorCard({
   const reachedMax = adsWatchedToday >= maxAdsPerDay
 
   return (
-    <div className="taly-card w-full max-w-full animate-fade-in-up overflow-hidden p-4">
+    <div className="taly-card w-full max-w-full animate-fade-in-up overflow-hidden p-3">
       <div className="flex items-start gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
           <Megaphone className="h-5 w-5" />
@@ -2837,6 +2843,11 @@ const COMING_SOON_FEATURES: ComingSoonFeature[] = [
   { icon: '🕒', name: 'Scheduled Messages', desc: 'Send messages later' },
   { icon: '📍', name: 'Live Location Sharing', desc: 'Real-time GPS tracking' },
   { icon: '📤', name: 'Chat Export', desc: 'Download your chat history' },
+  // PRD-1 — Group Announcements moved from the chat view to the Coming
+  // Soon list per user request. Was previously rendered above the chat
+  // message list (GroupAnnouncementsBar in chat-view.tsx) but is now
+  // parked here until the feature is ready to ship.
+  { icon: '📢', name: 'Group Announcements', desc: 'Pin important updates in group chats' },
 ]
 
 function AboutComingSoonSection() {

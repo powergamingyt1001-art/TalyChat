@@ -407,6 +407,8 @@ export function ChatsScreen({ conversations, onOpenChat, onRefresh, onDelete }: 
                         premiumTier: (req.sender as any)?.premiumTier,
                         avatar: req.sender?.avatar || undefined,
                         name: req.sender?.name || req.sender?.username || 'U',
+                        id: req.sender?.id || undefined,
+                        username: req.sender?.username || undefined,
                       }}
                       size={44}
                       showAura
@@ -697,6 +699,8 @@ function ChatListRow({
           premiumTier: (c.otherUser as any)?.premiumTier,
           avatar: convAvatar(c),
           name: c.name || c.otherUser?.name || '?',
+          id: (c.otherUser as any)?.id || (c.otherUser as any)?.userId || c.id || undefined,
+          username: (c.otherUser as any)?.username || undefined,
         }}
         size={44}
         showAura
@@ -847,6 +851,8 @@ function NewChatDialog({
                         premiumTier: (u as any).premiumTier,
                         avatar: u.avatar || undefined,
                         name: u.name || 'U',
+                        id: u.id || undefined,
+                        username: u.username || undefined,
                       }}
                       size={40}
                       showAura={false}

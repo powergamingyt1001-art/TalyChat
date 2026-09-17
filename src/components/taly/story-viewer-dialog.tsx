@@ -504,6 +504,8 @@ function StoryStage({
                 premiumTier: author.premiumTier,
                 avatar: author.avatar || undefined,
                 name: author.name || 'U',
+                id: author.id || undefined,
+                username: author.username || undefined,
               }}
               size={36}
               showAura

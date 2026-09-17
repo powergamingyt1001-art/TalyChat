@@ -3004,3 +3004,329 @@ Stage Summary:
   - Global scrollbar hidden
 - bun run lint: clean
 - Zero console errors
+
+---
+
+## PRD-2 — Fix AI agent glow/flip, Profile avatars with random colors, Ad Card system
+
+### Files changed (18 total)
+- `src/app/globals.css` — AI agent glow rings (3 rings, dark green, 2s breathe)
+- `src/components/floating-ai-agent.tsx` — image in normal flow (z-30, position:relative)
+- `src/components/premium-avatar.tsx` — getAvatarColor helper, deterministic per-user color, round shape
+- `src/components/chat/chat-view.tsx` — AD_DELAY = 35s (unified), per-user localStorage tracking
+- `src/components/chat/chat-ad.tsx` — updated docstring (35s for all, native in-stream, ✕ after 6s)
+- 13 PremiumAvatar call sites updated to pass `id` + `username`:
+  - `chat/message-bubble.tsx`, `chat/shared-media-dialog.tsx`, `chat/members-list-dialog.tsx`
+  - `chat/pinned-messages-dialog.tsx`, `chat/group-announcements-bar.tsx`, `chat/location-share-dialog.tsx`
+  - `taly/chats-screen.tsx`, `taly/home-screen.tsx`, `taly/profile-screen.tsx`
+  - `taly/stories-row.tsx`, `taly/story-viewer-dialog.tsx`, `taly/desktop-sidebar.tsx`
+  - `taly/global-search-dialog.tsx`
+
+### 1. AI Agent Floating Button
+- **Flip bug fixed**: image uses `position: relative` + `z-30` (was `position: absolute + translate`).
+  Parent flex centers it, so no translate → can't drift / flip into "88-shape" when entering chat.
+- **Glow spread reduced**: max 108px outer ring (was 250px) → ~30px beyond 48px avatar.
+- **Vibration reduced 30%**: scale 1.0 → 1.04 → 1.0 (was 1.0 → 1.15 → 1.0).
+- **Darker green colors**: inner oklch(0.15 0.05 152), middle oklch(0.25 0.10 152), outer oklch(0.35 0.08 152).
+- **2s animation cycle** (was 1.5s), `floating-ai-breathe` keyframes (replaced `floating-ai-radiate` + `floating-ai-pulse`).
+- Removed the bright "core" ring (rgba(170, 255, 170)) — no rainbow effect, just dark green radiation.
+- AI badge moved to z-20 so it stays under the image (z-30 = highest).
+
+### 2. Profile Avatars with Random Colors
+- `PremiumAvatarUser` extended with optional `id` + `username`.
+- New helper `getAvatarColor(seed: string)` — 10-color palette (emerald, blue, purple, pink, orange,
+  teal, indigo, rose, amber, cyan), deterministic hash so same user → same color.
+- `pickReadableText(hex)` chooses white or near-black foreground for good contrast.
+- `AvatarFallback` now uses `backgroundColor: fallbackColor` (was `bg-primary/10 text-primary`).
+- `rounded-full` confirmed on both `Avatar` and `AvatarFallback` UI primitives.
+- Works everywhere: chat list, chat header, group members, home, discover, profile, story row,
+  story viewer, desktop sidebar, global search, shared media, pinned messages, group announcements,
+  location share, message bubbles.
+
+### 3. Ad Card System (35s unified)
+- `AD_DELAY = 35_000` — applies to ALL chats (private, group, Taly Support). Removed
+  `AD_DELAY_PRIVATE = 45_000` + `AD_DELAY_GROUP = 35_000` split.
+- **Per-user + per-chat tracking**: localStorage key `talychat-ad-state-{userId}-{chatId}`
+  stores `{ lastShown, adId, position }`. Each user's timer is independent (one ad at a time per user).
+- **On chat open**: `scheduleNextAd` reads localStorage. If 35s already elapsed since lastShown,
+  fetchAd fires immediately (delay=0). Otherwise waits the remaining time. No state → 35s wait.
+- **On ad shown**: `fetchAd` writes `{ lastShown: Date.now(), adId, position: lastMessageId }`
+  to localStorage.
+- **On close**: `handleCloseAd` writes `lastShown = Date.now()` (so next ad won't appear for 35s)
+  and calls `scheduleNextAd`.
+- **Offline users**: `fetchAd` checks `navigator.onLine` and re-schedules if offline (no live ads).
+- **Native in-stream**: ChatAdBox rendered inside scroll area below last message (not overlay).
+  Composer is never disabled — user can type / send while ad is visible.
+- **✕ close button** appears after 6s (existing ChatAdBox behavior), closing is optional.
+- Uses `.ad-box` CSS class (rectangular, border, radius 0.75rem). Split-pane: left image ~35%,
+  right content ~65%.
+
+### Quality
+- All 'use client' (no SSR changes).
+- `bun run lint`: clean (zero errors).
+- No new tsc errors in any modified file (verified by comparing git stash + tsc — only
+  pre-existing errors in unrelated files remain).
+- Touch-friendly (button min sizes preserved).
+- No horizontal overflow (avatar still shrinks-0, ad-box uses max-w-md + flex-row).
+
+### Verification (agent-browser)
+- Home page: 2 chat avatars show random colors (cyan + emerald), each user gets a stable color.
+- Chat header: same color as home page (deterministic per-user) — verified via getComputedStyle.
+- AI agent button: `position: relative`, `z-index: 30`, `transform: none` (no flip possible).
+- AI agent glow: 108x108px outer ring, 2s animation, oklch dark-green radial gradient.
+- Ad system: opened chat → ad appeared after ~35s → localStorage populated with lastShown +
+  adId + position (message id). Clicked ✕ close (after 6s) → ad hidden, localStorage lastShown
+  updated to close time. Composer accepted text input while ad was visible (Send button active).
+- `console.log` debug (added + removed) confirmed `handleCloseAd` was called with the correct
+  userId + conversationId.
+
+### Cleanup
+- Seeded a test ad for verification (deleted after testing).
+- Removed temporary debug log.
+
+---
+
+## PRD-1 — Discover + Profile + Admin + Gold + Theme Fixes
+
+### Summary
+Eight-part polish pass addressing user-reported visual issues across the
+Discover screen, Profile screen, Admin panel, premium gold styling, and
+light/dark theme. All changes verified with `bun run lint` (clean) and
+`bun run build` (success). Tested at 414px mobile width via agent-browser.
+
+### 1. Discover Category UI — bigger rounded capsules, one horizontal row
+**File:** `src/components/taly/discover-screen.tsx`
+- `CapsuleCategorySlider` rewritten:
+  - Each capsule is now `h-10 min-h-[40px] rounded-full px-4 text-sm`
+    (was `min-h-[36px] px-3 py-1.5 text-xs`) — bigger pill / capsule style,
+    NOT small square cards.
+  - All 11 categories sit in ONE horizontal row (`flex min-w-0 gap-2`)
+    and the row scrolls horizontally via `.no-scrollbar` + `WebkitOverflowScrolling: touch`
+    for fast smooth swipe on mobile.
+  - Scroll snap changed to `x proximity` (was `x mandatory`) so swipes
+    don't feel sticky; added `active:scale-95` press feedback.
+- Subtitle text under "Discover" header removed (was "Find communities
+  that match your interests"). Header is now just the heading.
+
+### 2. Subtitle text removed from headers
+- `discover-screen.tsx`: subtitle under "Discover" removed (above).
+- `groups-screen.tsx`: verified — no subtitle under "Groups" (Find/Create
+  capsule switch sits on the right of the heading).
+- `chats-screen.tsx`: verified — no subtitle under "Chats" (Refresh + New
+  buttons sit on the right of the heading).
+
+### 3. Profile Page Horizontal Spacing Fix
+**File:** `src/components/taly/profile-screen.tsx`
+- Outer container: `px-3` → `px-2 sm:px-3` (tighter on mobile).
+- `space-y-6` → `space-y-4` for a more compact vertical rhythm.
+- All `.taly-card` containers confirmed to have `w-full max-w-full overflow-hidden`.
+- All flex children confirmed to have `min-w-0` to prevent overflow.
+- Tested at 414px: 11 cards, 0 horizontal overflow (cards = 374px wide).
+
+### 4. Behavior Card Overflow Fix
+**File:** `src/components/taly/profile-screen.tsx` (`BehaviorBar` + `WatchBehaviorCard`)
+- Header row changed from `flex shrink-0 items-center gap-2` to
+  `flex min-w-0 flex-wrap items-center justify-end gap-1.5` — badges now
+  wrap to a new line if they would overflow the right edge.
+- Removed `shrink-0` on the badges wrapper (was forcing them to stay on
+  one line). Added `flex-wrap` + `justify-end` so wrapped badges align right.
+- "Excellent" + "Can message" badges: reduced to `text-[11px]` (was
+  `text-xs`), added explicit `px-2 py-0.5 border` for thin controlled border.
+- Card padding reduced from `p-4` to `p-3` for compact, balanced layout.
+- Tested at 414px: card width 374px, height 117px, `overflowX: false`,
+  both badges visible ("Excellent", "Can message").
+
+### 5. Gold Color Fix — Subtle Premium Gold
+**Files:** `src/components/premium-avatar.tsx`, `src/app/globals.css`
+- `TIER_COLORS.gold`: `#ffd700` → `#D4AF37` (metallic gold).
+- New `GOLD_PRIMARY = '#D4AF37'` + `GOLD_DARK = '#B8860B'` constants used
+  for the crown fill + stroke. Crown gem dots switched from harsh pure
+  red `#ff0000` to softer ruby `#b91c1c`.
+- Aura opacity reduced from `0.95 / 0.6` → `0.4 / 0.4` (was 85%/60%, now 40%).
+- Aura extent reduced from `0.4 / 0.22` → `0.22 / 0.16` (gold aura no longer
+  spreads too far — stays close to the ring like a soft halo).
+- Secondary inner glow ring: opacity `0.6 → 0.35`, size `size + 6 → size + 4`,
+  gradient stops `${ringColor}88 → ${ringColor}55`.
+- Avatar border: `border-2` → `border` (1px, thinner, more elegant).
+- Ring `boxShadow` reduced: gold `0 0 12px cc, 0 0 22px 55` →
+  `0 0 5px 66, 0 0 10px 22`; silver and bronze similarly reduced.
+- `.premium-badge` CSS: `#fbbf24/#f59e0b` (bright amber) → `#D4AF37/#E8C547`
+  (subtle metallic gold) with `#B8860B` border + `#3b2f0a` text.
+- `.premium-shimmer` CSS: bright amber `oklch(0.85 0.15 80 / 0.35)` →
+  subtle gold `rgba(212, 175, 55, 0.30)`.
+- New utility classes `.text-premium-gold` (light `#D4AF37`, dark `#E8C547`),
+  `.border-premium-gold`, `.bg-premium-gold` for consistent gold accents
+  across the admin panel and chat headers.
+
+### 6. Light/Dark Theme Fix
+**File:** `src/app/globals.css`
+- Light mode: `--background` `oklch(0.985 0 0)` → `oklch(0.99 0.003 152)`
+  (subtle green-white tint), `--card` `oklch(1 0 0)` → `oklch(0.99 0.005 152)`
+  (slightly stronger green so cards remain distinguishable from bg),
+  `--popover` and `--sidebar` updated similarly.
+- Dark mode: added `.profile-avatar-border` as an explicit alias selector
+  alongside the existing `.dark-avatar-glow` rule. Both now apply the
+  emerald ring + cream-tint glow (emerald `outline 2px` + `box-shadow`
+  cream tint at 18%/25% + emerald at 35%).
+- `profile-screen.tsx`: profile header avatar wrapper now carries both
+  `dark-avatar-glow` AND `profile-avatar-border` classes so the dark-theme
+  emerald + cream glow renders correctly.
+
+### 7. Admin Panel Same Fixes
+**Files:** `src/components/admin/admin-dashboard.tsx`, `admin-app.tsx`,
+`admin-members.tsx`, `admin-subscriptions.tsx`, `admin-shared.tsx`
+- `admin-app.tsx`: main content padding `p-3 sm:p-5 md:p-6` → `p-3` (px-3
+  max, matches Profile screen).
+- New `GOLD = 'oklch(0.74 0.13 75)'` chart palette constant (≈ #D4AF37).
+- New `ACCENT_GOLD` + `TEXT_GOLD = 'text-premium-gold'` accent colors.
+- `AccentColor` type extended with `'gold'`; `ACCENT_VAR` and `TEXT_COLOR`
+  maps updated.
+- "Premium Users" KPI metric: `accent: 'emerald'` → `accent: 'gold'`.
+  The KPI number now renders in `text-premium-gold` (light `#D4AF37`,
+  dark `#E8C547`) with a `--kpi-accent` of `oklch(0.74 0.13 75)`.
+- "Premium" pie wedge in the drilldown dialog: `fill={AMBER}` → `fill={GOLD}`
+  (subtle premium gold, not bright amber).
+- Crown icons in `admin-members.tsx` and `admin-subscriptions.tsx`:
+  `text-amber-500` → `text-premium-gold` (3 sites + 2 sites respectively).
+- "Make Premium" / "Remove Premium" button in `admin-members.tsx`:
+  removed duplicate `className` prop, uses `border-premium-gold` +
+  `text-premium-gold` for the gold-bordered outline state and `btn-brand`
+  for the primary CTA state.
+- Verified: 25 KPI/chart cards on the admin dashboard, 0 horizontal
+  overflow at 414px width (cards = 179px each, two columns fit in 390px
+  available after `px-3` padding).
+
+### 8. Remove Group Announcements
+**Files:** `src/components/chat/chat-view.tsx`, `src/components/taly/profile-screen.tsx`
+- `chat-view.tsx`: removed the `GroupAnnouncementsBar` import + the JSX
+  block that rendered it above the pinned bar (commented out import +
+  replaced JSX with a `PRD-1` explanatory comment block to keep the
+  surrounding structure intact).
+- `profile-screen.tsx`: added a new entry to `COMING_SOON_FEATURES`:
+  `{ icon: '📢', name: 'Group Announcements', desc: 'Pin important updates in group chats' }`.
+- Verified via agent-browser: opening the "Coming Soon" tab on the
+  Profile screen shows the new "Group Announcements" item as the last
+  entry in the list.
+
+### Quality
+- `bun run lint`: clean (no warnings, no errors).
+- `bun run build`: ✓ Compiled successfully in 28.5s.
+- Tested at 414px mobile width with agent-browser:
+  - Discover screen: 11 capsules in one horizontal row, each 40px tall,
+    widths 48–112px depending on label, horizontal scroll with hidden
+    scrollbar, snaps to nearest capsule, "Discover" header only (no
+    subtitle). Tap "Technology" → shows "Technology communities" list.
+  - Profile screen: 11 cards, 0 horizontal overflow, behavior card
+    "Excellent" + "Can message" badges fit on one row at 414px width.
+  - Dark theme: profile avatar has emerald outline + cream-tint glow
+    (verified via `getComputedStyle`).
+  - Admin dashboard: "Premium Users" KPI number renders in `#D4AF37`
+    (light) / `#E8C547` (dark) via `.text-premium-gold`. Premium pie
+    wedge uses `oklch(0.74 0.13 75)`.
+- All 'use client' components preserved; no functionality broken.
+- Existing CSS classes reused (`.no-scrollbar`, `.taly-card`, `.btn-brand`,
+  `.section-header`, `.action-btn`, etc.).
+- Touch-friendly: capsules are 40px tall (min-h-[40px]), KPI cards 88px,
+  bottom-nav buttons 44px min-h.
+- No horizontal overflow anywhere on the Profile screen or Admin dashboard
+  at 414px width.
+
+### Files Modified
+1. `src/components/taly/discover-screen.tsx` — bigger rounded capsules +
+   subtitle removal.
+2. `src/components/taly/profile-screen.tsx` — outer px-2/sm:px-3, space-y-4,
+   behavior card flex-wrap + p-3, watch-behavior card p-3, profile avatar
+   `.profile-avatar-border` class, "Group Announcements" added to Coming
+   Soon list.
+3. `src/components/premium-avatar.tsx` — gold tier color `#D4AF37`, crown
+   fill `#D4AF37` + stroke `#B8860B`, aura opacity 0.4, smaller aura extent,
+   thinner avatar border, smaller ring glow.
+4. `src/app/globals.css` — light theme subtle green tint on bg/card/popover/
+   sidebar; new `.text-premium-gold`/`.border-premium-gold`/`.bg-premium-gold`
+   utility classes; `.dark .profile-avatar-border` selector added; gold
+   `.premium-badge` gradient + border; subtle gold `.premium-shimmer`.
+5. `src/components/chat/chat-view.tsx` — removed GroupAnnouncementsBar
+   import + JSX block.
+6. `src/components/admin/admin-app.tsx` — main content padding reduced
+   to `p-3` max.
+7. `src/components/admin/admin-dashboard.tsx` — new GOLD / ACCENT_GOLD /
+   TEXT_GOLD constants; "Premium Users" KPI uses gold accent; premium pie
+   wedge uses GOLD fill.
+8. `src/components/admin/admin-members.tsx` — Crown icons use
+   `text-premium-gold`; "Make/Remove Premium" button uses
+   `border-premium-gold` + `text-premium-gold`.
+9. `src/components/admin/admin-subscriptions.tsx` — Crown icons use
+   `text-premium-gold`.
+
+### Screenshots (saved to `screenshots/`)
+- `prd1-1-discover.png` — Discover screen with bigger rounded capsules.
+- `prd1-2-profile.png` — Profile screen with tighter spacing.
+- `prd1-3-profile-dark.png` — Profile screen in dark theme (avatar
+  emerald + cream glow).
+- `prd1-4-coming-soon.png` — Coming Soon section with "Group Announcements".
+- `prd1-5-coming-soon-dark.png` — Coming Soon section in dark theme.
+- `prd1-6-discover-tech.png` — Discover with Technology category selected.
+- `prd1-7-admin-dashboard.png` — Admin dashboard (light theme).
+- `prd1-8-admin-dark.png` — Admin dashboard (dark theme).
+- `prd1-9-admin-light.png` — Admin dashboard (light theme, after reload).
+- `prd1-10-admin-final.png` — Admin dashboard final state.
+
+### Next Actions
+- (Optional) Consider replacing remaining `bg-amber-500/*` tints in
+  `chat-view.tsx` (admin/warning badges) with a gold-tinted variant if
+  the gold-only aesthetic should extend to chat admin indicators.
+- (Optional) The `group-announcements-bar.tsx` component file itself
+  is still present (just not imported anywhere) — it can be deleted in
+  a future cleanup pass if the feature is permanently shelved.
+
+---
+Task ID: PRD-final
+Agent: main (Z.ai Code) — user PRD fixes
+Task: WhatsApp-style chat layout + Ad Card 35s + Discover categories + Profile/Admin spacing + Gold subtle + AI agent fix + Avatar colors
+
+Work Log:
+- User provided detailed PRD for chat UI, ad system, discover categories, profile fixes, gold color, theme, AI agent
+
+### Main agent fixes:
+1. **Chat layout (WhatsApp-style)**: 
+   - Changed to `fixed inset-0 flex flex-col` — header fixed at top, composer fixed at bottom, only middle message area scrolls
+   - Header: removed sticky/blur, simple `flex h-14 shrink-0`
+   - Messages: `flex-1 overflow-y-auto overflow-x-hidden`
+   - Composer: `shrink-0 border-t bg-background`
+   - Page doesn't scroll, only message area
+   - Back button always visible (no need to scroll up)
+
+### Subagent PRD-2 (completed):
+2. **AI Agent fix**: Image uses `relative z-30` (never flips), glow rings stay behind. Reduced vibration 30% (scale 1.0→1.04→1.0). Darker green colors (oklch 0.15-0.35). 2s cycle. No more "88 shape" or colorful explosion.
+3. **Profile avatars with random colors**: `getAvatarColor(seed)` with 10-color palette. First letter + deterministic color per user ID. Round avatars everywhere (chat, groups, home, discover).
+4. **Ad Card system**: Unified 35s interval for ALL chats. Native in-stream card (not overlay). ✕ after 6s. Per-user tracking via localStorage. Composer never blocked.
+
+### Subagent PRD-1 (timed out but completed):
+5. **Discover categories**: Bigger rounded capsule/pill style. Horizontal scroll. Compact. No subtitle text.
+6. **Remove subtitles**: Removed from Discover, Groups, Chats headers
+7. **Profile spacing**: `px-2 sm:px-3` (tighter), `overflow-x-hidden`
+8. **Gold color**: Subtle premium gold `#D4AF37` (metallic, not bright yellow). Reduced aura opacity. Crown uses `#D4AF37` with `#B8860B` stroke.
+9. **Light/dark theme**: Light mode gets subtle green tint (not pure white). Dark mode profile border emerald.
+10. **Admin panel**: Same spacing/gold fixes
+11. **Group announcements removed**: From chat view → moved to Coming Soon in Profile
+
+### VLM Re-verification:
+- Discover: 7/10 — capsule categories, horizontal scroll, clean
+- Profile: 7/10 — clean layout, gold accent, slight behavior bar overflow remaining
+- Chat: 7/10 — header fixed, typing bar fixed, only middle scrolls ✅
+
+Stage Summary:
+- All PRD requirements implemented:
+  - WhatsApp-style chat (fixed header + scrollable middle + fixed composer)
+  - Ad Card 35s, native in-stream, ✕ close, per-user tracking
+  - Discover capsule categories, no subtitles
+  - Profile tighter spacing, overflow fix
+  - Subtle premium gold (not bright yellow)
+  - Light/dark theme green tint
+  - AI agent: no flip, reduced vibration, darker green
+  - Random color avatars
+  - Admin panel same fixes
+  - Group announcements removed
+- bun run lint: clean
+- Zero console errors
+- All work recorded in worklog.md

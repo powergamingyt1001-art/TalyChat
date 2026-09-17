@@ -202,7 +202,7 @@ export function AdminMembers() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {u.isPremium ? <Crown className="size-4 text-amber-500" /> : <span className="text-muted-foreground">—</span>}
+                        {u.isPremium ? <Crown className="size-4 text-premium-gold" /> : <span className="text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell className="text-sm">{formatDate(u.createdAt)}</TableCell>
                       <TableCell>
@@ -290,7 +290,7 @@ function MobileUserList({
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <p className="truncate text-sm font-medium">{u.name}</p>
-              {u.isPremium && <Crown className="size-3.5 shrink-0 text-amber-500" />}
+              {u.isPremium && <Crown className="size-3.5 shrink-0 text-premium-gold" />}
               {u.role === 'admin' && (
                 <Badge className="bg-primary/10 text-primary hover:bg-primary/10 px-1.5 py-0 text-[9px]">A</Badge>
               )}
@@ -384,7 +384,7 @@ function UserDetailDialog({
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
                 <h3 className="truncate text-lg font-bold">{detail.name}</h3>
-                {detail.isPremium && <Crown className="size-4 text-amber-500" />}
+                {detail.isPremium && <Crown className="size-4 text-premium-gold" />}
               </div>
               <p className="truncate text-sm text-muted-foreground">@{detail.username}</p>
               <p className="truncate text-xs text-muted-foreground">{detail.email}</p>
@@ -434,9 +434,14 @@ function UserDetailDialog({
             <Button
               size="sm"
               variant={detail.isPremium ? 'outline' : 'default'}
-              className="btn-brand h-11"
               disabled={acting}
               onClick={() => patch({ isPremium: !detail.isPremium, premiumUntil: !detail.isPremium ? undefined : null }, detail.isPremium ? 'Premium removed' : 'Premium granted')}
+              className={cn(
+                'min-h-[40px] rounded-md border px-3 text-sm font-medium transition-colors',
+                detail.isPremium
+                  ? 'border-premium-gold text-premium-gold hover:bg-amber-500/10'
+                  : 'btn-brand border-transparent',
+              )}
             >
               <Crown className="size-4" />
               {detail.isPremium ? 'Remove Premium' : 'Make Premium'}

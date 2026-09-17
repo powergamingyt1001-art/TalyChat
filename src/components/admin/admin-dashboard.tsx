@@ -72,10 +72,15 @@ const PERIODS: { id: Period; label: string }[] = [
 ]
 
 // V2 chart palette — emerald brand colors + neutrals
+// PRD-1 — Added GOLD (#D4AF37 metallic gold, oklch(0.74 0.13 75)) as a
+// subtle premium-gold tone used for the premium pie wedge + the
+// "Premium Users" KPI card. AMBER stays for warning metrics (reports,
+// restricted, expired) — it's a warm orange, not over-bright yellow.
 const BRAND = 'oklch(0.72 0.18 152)'
 const NEUTRAL = 'oklch(0.85 0.02 152)'
 const AMBER = 'oklch(0.78 0.16 70)'
 const ROSE = 'oklch(0.65 0.18 18)'
+const GOLD = 'oklch(0.74 0.13 75)'
 
 // V3 — semantic accent colors for KPI cards (--kpi-accent CSS var)
 const ACCENT_EMERALD = 'oklch(0.72 0.18 152)'
@@ -83,6 +88,8 @@ const ACCENT_AMBER = 'oklch(0.75 0.18 70)'
 const ACCENT_RED = 'oklch(0.65 0.22 25)'
 const ACCENT_BLUE = 'oklch(0.62 0.15 220)'
 const ACCENT_PURPLE = 'oklch(0.62 0.18 300)'
+// PRD-1 — Subtle premium gold accent for the "Premium Users" KPI card.
+const ACCENT_GOLD = 'oklch(0.74 0.13 75)'
 
 // V3 — semantic text colors for KPI numbers
 const TEXT_EMERALD = 'text-emerald-600 dark:text-emerald-400'
@@ -90,8 +97,12 @@ const TEXT_AMBER = 'text-amber-600 dark:text-amber-400'
 const TEXT_RED = 'text-red-600 dark:text-red-400'
 const TEXT_BLUE = 'text-sky-600 dark:text-sky-400'
 const TEXT_PURPLE = 'text-purple-600 dark:text-purple-400'
+// PRD-1 — Subtle premium gold text for the Premium Users KPI number.
+// Uses #D4AF37 in light mode, #E8C547 in dark mode (controlled gold,
+// not a bright yellow).
+const TEXT_GOLD = 'text-premium-gold'
 
-type AccentColor = 'emerald' | 'amber' | 'red' | 'blue' | 'purple'
+type AccentColor = 'emerald' | 'amber' | 'red' | 'blue' | 'purple' | 'gold'
 
 const ACCENT_VAR: Record<AccentColor, string> = {
   emerald: ACCENT_EMERALD,
@@ -99,6 +110,7 @@ const ACCENT_VAR: Record<AccentColor, string> = {
   red: ACCENT_RED,
   blue: ACCENT_BLUE,
   purple: ACCENT_PURPLE,
+  gold: ACCENT_GOLD,
 }
 const TEXT_COLOR: Record<AccentColor, string> = {
   emerald: TEXT_EMERALD,
@@ -106,6 +118,7 @@ const TEXT_COLOR: Record<AccentColor, string> = {
   red: TEXT_RED,
   blue: TEXT_BLUE,
   purple: TEXT_PURPLE,
+  gold: TEXT_GOLD,
 }
 
 interface MetricDef {
@@ -126,7 +139,7 @@ const METRICS: MetricDef[] = [
   { key: 'totalUsers', label: 'Total Users', icon: Users, accent: 'emerald', value: (s) => s.totalUsers.toLocaleString('en-IN'), chart: 'userGrowth', featured: true },
   { key: 'activeUsers', label: 'Active Now', icon: Zap, accent: 'emerald', value: (s) => s.activeUsers.toLocaleString('en-IN'), chart: 'registerData', featured: true },
   { key: 'newToday', label: 'New Today', icon: UserPlus, accent: 'emerald', value: (s) => s.newToday.toLocaleString('en-IN'), chart: 'registerData', featured: true },
-  { key: 'premium', label: 'Premium Users', icon: Crown, accent: 'emerald', value: (s) => s.premium.toLocaleString('en-IN'), chart: 'piePremium', featured: true },
+  { key: 'premium', label: 'Premium Users', icon: Crown, accent: 'gold', value: (s) => s.premium.toLocaleString('en-IN'), chart: 'piePremium', featured: true },
   { key: 'totalGroups', label: 'Total Groups', icon: Group, accent: 'purple', value: (s) => s.totalGroups.toLocaleString('en-IN'), chart: 'none' },
   { key: 'reports', label: 'Pending Reports', icon: Flag, accent: 'amber', value: (s) => s.reports.toLocaleString('en-IN'), chart: 'none' },
   { key: 'restricted', label: 'Restricted Users', icon: Ban, accent: 'amber', value: (s) => s.restricted.toLocaleString('en-IN'), chart: 'none' },
@@ -882,7 +895,8 @@ function DrilldownDialog({
                   paddingAngle={2}
                   label={(e: any) => `${e.name}: ${e.value}`}
                 >
-                  <Cell fill={AMBER} />
+                  {/* PRD-1 — Premium wedge uses subtle gold (was bright AMBER). */}
+                  <Cell fill={GOLD} />
                   <Cell fill={ROSE} />
                   <Cell fill={NEUTRAL} />
                 </Pie>

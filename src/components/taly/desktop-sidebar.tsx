@@ -116,6 +116,8 @@ export function DesktopSidebar({
               premiumTier: user?.premiumTier,
               avatar: user?.avatar || undefined,
               name: user?.name || 'U',
+              id: user?.id || undefined,
+              username: user?.username || undefined,
             }}
             size={36}
             showAura

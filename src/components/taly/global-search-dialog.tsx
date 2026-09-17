@@ -250,7 +250,7 @@ export function GlobalSearchDialog({ open, onClose, onOpenChat }: Props) {
                     className="flex w-full items-center gap-3 rounded-lg p-3 text-left hover:bg-accent"
                   >
                     <PremiumAvatar
-                      user={{ isPremium: r.isPremium, premiumTier: r.premiumTier, avatar: r.avatar, name: r.name || r.username || '?' }}
+                      user={{ isPremium: r.isPremium, premiumTier: r.premiumTier, avatar: r.avatar, name: r.name || r.username || '?', id: r.id || undefined, username: r.username || undefined }}
                       size={40}
                       isOnline={r.isOnline}
                     />

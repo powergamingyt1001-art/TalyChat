@@ -367,6 +367,8 @@ export function LocationShareDialog({ open, onClose, conversationId }: Props) {
                         premiumTier: s.user?.premiumTier,
                         avatar: s.user?.avatar || undefined,
                         name: s.user?.name || s.user?.username || 'U',
+                        id: s.user?.id || s.userId || undefined,
+                        username: s.user?.username || undefined,
                       }}
                       size={32}
                       showAura={false}

@@ -1,0 +1,1337 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import { useEffect, useState } from 'react'
+     4→     4→import { motion } from 'framer-motion'
+     5→     5→import {
+     6→     6→  ChevronLeft,
+     7→     7→  Compass,
+     8→     8→  Loader2,
+     9→     9→  Lock,
+    10→    10→  LogOut,
+    11→    11→  Search,
+    12→    12→  Users,
+    13→    13→  X,
+    14→    14→} from 'lucide-react'
+    15→    15→import { apiFetch } from '@/lib/api'
+    16→    16→import { useToast } from '@/hooks/use-toast'
+    17→    17→import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+    18→    18→import { Button } from '@/components/ui/button'
+    19→    19→import {
+    20→    20→  Dialog,
+    21→    21→  DialogContent,
+    22→    22→  DialogDescription,
+    23→    23→  DialogFooter,
+    24→    24→  DialogHeader,
+    25→    25→  DialogTitle,
+    26→    26→} from '@/components/ui/dialog'
+    27→    27→
+    28→    28→interface GroupItem {
+    29→    29→  id: string
+    30→    30→  name: string
+    31→    31→  description?: string | null
+    32→    32→  logo?: string | null
+    33→    33→  category?: string | null
+    34→    34→  membersCount: number
+    35→    35→  isPublic: boolean
+    36→    36→  isJoined?: boolean
+    37→    37→  conversationId?: string | null
+    38→    38→}
+    39→    39→
+    40→    40→// Track per-group state: 'idle' (default Join), 'requested' (private, request sent)
+    41→    41→type JoinState = 'idle' | 'joined' | 'requested'
+    42→    42→
+    43→    43→// R8-11 — Capsule slider categories. These are the labels the user picks
+    44→    44→// from the horizontal capsule/pill slider. They are sent verbatim to the
+    45→    45→// discover API as the `category` filter, so the API only returns groups
+    46→    46→// tagged with the exact matching category.
+    47→    47→const CAPSULE_CATEGORIES = [
+    48→    48→  'AI',
+    49→    49→  'Game',
+    50→    50→  'Fun',
+    51→    51→  'Technology',
+    52→    52→  'Education',
+    53→    53→  'Music',
+    54→    54→  'Foodie',
+    55→    55→  'Travel',
+    56→    56→  'Trend',
+    57→    57→  'Clothes',
+    58→    58→  'Other',
+    59→    59→] as const
+    60→    60→
+    61→    61→// Category → ring color (used for avatar ring + badge tint)
+    62→    62→function categoryRing(cat?: string | null): string {
+    63→    63→  switch ((cat || '').toLowerCase()) {
+    64→    64→    case 'gaming':
+    65→    65→    case 'game':
+    66→    66→      return 'ring-violet-400/70'
+    67→    67→    case 'technology':
+    68→    68→    case 'tech':
+    69→    69→      return 'ring-blue-400/70'
+    70→    70→    case 'ai':
+    71→    71→      return 'ring-cyan-400/70'
+    72→    72→    case 'cricket':
+    73→    73→    case 'sports':
+    74→    74→    case 'trend':
+    75→    75→      return 'ring-orange-400/70'
+    76→    76→    case 'entertainment':
+    77→    77→    case 'movies':
+    78→    78→    case 'music':
+    79→    79→      return 'ring-pink-400/70'
+    80→    80→    case 'education':
+    81→    81→      return 'ring-emerald-400/70'
+    82→    82→    case 'business':
+    83→    83→    case 'finance':
+    84→    84→    case 'jobs':
+    85→    85→      return 'ring-yellow-400/70'
+    86→    86→    case 'memes':
+    87→    87→    case 'fun':
+    88→    88→      return 'ring-fuchsia-400/70'
+    89→    89→    case 'news':
+    90→    90→      return 'ring-cyan-400/70'
+    91→    91→    case 'local':
+    92→    92→    case 'travel':
+    93→    93→      return 'ring-teal-400/70'
+    94→    94→    case 'foodie':
+    95→    95→      return 'ring-rose-400/70'
+    96→    96→    case 'clothes':
+    97→    97→      return 'ring-indigo-400/70'
+    98→    98→    default:
+    99→    99→      return 'ring-emerald-400/70'
+   100→   100→  }
+   101→   101→}
+   102→   102→
+   103→   103→// Category → 3px top-border color on the group card (visual category tint)
+   104→   104→function categoryTopBorder(cat?: string | null): string {
+   105→   105→  switch ((cat || '').toLowerCase()) {
+   106→   106→    case 'gaming':
+   107→   107→    case 'game':
+   108→   108→      return 'border-t-violet-500'
+   109→   109→    case 'technology':
+   110→   110→    case 'tech':
+   111→   111→      return 'border-t-blue-500'
+   112→   112→    case 'ai':
+   113→   113→      return 'border-t-cyan-500'
+   114→   114→    case 'cricket':
+   115→   115→    case 'sports':
+   116→   116→    case 'trend':
+   117→   117→      return 'border-t-orange-500'
+   118→   118→    case 'entertainment':
+   119→   119→    case 'movies':
+   120→   120→    case 'music':
+   121→   121→      return 'border-t-pink-500'
+   122→   122→    case 'education':
+   123→   123→      return 'border-t-emerald-500'
+   124→   124→    case 'business':
+   125→   125→    case 'finance':
+   126→   126→    case 'jobs':
+   127→   127→      return 'border-t-yellow-500'
+   128→   128→    case 'memes':
+   129→   129→    case 'fun':
+   130→   130→      return 'border-t-fuchsia-500'
+   131→   131→    case 'news':
+   132→   132→      return 'border-t-cyan-500'
+   133→   133→    case 'local':
+   134→   134→    case 'travel':
+   135→   135→      return 'border-t-teal-500'
+   136→   136→    case 'foodie':
+   137→   137→      return 'border-t-rose-500'
+   138→   138→    case 'clothes':
+   139→   139→      return 'border-t-indigo-500'
+   140→   140→    default:
+   141→   141→      return 'border-t-emerald-500'
+   142→   142→  }
+   143→   143→}
+   144→   144→
+   145→   145→// Category → badge text/bg color
+   146→   146→function categoryBadge(cat?: string | null): string {
+   147→   147→  switch ((cat || '').toLowerCase()) {
+   148→   148→    case 'gaming':
+   149→   149→    case 'game':
+   150→   150→      return 'bg-violet-500/10 text-violet-600'
+   151→   151→    case 'technology':
+   152→   152→    case 'tech':
+   153→   153→      return 'bg-blue-500/10 text-blue-600'
+   154→   154→    case 'ai':
+   155→   155→      return 'bg-cyan-500/10 text-cyan-600'
+   156→   156→    case 'cricket':
+   157→   157→    case 'sports':
+   158→   158→    case 'trend':
+   159→   159→      return 'bg-orange-500/10 text-orange-600'
+   160→   160→    case 'entertainment':
+   161→   161→    case 'movies':
+   162→   162→    case 'music':
+   163→   163→      return 'bg-pink-500/10 text-pink-600'
+   164→   164→    case 'education':
+   165→   165→      return 'bg-emerald-500/10 text-emerald-600'
+   166→   166→    case 'business':
+   167→   167→    case 'finance':
+   168→   168→    case 'jobs':
+   169→   169→      return 'bg-yellow-500/10 text-yellow-700'
+   170→   170→    case 'memes':
+   171→   171→    case 'fun':
+   172→   172→      return 'bg-fuchsia-500/10 text-fuchsia-600'
+   173→   173→    case 'news':
+   174→   174→      return 'bg-cyan-500/10 text-cyan-600'
+   175→   175→    case 'local':
+   176→   176→    case 'travel':
+   177→   177→      return 'bg-teal-500/10 text-teal-600'
+   178→   178→    case 'foodie':
+   179→   179→      return 'bg-rose-500/10 text-rose-600'
+   180→   180→    case 'clothes':
+   181→   181→      return 'bg-indigo-500/10 text-indigo-600'
+   182→   182→    default:
+   183→   183→      return 'bg-emerald-500/10 text-emerald-600'
+   184→   184→  }
+   185→   185→}
+   186→   186→
+   187→   187→// V12 — Category → top-of-card gradient overlay tint. Applied as a thin
+   188→   188→// gradient bar across the top of each group card / row to make the
+   189→   189→// category visually scannable at a glance. Uses subtle 10% tints so it
+   190→   190→// doesn't fight with the existing top-border accent.
+   191→   191→function categoryGradient(cat?: string | null): string {
+   192→   192→  switch ((cat || '').toLowerCase()) {
+   193→   193→    case 'gaming':
+   194→   194→    case 'game':
+   195→   195→      return 'from-violet-500/10'
+   196→   196→    case 'technology':
+   197→   197→    case 'tech':
+   198→   198→      return 'from-blue-500/10'
+   199→   199→    case 'ai':
+   200→   200→      return 'from-cyan-500/10'
+   201→   201→    case 'cricket':
+   202→   202→    case 'sports':
+   203→   203→    case 'trend':
+   204→   204→      return 'from-orange-500/10'
+   205→   205→    case 'entertainment':
+   206→   206→    case 'movies':
+   207→   207→    case 'music':
+   208→   208→      return 'from-pink-500/10'
+   209→   209→    case 'education':
+   210→   210→      return 'from-emerald-500/10'
+   211→   211→    case 'business':
+   212→   212→    case 'finance':
+   213→   213→    case 'jobs':
+   214→   214→      return 'from-yellow-500/10'
+   215→   215→    case 'memes':
+   216→   216→    case 'fun':
+   217→   217→      return 'from-fuchsia-500/10'
+   218→   218→    case 'news':
+   219→   219→      return 'from-cyan-500/10'
+   220→   220→    case 'local':
+   221→   221→    case 'travel':
+   222→   222→      return 'from-teal-500/10'
+   223→   223→    case 'foodie':
+   224→   224→      return 'from-rose-500/10'
+   225→   225→    case 'clothes':
+   226→   226→      return 'from-indigo-500/10'
+   227→   227→    default:
+   228→   228→      return 'from-gray-500/10'
+   229→   229→  }
+   230→   230→}
+   231→   231→
+   232→   232→export interface DiscoverScreenProps {
+   233→   233→  // V12 — Called when a user taps "Open" on a joined group. Wired up in
+   234→   234→  // TalyApp to open the group's chat conversation.
+   235→   235→  onOpenChat?: (c: {
+   236→   236→    conversationId: string
+   237→   237→    name: string
+   238→   238→    avatar?: string
+   239→   239→    isGroup: boolean
+   240→   240→  }) => void
+   241→   241→}
+   242→   242→
+   243→   243→// ============================================================
+   244→   244→// R8-11 — CapsuleCategorySlider
+   245→   245→// Horizontal scrolling capsule / pill chips for the Discover category
+   246→   246→// filter. Each capsule is a rounded-full button with scroll-snap-align
+   247→   247→// start so the slider snaps one capsule at a time. The active capsule
+   248→   248→// uses the brand emerald gradient + white text; inactive capsules are
+   249→   249→// subtle tinted pills. The whole row is horizontally scrollable with
+   250→   250→// hidden scrollbar (.no-scrollbar) so it stays clean on mobile.
+   251→   251→// ============================================================
+   252→   252→function CapsuleCategorySlider({
+   253→   253→  categories,
+   254→   254→  activeCategory,
+   255→   255→  onSelect,
+   256→   256→}: {
+   257→   257→  categories: string[]
+   258→   258→  activeCategory: string | null
+   259→   259→  onSelect: (cat: string) => void
+   260→   260→}) {
+   261→   261→  return (
+   262→   262→    <div
+   263→   263→      className="no-scrollbar scroll-pan-y mt-3 w-full overflow-x-auto pb-1"
+   264→   264→      style={{
+   265→   265→        scrollSnapType: 'x mandatory',
+   266→   266→        scrollPaddingLeft: '8px',
+   267→   267→        scrollPaddingRight: '8px',
+   268→   268→      }}
+   269→   269→    >
+   270→   270→      <div className="flex min-w-0 gap-1.5 pb-1">
+   271→   271→        {categories.map((cat) => {
+   272→   272→          const active = activeCategory === cat
+   273→   273→          return (
+   274→   274→            <button
+   275→   275→              key={cat}
+   276→   276→              type="button"
+   277→   277→              onClick={() => onSelect(cat)}
+   278→   278→              aria-pressed={active}
+   279→   279→              className={
+   280→   280→                'min-h-[36px] shrink-0 snap-start rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ' +
+   281→   281→                (active
+   282→   282→                  ? 'btn-brand border-transparent text-primary-foreground shadow-sm'
+   283→   283→                  : 'border-border bg-card text-foreground/80 hover:bg-accent hover:text-foreground')
+   284→   284→              }
+   285→   285→            >
+   286→   286→              {cat}
+   287→   287→            </button>
+   288→   288→          )
+   289→   289→        })}
+   290→   290→      </div>
+   291→   291→    </div>
+   292→   292→  )
+   293→   293→}
+   294→   294→
+   295→   295→export function DiscoverScreen({ onOpenChat }: DiscoverScreenProps = {}) {
+   296→   296→  const { toast } = useToast()
+   297→   297→  const [trending, setTrending] = useState<GroupItem[]>([])
+   298→   298→  const [popular, setPopular] = useState<GroupItem[]>([])
+   299→   299→  const [newGroups, setNewGroups] = useState<GroupItem[]>([])
+   300→   300→  const [sponsored, setSponsored] = useState<any[]>([])
+   301→   301→  const [activeCategory, setActiveCategory] = useState<string | null>(null)
+   302→   302→  const [categoryResults, setCategoryResults] = useState<GroupItem[]>([])
+   303→   303→  const [loading, setLoading] = useState(true)
+   304→   304→  const [catLoading, setCatLoading] = useState(false)
+   305→   305→  const [joining, setJoining] = useState<string | null>(null)
+   306→   306→  // V12 — Track the group currently being "left" (used to disable the Leave
+   307→   307→  // button + show a spinner during the leave API call).
+   308→   308→  const [leaving, setLeaving] = useState<string | null>(null)
+   309→   309→  // joinedIds = public joined; requestedIds = private groups with sent requests
+   310→   310→  const [joinedIds, setJoinedIds] = useState<Set<string>>(new Set())
+   311→   311→  const [requestedIds, setRequestedIds] = useState<Set<string>>(new Set())
+   312→   312→  const [preview, setPreview] = useState<GroupItem | null>(null)
+   313→   313→
+   314→   314→  useEffect(() => {
+   315→   315→    let cancelled = false
+   316→   316→    ;(async () => {
+   317→   317→      setLoading(true)
+   318→   318→      try {
+   319→   319→        const [t, p, n] = await Promise.all([
+   320→   320→          apiFetch('/api/discover?sort=trending').catch(() => null),
+   321→   321→          apiFetch('/api/discover?sort=popular').catch(() => null),
+   322→   322→          apiFetch('/api/discover?sort=new').catch(() => null),
+   323→   323→        ])
+   324→   324→        if (cancelled) return
+   325→   325→        // Defensive: API returns { groups: [...], sponsored: [...] }.
+   326→   326→        // Fall back to bare arrays if the shape is ever flat.
+   327→   327→        const tGroups: GroupItem[] = (Array.isArray(t)
+   328→   328→          ? t
+   329→   329→          : t?.groups || t?.items || []) as GroupItem[]
+   330→   330→        const pGroups: GroupItem[] = (Array.isArray(p)
+   331→   331→          ? p
+   332→   332→          : p?.groups || p?.items || []) as GroupItem[]
+   333→   333→        const nGroups: GroupItem[] = (Array.isArray(n)
+   334→   334→          ? n
+   335→   335→          : n?.groups || n?.items || []) as GroupItem[]
+   336→   336→        setTrending(tGroups)
+   337→   337→        setPopular(pGroups)
+   338→   338→        setNewGroups(nGroups)
+   339→   339→        // Sponsored ads: prefer the trending response's sponsored list,
+   340→   340→        // fall back to popular's, then to an empty array.
+   341→   341→        const sponsoredList: any[] = Array.isArray(t?.sponsored)
+   342→   342→          ? t.sponsored
+   343→   343→          : Array.isArray(p?.sponsored)
+   344→   344→            ? p.sponsored
+   345→   345→            : Array.isArray(n?.sponsored)
+   346→   346→              ? n.sponsored
+   347→   347→              : []
+   348→   348→        setSponsored(sponsoredList)
+   349→   349→        const joined = new Set<string>([
+   350→   350→          ...tGroups.filter((g) => g.isJoined).map((g) => g.id),
+   351→   351→          ...pGroups.filter((g) => g.isJoined).map((g) => g.id),
+   352→   352→          ...nGroups.filter((g) => g.isJoined).map((g) => g.id),
+   353→   353→        ])
+   354→   354→        setJoinedIds(joined)
+   355→   355→      } finally {
+   356→   356→        if (!cancelled) setLoading(false)
+   357→   357→      }
+   358→   358→    })()
+   359→   359→    return () => {
+   360→   360→      cancelled = true
+   361→   361→    }
+   362→   362→  }, [])
+   363→   363→
+   364→   364→  // Load the user's sent group join requests once on mount so we can mark
+   365→   365→  // private groups as "requested".
+   366→   366→  useEffect(() => {
+   367→   367→    ;(async () => {
+   368→   368→      try {
+   369→   369→        const res: any = await apiFetch('/api/groups/requests/sent')
+   370→   370→        const list: any[] = Array.isArray(res) ? res : (res?.requests || res?.items || [])
+   371→   371→        const pending = new Set<string>(
+   372→   372→          list
+   373→   373→            .filter((r: any) => r.status === 'pending' && r.group?.id)
+   374→   374→            .map((r: any) => r.group.id),
+   375→   375→        )
+   376→   376→        setRequestedIds(pending)
+   377→   377→      } catch {
+   378→   378→        // ignore — feature best-effort
+   379→   379→      }
+   380→   380→    })()
+   381→   381→  }, [])
+   382→   382→
+   383→   383→  const fetchCategory = async (cat: string) => {
+   384→   384→    setCatLoading(true)
+   385→   385→    try {
+   386→   386→      const res: any = await apiFetch(
+   387→   387→        `/api/discover?category=${encodeURIComponent(cat)}&sort=trending`,
+   388→   388→      )
+   389→   389→      // Defensive: API returns { groups: [...] }, fall back to bare array.
+   390→   390→      const list: GroupItem[] = (Array.isArray(res)
+   391→   391→        ? res
+   392→   392→        : res?.groups || res?.items || []) as GroupItem[]
+   393→   393→      setCategoryResults(list)
+   394→   394→    } catch (e: any) {
+   395→   395→      toast({ title: e?.message || 'Failed to load category', variant: 'destructive' })
+   396→   396→    } finally {
+   397→   397→      setCatLoading(false)
+   398→   398→    }
+   399→   399→  }
+   400→   400→
+   401→   401→  const handleCategoryClick = (cat: string) => {
+   402→   402→    if (activeCategory === cat) {
+   403→   403→      setActiveCategory(null)
+   404→   404→      setCategoryResults([])
+   405→   405→    } else {
+   406→   406→      setActiveCategory(cat)
+   407→   407→      fetchCategory(cat)
+   408→   408→    }
+   409→   409→  }
+   410→   410→
+   411→   411→  // Returns the join state for a group, factoring in joined + requested sets.
+   412→   412→  const joinStateFor = (g: GroupItem): JoinState => {
+   413→   413→    if (joinedIds.has(g.id)) return 'joined'
+   414→   414→    if (!g.isPublic && requestedIds.has(g.id)) return 'requested'
+   415→   415→    return 'idle'
+   416→   416→  }
+   417→   417→
+   418→   418→  const handleJoin = async (g: GroupItem) => {
+   419→   419→    setJoining(g.id)
+   420→   420→    try {
+   421→   421→      const res: any = await apiFetch('/api/groups/join', {
+   422→   422→        method: 'POST',
+   423→   423→        body: JSON.stringify({ groupId: g.id }),
+   424→   424→      })
+   425→   425→      if (res?.alreadyMember) {
+   426→   426→        toast({ title: 'You are already a member' })
+   427→   427→        setJoinedIds((prev) => new Set(prev).add(g.id))
+   428→   428→      } else if (res?.requested) {
+   429→   429→        // Private group → request was sent
+   430→   430→        toast({
+   431→   431→          title: 'Join request sent! Wait for admin approval.',
+   432→   432→        })
+   433→   433→        setRequestedIds((prev) => new Set(prev).add(g.id))
+   434→   434→      } else {
+   435→   435→        // Public group → direct join
+   436→   436→        toast({ title: `Joined ${g.name} 🎉` })
+   437→   437→        setJoinedIds((prev) => new Set(prev).add(g.id))
+   438→   438→      }
+   439→   439→    } catch (e: any) {
+   440→   440→      toast({ title: e?.message || 'Failed to join', variant: 'destructive' })
+   441→   441→    } finally {
+   442→   442→      setJoining(null)
+   443→   443→    }
+   444→   444→  }
+   445→   445→
+   446→   446→  // V12 — Open the chat for a joined group. Calls onOpenChat (wired from
+   447→   447→  // TalyApp) when a conversationId is linked to the group. Falls back to
+   448→   448→  // a friendly toast if the callback is missing (defensive — should never
+   449→   449→  // happen in production wiring, but avoids a no-op click).
+   450→   450→  const handleOpen = (g: GroupItem) => {
+   451→   451→    if (!g.conversationId) {
+   452→   452→      toast({
+   453→   453→        title: 'No chat linked to this group yet',
+   454→   454→        description: 'Please try again in a moment.',
+   455→   455→        variant: 'destructive',
+   456→   456→      })
+   457→   457→      return
+   458→   458→    }
+   459→   459→    if (onOpenChat) {
+   460→   460→      onOpenChat({
+   461→   461→        conversationId: g.conversationId,
+   462→   462→        name: g.name,
+   463→   463→        avatar: g.logo || undefined,
+   464→   464→        isGroup: true,
+   465→   465→      })
+   466→   466→    } else {
+   467→   467→      toast({ title: 'Open coming soon' })
+   468→   468→    }
+   469→   469→  }
+   470→   470→
+   471→   471→  // V12 — Leave a joined group. Calls POST /api/groups/[id]/leave, then
+   472→   472→  // removes the group id from joinedIds so the button reverts to Join.
+   473→   473→  const handleLeave = async (g: GroupItem) => {
+   474→   474→    setLeaving(g.id)
+   475→   475→    try {
+   476→   476→      await apiFetch(`/api/groups/${g.id}/leave`, { method: 'POST' })
+   477→   477→      toast({ title: `Left ${g.name}` })
+   478→   478→      setJoinedIds((prev) => {
+   479→   479→        const next = new Set(prev)
+   480→   480→        next.delete(g.id)
+   481→   481→        return next
+   482→   482→      })
+   483→   483→    } catch (e: any) {
+   484→   484→      toast({ title: e?.message || 'Failed to leave group', variant: 'destructive' })
+   485→   485→    } finally {
+   486→   486→      setLeaving(null)
+   487→   487→    }
+   488→   488→  }
+   489→   489→
+   490→   490→  // V12 — Reset the active category filter (used by the "Browse Trending
+   491→   491→  // instead" link in the empty state and by the active-filter banner's
+   492→   492→  // clear (✕) button).
+   493→   493→  const clearCategory = () => {
+   494→   494→    setActiveCategory(null)
+   495→   495→    setCategoryResults([])
+   496→   496→  }
+   497→   497→
+   498→   498→  const totalGroups = trending.length + popular.length + newGroups.length
+   499→   499→
+   500→   500→  return (
+   501→   501→    <div className="w-full px-2 pb-20 pt-4 lg:pb-6 lg:pt-6">
+   502→   502→      {/* Header */}
+   503→   503→      <motion.div
+   504→   504→        initial={{ opacity: 0, y: -8 }}
+   505→   505→        animate={{ opacity: 1, y: 0 }}
+   506→   506→        transition={{ duration: 0.3 }}
+   507→   507→      >
+   508→   508→        <h1 className="section-header">Discover</h1>
+   509→   509→        <p className="mt-1 text-sm text-muted-foreground">
+   510→   510→          Find communities that match your interests
+   511→   511→        </p>
+   512→   512→      </motion.div>
+   513→   513→
+   514→   514→      {/* R8-11 — Capsule slider: horizontal scrolling capsule/pill chips for
+   515→   515→          the new category list (AI, Game, Fun, …). Each capsule is a pill
+   516→   516→          with rounded-full + scroll-snap-align start so the slider snaps
+   517→   517→          one capsule at a time. The active capsule uses the brand gradient
+   518→   518→          (btn-brand look) so it stands out from the rest. */}
+   519→   519→      <CapsuleCategorySlider
+   520→   520→        categories={CAPSULE_CATEGORIES as unknown as string[]}
+   521→   521→        activeCategory={activeCategory}
+   522→   522→        onSelect={handleCategoryClick}
+   523→   523→      />
+   524→   524→
+   525→   525→      {/* V12 — Active filter banner: shows below the chips row when a
+   526→   526→          category filter is selected, with a clear (✕) button to reset. */}
+   527→   527→      {activeCategory && (
+   528→   528→        <div className="mt-3 flex items-center justify-between gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-300">
+   529→   529→          <span className="truncate">
+   530→   530→            Showing results for{' '}
+   531→   531→            <span className="font-bold">&lsquo;{activeCategory}&rsquo;</span>
+   532→   532→          </span>
+   533→   533→          <button
+   534→   534→            type="button"
+   535→   535→            onClick={clearCategory}
+   536→   536→            aria-label="Clear category filter"
+   537→   537→            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-emerald-700 transition-colors hover:bg-emerald-500/15 dark:text-emerald-300"
+   538→   538→          >
+   539→   539→            <X className="h-3.5 w-3.5" />
+   540→   540→          </button>
+   541→   541→        </div>
+   542→   542→      )}
+   543→   543→
+   544→   544→      {/* Empty state — no groups loaded */}
+   545→   545→      {!loading && totalGroups === 0 && !activeCategory && (
+   546→   546→        <div className="dotted-bg mt-6 flex flex-col items-center justify-center rounded-2xl border border-border bg-card p-8 text-center">
+   547→   547→          <Compass className="h-12 w-12 text-muted-foreground/60" />
+   548→   548→          <p className="mt-3 text-sm font-semibold text-foreground">
+   549→   549→            No communities yet
+   550→   550→          </p>
+   551→   551→          <p className="mt-1 text-xs text-muted-foreground">
+   552→   552→            Check back soon — new communities are added every day.
+   553→   553→          </p>
+   554→   554→        </div>
+   555→   555→      )}
+   556→   556→
+   557→   557→      {/* Category results — when a capsule is selected, show every group
+   558→   558→          in that category as a vertical list (no slider). */}
+   559→   559→      {activeCategory && (
+   560→   560→        <section className="mt-4 animate-fade-in-up">
+   561→   561→          <h2 className="section-header">
+   562→   562→            {activeCategory} communities
+   563→   563→          </h2>
+   564→   564→          <div className="mt-3">
+   565→   565→            {catLoading ? (
+   566→   566→              <InlineLoadingRow />
+   567→   567→            ) : categoryResults.length === 0 ? (
+   568→   568→              // Friendly no-results empty state: magnifying glass + clear
+   569→   569→              // filter CTA. The old "Create {Category} Group" button has
+   570→   570→              // been removed because group creation is no longer
+   571→   571→              // available from the Groups tab (R8-11).
+   572→   572→              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card p-8 text-center">
+   573→   573→                <Search className="h-12 w-12 text-muted-foreground/40" />
+   574→   574→                <p className="mt-3 text-sm font-semibold text-foreground">
+   575→   575→                  No groups found in {activeCategory}
+   576→   576→                </p>
+   577→   577→                <p className="mt-1 text-xs text-muted-foreground">
+   578→   578→                  Try another category — new communities are added daily.
+   579→   579→                </p>
+   580→   580→                <button
+   581→   581→                  type="button"
+   582→   582→                  onClick={clearCategory}
+   583→   583→                  className="action-btn mt-4 inline-flex min-h-[40px] items-center gap-1 !px-4"
+   584→   584→                >
+   585→   585→                  <ChevronLeft className="h-3.5 w-3.5" /> Browse all categories
+   586→   586→                </button>
+   587→   587→              </div>
+   588→   588→            ) : (
+   589→   589→              <ul className="space-y-2">
+   590→   590→                {categoryResults.map((g) => (
+   591→   591→                  <li key={g.id}>
+   592→   592→                    <GroupRow
+   593→   593→                      g={g}
+   594→   594→                      state={joinStateFor(g)}
+   595→   595→                      joining={joining === g.id}
+   596→   596→                      leaving={leaving === g.id}
+   597→   597→                      onJoin={handleJoin}
+   598→   598→                      onOpen={handleOpen}
+   599→   599→                      onLeave={handleLeave}
+   600→   600→                      onPreview={() => setPreview(g)}
+   601→   601→                    />
+   602→   602→                  </li>
+   603→   603→                ))}
+   604→   604→              </ul>
+   605→   605→            )}
+   606→   606→          </div>
+   607→   607→        </section>
+   608→   608→      )}
+   609→   609→
+   610→   610→      {/* Default sections — R8-11: each section is now a "2 cards at a
+   611→   611→          time" horizontal slider with scroll-snap. Two cards fill the
+   612→   612→          viewport, and the user swipes left/right to reveal more. */}
+   613→   613→      {!activeCategory && (
+   614→   614→        <>
+   615→   615→          <Section
+   616→   616→            title="Trending"
+   617→   617→            icon="🔥"
+   618→   618→            loading={loading}
+   619→   619→            groups={trending}
+   620→   620→            joinStateFor={joinStateFor}
+   621→   621→            joining={joining}
+   622→   622→            leaving={leaving}
+   623→   623→            onJoin={handleJoin}
+   624→   624→            onOpen={handleOpen}
+   625→   625→            onLeave={handleLeave}
+   626→   626→            onPreview={(g) => setPreview(g)}
+   627→   627→            delay={0.05}
+   628→   628→          />
+   629→   629→          <Section
+   630→   630→            title="Popular"
+   631→   631→            icon="⭐"
+   632→   632→            loading={loading}
+   633→   633→            groups={popular}
+   634→   634→            joinStateFor={joinStateFor}
+   635→   635→            joining={joining}
+   636→   636→            leaving={leaving}
+   637→   637→            onJoin={handleJoin}
+   638→   638→            onOpen={handleOpen}
+   639→   639→            onLeave={handleLeave}
+   640→   640→            onPreview={(g) => setPreview(g)}
+   641→   641→            delay={0.1}
+   642→   642→          />
+   643→   643→          <Section
+   644→   644→            title="New"
+   645→   645→            icon="🆕"
+   646→   646→            loading={loading}
+   647→   647→            groups={newGroups}
+   648→   648→            joinStateFor={joinStateFor}
+   649→   649→            joining={joining}
+   650→   650→            leaving={leaving}
+   651→   651→            onJoin={handleJoin}
+   652→   652→            onOpen={handleOpen}
+   653→   653→            onLeave={handleLeave}
+   654→   654→            onPreview={(g) => setPreview(g)}
+   655→   655→            delay={0.15}
+   656→   656→          />
+   657→   657→
+   658→   658→          {/* Sponsored communities */}
+   659→   659→          {sponsored.length > 0 && (
+   660→   660→            <section className="mt-6 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+   661→   661→              <h2 className="section-header">Sponsored Communities</h2>
+   662→   662→              <div
+   663→   663→                className="no-scrollbar scroll-pan-y mt-3 w-full overflow-x-auto pb-2"
+   664→   664→                style={{
+   665→   665→                  scrollSnapType: 'x mandatory',
+   666→   666→                  scrollPaddingLeft: '8px',
+   667→   667→                  scrollPaddingRight: '8px',
+   668→   668→                }}
+   669→   669→              >
+   670→   670→                <div className="flex min-w-0 gap-2 pb-1">
+   671→   671→                  {sponsored.map((ad) => (
+   672→   672→                    <a
+   673→   673→                      key={ad.id}
+   674→   674→                      href={ad.ctaUrl || '#'}
+   675→   675→                      target="_blank"
+   676→   676→                      rel="noopener noreferrer"
+   677→   677→                      className="taly-card taly-card-hover group relative block min-w-[200px] shrink-0 snap-start overflow-hidden p-2"
+   678→   678→                    >
+   679→   679→                      <span className="inline-flex items-center rounded-md bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+   680→   680→                        Sponsored
+   681→   681→                      </span>
+   682→   682→                      <div className="mt-2 flex gap-2">
+   683→   683→                        {ad.imageUrl ? (
+   684→   684→                          <img
+   685→   685→                            src={ad.imageUrl}
+   686→   686→                            alt={ad.brandName}
+   687→   687→                            className="h-10 w-10 shrink-0 rounded-lg object-cover ring-1 ring-border"
+   688→   688→                          />
+   689→   689→                        ) : (
+   690→   690→                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500/15 to-emerald-500/5 text-emerald-600">
+   691→   691→                            <Compass className="h-4 w-4" />
+   692→   692→                          </div>
+   693→   693→                        )}
+   694→   694→                        <div className="min-w-0 flex-1">
+   695→   695→                          <p className="truncate text-sm font-semibold">{ad.brandName}</p>
+   696→   696→                          {ad.headline && (
+   697→   697→                            <p className="line-clamp-2 text-xs text-muted-foreground">
+   698→   698→                              {ad.headline}
+   699→   699→                            </p>
+   700→   700→                          )}
+   701→   701→                        </div>
+   702→   702→                      </div>
+   703→   703→                      {ad.ctaText && (
+   704→   704→                        <span className="action-btn mt-2 inline-flex min-h-[32px] w-full !px-3 !py-1.5 !text-xs">
+   705→   705→                          {ad.ctaText}
+   706→   706→                        </span>
+   707→   707→                      )}
+   708→   708→                    </a>
+   709→   709→                  ))}
+   710→   710→                </div>
+   711→   711→              </div>
+   712→   712→            </section>
+   713→   713→          )}
+   714→   714→        </>
+   715→   715→      )}
+   716→   716→
+   717→   717→      {/* Group preview dialog */}
+   718→   718→      <GroupPreviewDialog
+   719→   719→        group={preview}
+   720→   720→        state={preview ? joinStateFor(preview) : 'idle'}
+   721→   721→        joining={preview ? joining === preview.id : false}
+   722→   722→        leaving={preview ? leaving === preview.id : false}
+   723→   723→        onJoin={handleJoin}
+   724→   724→        onOpen={handleOpen}
+   725→   725→        onLeave={handleLeave}
+   726→   726→        onClose={() => setPreview(null)}
+   727→   727→      />
+   728→   728→    </div>
+   729→   729→  )
+   730→   730→}
+   731→   731→
+   732→   732→function Section({
+   733→   733→  title,
+   734→   734→  icon,
+   735→   735→  loading,
+   736→   736→  groups,
+   737→   737→  joinStateFor,
+   738→   738→  joining,
+   739→   739→  leaving,
+   740→   740→  onJoin,
+   741→   741→  onOpen,
+   742→   742→  onLeave,
+   743→   743→  onPreview,
+   744→   744→  delay = 0,
+   745→   745→}: {
+   746→   746→  title: string
+   747→   747→  icon?: string
+   748→   748→  loading: boolean
+   749→   749→  groups: GroupItem[]
+   750→   750→  joinStateFor: (g: GroupItem) => JoinState
+   751→   751→  joining: string | null
+   752→   752→  leaving: string | null
+   753→   753→  onJoin: (g: GroupItem) => void
+   754→   754→  onOpen: (g: GroupItem) => void
+   755→   755→  onLeave: (g: GroupItem) => void
+   756→   756→  onPreview: (g: GroupItem) => void
+   757→   757→  delay?: number
+   758→   758→}) {
+   759→   759→  // F3-4 — Removed the < > chevron arrow buttons next to each section title.
+   760→   760→  // Cards now scroll horizontally via swipe (overflow-x-auto + scroll-snap)
+   761→   761→  // and the scrollbar is hidden globally via .no-scrollbar / globals.css.
+   762→   762→  return (
+   763→   763→    <section
+   764→   764→      className="mt-6 animate-fade-in-up"
+   765→   765→      style={{ animationDelay: `${delay}s` }}
+   766→   766→    >
+   767→   767→      {/* Header — icon + title (no more chevron arrows). */}
+   768→   768→      <div className="mb-2 flex items-center gap-1.5 px-1 py-1">
+   769→   769→        {icon && <span aria-hidden className="text-base">{icon}</span>}
+   770→   770→        <h2 className="section-header flex-1">{title}</h2>
+   771→   771→      </div>
+   772→   772→
+   773→   773→      {/* Horizontal swipe slider with scroll-snap; no scrollbar. */}
+   774→   774→      <div
+   775→   775→        className="no-scrollbar scroll-pan-y w-full overflow-x-auto pb-2"
+   776→   776→        style={{
+   777→   777→          scrollSnapType: 'x mandatory',
+   778→   778→          scrollPaddingLeft: '8px',
+   779→   779→          scrollPaddingRight: '8px',
+   780→   780→        }}
+   781→   781→      >
+   782→   782→        {loading ? (
+   783→   783→          <CardLoadingRow />
+   784→   784→        ) : groups.length === 0 ? (
+   785→   785→          <p className="px-2 text-sm text-muted-foreground">No groups yet.</p>
+   786→   786→        ) : (
+   787→   787→          <div className="flex min-w-0 gap-2 pb-1">
+   788→   788→            {groups.map((g) => (
+   789→   789→              <div
+   790→   790→                key={g.id}
+   791→   791→                className="min-w-[140px] shrink-0 snap-start sm:min-w-[160px]"
+   792→   792→              >
+   793→   793→                <GroupCard
+   794→   794→                  g={g}
+   795→   795→                  state={joinStateFor(g)}
+   796→   796→                  joining={joining === g.id}
+   797→   797→                  leaving={leaving === g.id}
+   798→   798→                  onJoin={onJoin}
+   799→   799→                  onOpen={onOpen}
+   800→   800→                  onLeave={onLeave}
+   801→   801→                  onPreview={() => onPreview(g)}
+   802→   802→                />
+   803→   803→              </div>
+   804→   804→            ))}
+   805→   805→          </div>
+   806→   806→        )}
+   807→   807→      </div>
+   808→   808→    </section>
+   809→   809→  )
+   810→   810→}
+   811→   811→
+   812→   812→function GroupCard({
+   813→   813→  g,
+   814→   814→  state,
+   815→   815→  joining,
+   816→   816→  leaving,
+   817→   817→  onJoin,
+   818→   818→  onOpen,
+   819→   819→  onLeave,
+   820→   820→  onPreview,
+   821→   821→}: {
+   822→   822→  g: GroupItem
+   823→   823→  state: JoinState
+   824→   824→  joining: boolean
+   825→   825→  leaving: boolean
+   826→   826→  onJoin: (g: GroupItem) => void
+   827→   827→  onOpen: (g: GroupItem) => void
+   828→   828→  onLeave: (g: GroupItem) => void
+   829→   829→  onPreview: () => void
+   830→   830→}) {
+   831→   831→  // Group is considered "active" (recently messaged) if membersCount > 5 —
+   832→   832→  // a simple heuristic to drive the pulsing green dot without needing
+   833→   833→  // a per-group lastMessageAt in the discover payload.
+   834→   834→  const isActive = g.membersCount > 5
+   835→   835→  return (
+   836→   836→    <div
+   837→   837→      // F3-4 — Smaller card: p-2 padding + h-10 avatar (was p-3 + h-14)
+   838→   838→      // so more cards fit per swipe. Card snaps via parent flex container.
+   839→   839→      className={`group-card relative w-full overflow-hidden border-t-2 ${categoryTopBorder(g.category)} p-2`}
+   840→   840→    >
+   841→   841→      {/* V12 — Category gradient overlay tinting the top portion of the card */}
+   842→   842→      <div
+   843→   843→        aria-hidden
+   844→   844→        className={`pointer-events-none absolute inset-x-0 top-0 h-12 bg-gradient-to-b ${categoryGradient(g.category)} to-transparent`}
+   845→   845→      />
+   846→   846→      <button
+   847→   847→        onClick={onPreview}
+   848→   848→        className="relative flex w-full flex-col items-center text-center"
+   849→   849→      >
+   850→   850→        <Avatar
+   851→   851→          className={`h-10 w-10 ring-2 ${categoryRing(g.category)}`}
+   852→   852→        >
+   853→   853→          <AvatarImage src={g.logo || undefined} alt={g.name} />
+   854→   854→          <AvatarFallback className="bg-primary/10 text-primary">
+   855→   855→            {(g.name || '?')[0]?.toUpperCase()}
+   856→   856→          </AvatarFallback>
+   857→   857→        </Avatar>
+   858→   858→        <p className="mt-1.5 flex items-center gap-1 text-xs font-semibold">
+   859→   859→          {g.isPublic === false && <Lock className="h-3 w-3 shrink-0 text-muted-foreground" />}
+   860→   860→          <span className="line-clamp-1">{g.name}</span>
+   861→   861→        </p>
+   862→   862→        {g.category && (
+   863→   863→          <span
+   864→   864→            className={`mt-1 inline-block rounded-full px-1.5 py-0.5 text-[9px] font-medium ${categoryBadge(g.category)}`}
+   865→   865→          >
+   866→   866→            {g.category}
+   867→   867→          </span>
+   868→   868→        )}
+   869→   869→        {/* Stacked mini avatars + member count + active dot */}
+   870→   870→        <div className="mt-1 flex items-center gap-1 text-[9px] text-muted-foreground">
+   871→   871→          <MiniStackedAvatars logo={g.logo} name={g.name} memberCount={g.membersCount} small />
+   872→   872→          <span className="inline-flex items-center gap-1">
+   873→   873→            {isActive && (
+   874→   874→              <span
+   875→   875→                aria-label="Active group"
+   876→   876→                className="relative inline-flex h-2 w-2"
+   877→   877→              >
+   878→   878→                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-70" />
+   879→   879→                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+   880→   880→              </span>
+   881→   881→            )}
+   882→   882→            <span>{g.membersCount}</span>
+   883→   883→          </span>
+   884→   884→        </div>
+   885→   885→        {g.description && (
+   886→   886→          <p className="mt-1 line-clamp-2 w-full text-[10px] leading-snug text-muted-foreground">
+   887→   887→            {g.description}
+   888→   888→          </p>
+   889→   889→        )}
+   890→   890→      </button>
+   891→   891→      <div className="relative mt-2">
+   892→   892→        <JoinButton
+   893→   893→          state={state}
+   894→   894→          joining={joining}
+   895→   895→          leaving={leaving}
+   896→   896→          isPublic={g.isPublic}
+   897→   897→          onClick={() => onJoin(g)}
+   898→   898→          onOpen={() => onOpen(g)}
+   899→   899→          onLeave={() => onLeave(g)}
+   900→   900→          size="sm"
+   901→   901→          block
+   902→   902→        />
+   903→   903→      </div>
+   904→   904→    </div>
+   905→   905→  )
+   906→   906→}
+   907→   907→
+   908→   908→function GroupRow({
+   909→   909→  g,
+   910→   910→  state,
+   911→   911→  joining,
+   912→   912→  leaving,
+   913→   913→  onJoin,
+   914→   914→  onOpen,
+   915→   915→  onLeave,
+   916→   916→  onPreview,
+   917→   917→}: {
+   918→   918→  g: GroupItem
+   919→   919→  state: JoinState
+   920→   920→  joining: boolean
+   921→   921→  leaving: boolean
+   922→   922→  onJoin: (g: GroupItem) => void
+   923→   923→  onOpen: (g: GroupItem) => void
+   924→   924→  onLeave: (g: GroupItem) => void
+   925→   925→  onPreview: () => void
+   926→   926→}) {
+   927→   927→  const isActive = g.membersCount > 5
+   928→   928→  return (
+   929→   929→    <div className={`group-card relative flex items-center gap-3 overflow-hidden border-t-2 ${categoryTopBorder(g.category)} p-3`}>
+   930→   930→      {/* V12 — Category gradient overlay tinting the top portion of the row */}
+   931→   931→      <div
+   932→   932→        aria-hidden
+   933→   933→        className={`pointer-events-none absolute inset-x-0 top-0 h-12 bg-gradient-to-b ${categoryGradient(g.category)} to-transparent`}
+   934→   934→      />
+   935→   935→      <button
+   936→   936→        onClick={onPreview}
+   937→   937→        className="relative flex min-w-0 flex-1 items-center gap-3 text-left"
+   938→   938→      >
+   939→   939→        <Avatar className={`h-12 w-12 ring-2 ${categoryRing(g.category)}`}>
+   940→   940→          <AvatarImage src={g.logo || undefined} alt={g.name} />
+   941→   941→          <AvatarFallback className="bg-primary/10 text-primary">
+   942→   942→            {(g.name || '?')[0]?.toUpperCase()}
+   943→   943→          </AvatarFallback>
+   944→   944→        </Avatar>
+   945→   945→        <div className="min-w-0 flex-1">
+   946→   946→          <p className="flex items-center gap-1 truncate text-sm font-semibold">
+   947→   947→            {g.isPublic === false && (
+   948→   948→              <Lock className="h-3 w-3 shrink-0 text-muted-foreground" />
+   949→   949→            )}
+   950→   950→            <span className="truncate">{g.name}</span>
+   951→   951→            {isActive && (
+   952→   952→              <span
+   953→   953→                aria-label="Active group"
+   954→   954→                className="relative ml-1 inline-flex h-2 w-2 shrink-0"
+   955→   955→              >
+   956→   956→                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-70" />
+   957→   957→                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+   958→   958→              </span>
+   959→   959→            )}
+   960→   960→          </p>
+   961→   961→          <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+   962→   962→            <MiniStackedAvatars logo={g.logo} name={g.name} memberCount={g.membersCount} small />
+   963→   963→            <span>{g.membersCount} members</span>
+   964→   964→            {g.category && (
+   965→   965→              <>
+   966→   966→                <span className="text-muted-foreground/50">·</span>
+   967→   967→                <span
+   968→   968→                  className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${categoryBadge(g.category)}`}
+   969→   969→                >
+   970→   970→                  {g.category}
+   971→   971→                </span>
+   972→   972→              </>
+   973→   973→            )}
+   974→   974→          </div>
+   975→   975→          {g.description && (
+   976→   976→            <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
+   977→   977→              {g.description}
+   978→   978→            </p>
+   979→   979→          )}
+   980→   980→        </div>
+   981→   981→      </button>
+   982→   982→      <div className="relative">
+   983→   983→        <JoinButton
+   984→   984→          state={state}
+   985→   985→          joining={joining}
+   986→   986→          leaving={leaving}
+   987→   987→          isPublic={g.isPublic}
+   988→   988→          onClick={() => onJoin(g)}
+   989→   989→          onOpen={() => onOpen(g)}
+   990→   990→          onLeave={() => onLeave(g)}
+   991→   991→          size="sm"
+   992→   992→        />
+   993→   993→      </div>
+   994→   994→    </div>
+   995→   995→  )
+   996→   996→}
+   997→   997→
+   998→   998→// ============================================================
+   999→   999→// MiniStackedAvatars — 2-3 small overlapping letter-avatars with +N.
+  1000→  1000→// Used inside group cards/rows to humanize the member count display.
+  1001→  1001→// ============================================================
+  1002→  1002→function MiniStackedAvatars({
+  1003→  1003→  logo,
+  1004→  1004→  name,
+  1005→  1005→  memberCount,
+  1006→  1006→  small = false,
+  1007→  1007→}: {
+  1008→  1008→  logo?: string | null
+  1009→  1009→  name: string
+  1010→  1010→  memberCount: number
+  1011→  1011→  small?: boolean
+  1012→  1012→}) {
+  1013→  1013→  const baseName = name || 'G'
+  1014→  1014→  const initials = (baseName.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean))
+  1015→  1015→  const derived: string[] = []
+  1016→  1016→  for (let i = 0; i < initials.length && derived.length < 3; i++) {
+  1017→  1017→    derived.push(initials[i][0]?.toUpperCase() || 'U')
+  1018→  1018→  }
+  1019→  1019→  while (derived.length < 3) {
+  1020→  1020→    derived.push(baseName[0]?.toUpperCase() || 'U')
+  1021→  1021→  }
+  1022→  1022→  const visible = derived.slice(0, 3)
+  1023→  1023→  const extra = Math.max(0, memberCount - 3)
+  1024→  1024→  const sizeClass = small ? 'h-4 w-4' : 'h-5 w-5'
+  1025→  1025→  const textSize = small ? 'text-[7px]' : 'text-[8px]'
+  1026→  1026→  const offset = small ? 8 : 10
+  1027→  1027→  const slotClass = (i: number) => {
+  1028→  1028→    switch (i % 3) {
+  1029→  1029→      case 0:
+  1030→  1030→        return 'bg-emerald-500/15 text-emerald-600'
+  1031→  1031→      case 1:
+  1032→  1032→        return 'bg-amber-500/15 text-amber-600'
+  1033→  1033→      default:
+  1034→  1034→        return 'bg-sky-500/15 text-sky-600'
+  1035→  1035→    }
+  1036→  1036→  }
+  1037→  1037→  return (
+  1038→  1038→    <span className="relative inline-flex items-center" aria-hidden>
+  1039→  1039→      <span className="relative inline-flex" style={{ minWidth: `${offset * 2 + 8}px` }}>
+  1040→  1040→        {visible.map((letter, i) => {
+  1041→  1041→          const z = visible.length - i
+  1042→  1042→          return (
+  1043→  1043→            <span
+  1044→  1044→              key={i}
+  1045→  1045→              className={`absolute flex ${sizeClass} items-center justify-center rounded-full ${textSize} font-bold ring-1 ring-card ${slotClass(i)}`}
+  1046→  1046→              style={{ left: `${i * offset}px`, zIndex: z }}
+  1047→  1047→            >
+  1048→  1048→              {i === 0 && logo ? (
+  1049→  1049→                <img
+  1050→  1050→                  src={logo}
+  1051→  1051→                  alt=""
+  1052→  1052→                  className="h-full w-full rounded-full object-cover"
+  1053→  1053→                />
+  1054→  1054→              ) : (
+  1055→  1055→                letter
+  1056→  1056→              )}
+  1057→  1057→            </span>
+  1058→  1058→          )
+  1059→  1059→        })}
+  1060→  1060→        {extra > 0 && (
+  1061→  1061→          <span
+  1062→  1062→            className={`absolute flex ${sizeClass} items-center justify-center rounded-full bg-muted ${textSize} font-bold text-muted-foreground ring-1 ring-card`}
+  1063→  1063→            style={{ left: `${visible.length * offset}px`, zIndex: visible.length + 1 }}
+  1064→  1064→          >
+  1065→  1065→            +{extra > 99 ? '99' : extra}
+  1066→  1066→          </span>
+  1067→  1067→        )}
+  1068→  1068→      </span>
+  1069→  1069→    </span>
+  1070→  1070→  )
+  1071→  1071→}
+  1072→  1072→
+  1073→  1073→// ============================================================
+  1074→  1074→// Reusable Join / Request to Join / Joined button
+  1075→  1075→// ============================================================
+  1076→  1076→
+  1077→  1077→function JoinButton({
+  1078→  1078→  state,
+  1079→  1079→  joining,
+  1080→  1080→  leaving,
+  1081→  1081→  isPublic,
+  1082→  1082→  onClick,
+  1083→  1083→  onOpen,
+  1084→  1084→  onLeave,
+  1085→  1085→  size = 'default',
+  1086→  1086→  block = false,
+  1087→  1087→}: {
+  1088→  1088→  state: JoinState
+  1089→  1089→  joining: boolean
+  1090→  1090→  leaving?: boolean
+  1091→  1091→  isPublic: boolean
+  1092→  1092→  onClick: () => void
+  1093→  1093→  onOpen?: () => void
+  1094→  1094→  onLeave?: () => void
+  1095→  1095→  size?: 'sm' | 'default'
+  1096→  1096→  block?: boolean
+  1097→  1097→}) {
+  1098→  1098→  const btnSizeClass = size === 'sm' ? '!min-h-[36px] !px-4 !py-2 !text-xs' : '!min-h-[44px] !px-5 !py-2.5 !text-sm'
+  1099→  1099→
+  1100→  1100→  // V12 — Joined → functional Open (primary emerald action-btn) + Leave
+  1101→  1101→  // (secondary red text link) instead of the old static "Joined ✓" pill.
+  1102→  1102→  // Layout adapts to `block`: stacked vertically (card) or inline (row).
+  1103→  1103→  if (state === 'joined' && !joining) {
+  1104→  1104→    return (
+  1105→  1105→      <div
+  1106→  1106→        className={`flex ${block ? 'flex-col items-stretch gap-1' : 'items-center gap-2'}`}
+  1107→  1107→      >
+  1108→  1108→        <button
+  1109→  1109→          type="button"
+  1110→  1110→          onClick={onOpen}
+  1111→  1111→          className={`action-btn active:scale-95 ${block ? 'w-full' : ''} ${btnSizeClass}`}
+  1112→  1112→        >
+  1113→  1113→          Open
+  1114→  1114→        </button>
+  1115→  1115→        <button
+  1116→  1116→          type="button"
+  1117→  1117→          onClick={onLeave}
+  1118→  1118→          disabled={leaving}
+  1119→  1119→          aria-label="Leave group"
+  1120→  1120→          className="inline-flex min-h-[32px] items-center justify-center gap-1 text-xs font-medium text-destructive/70 transition-colors hover:text-destructive hover:underline disabled:opacity-50"
+  1121→  1121→        >
+  1122→  1122→          {leaving ? (
+  1123→  1123→            <Loader2 className="h-3 w-3 animate-spin" />
+  1124→  1124→          ) : (
+  1125→  1125→            <LogOut className="h-3 w-3" />
+  1126→  1126→          )}
+  1127→  1127→          Leave
+  1128→  1128→        </button>
+  1129→  1129→      </div>
+  1130→  1130→    )
+  1131→  1131→  }
+  1132→  1132→
+  1133→  1133→  // Requested → outline muted
+  1134→  1134→  if (state === 'requested' && !joining) {
+  1135→  1135→    return (
+  1136→  1136→      <span
+  1137→  1137→        className={`ghost-btn inline-flex items-center justify-center gap-1.5 active:scale-95 ${block ? 'w-full' : ''} ${btnSizeClass}`}
+  1138→  1138→      >
+  1139→  1139→        <Loader2 className="h-3 w-3" /> Requested
+  1140→  1140→      </span>
+  1141→  1141→    )
+  1142→  1142→  }
+  1143→  1143→
+  1144→  1144→  // Idle / loading
+  1145→  1145→  // Private → ghost-btn ("Request to Join"); Public → action-btn ("Join")
+  1146→  1146→  const label = joining
+  1147→  1147→    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+  1148→  1148→    : isPublic === false
+  1149→  1149→      ? 'Request to Join'
+  1150→  1150→      : 'Join'
+  1151→  1151→
+  1152→  1152→  return (
+  1153→  1153→    <button
+  1154→  1154→      onClick={onClick}
+  1155→  1155→      disabled={joining}
+  1156→  1156→      className={`${isPublic === false ? 'ghost-btn' : 'action-btn'} active:scale-95 ${block ? 'w-full' : ''} ${btnSizeClass} disabled:opacity-60`}
+  1157→  1157→    >
+  1158→  1158→      {label}
+  1159→  1159→    </button>
+  1160→  1160→  )
+  1161→  1161→}
+  1162→  1162→
+  1163→  1163→function CardLoadingRow() {
+  1164→  1164→  // F3-4 — Loading skeleton row matching the new swipe slider
+  1165→  1165→  // (min-w-[140px] cards, gap-2, snap-start). Shows 4 placeholders.
+  1166→  1166→  return (
+  1167→  1167→    <div className="flex min-w-0 gap-2 pb-1">
+  1168→  1168→      {[0, 1, 2, 3].map((i) => (
+  1169→  1169→        <div
+  1170→  1170→          key={i}
+  1171→  1171→          className="group-card min-w-[140px] shrink-0 snap-start p-2 sm:min-w-[160px]"
+  1172→  1172→        >
+  1173→  1173→          <div className="mx-auto h-10 w-10 animate-pulse rounded-full bg-muted" />
+  1174→  1174→          <div className="mt-2 h-3 w-3/4 animate-pulse rounded bg-muted" />
+  1175→  1175→          <div className="mt-1 h-2 w-1/2 animate-pulse rounded bg-muted" />
+  1176→  1176→        </div>
+  1177→  1177→      ))}
+  1178→  1178→    </div>
+  1179→  1179→  )
+  1180→  1180→}
+  1181→  1181→
+  1182→  1182→function InlineLoadingRow() {
+  1183→  1183→  return (
+  1184→  1184→    <div className="space-y-2">
+  1185→  1185→      {[0, 1, 2].map((i) => (
+  1186→  1186→        <div
+  1187→  1187→          key={i}
+  1188→  1188→          className="taly-card flex items-center gap-3 p-3"
+  1189→  1189→        >
+  1190→  1190→          <div className="h-12 w-12 animate-pulse rounded-full bg-muted" />
+  1191→  1191→          <div className="flex-1 space-y-1">
+  1192→  1192→            <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
+  1193→  1193→            <div className="h-2 w-3/4 animate-pulse rounded bg-muted" />
+  1194→  1194→          </div>
+  1195→  1195→        </div>
+  1196→  1196→      ))}
+  1197→  1197→    </div>
+  1198→  1198→  )
+  1199→  1199→}
+  1200→  1200→
+  1201→  1201→function GroupPreviewDialog({
+  1202→  1202→  group,
+  1203→  1203→  state,
+  1204→  1204→  joining,
+  1205→  1205→  leaving,
+  1206→  1206→  onJoin,
+  1207→  1207→  onOpen,
+  1208→  1208→  onLeave,
+  1209→  1209→  onClose,
+  1210→  1210→}: {
+  1211→  1211→  group: GroupItem | null
+  1212→  1212→  state: JoinState
+  1213→  1213→  joining: boolean
+  1214→  1214→  leaving: boolean
+  1215→  1215→  onJoin: (g: GroupItem) => void
+  1216→  1216→  onOpen: (g: GroupItem) => void
+  1217→  1217→  onLeave: (g: GroupItem) => void
+  1218→  1218→  onClose: () => void
+  1219→  1219→}) {
+  1220→  1220→  // V12 — When joined, the primary action becomes "Open" (instead of the
+  1221→  1221→  // disabled "Joined ✓" pill). Otherwise it stays Join / Request to Join.
+  1222→  1222→  const renderPrimaryAction = () => {
+  1223→  1223→    if (joining) {
+  1224→  1224→      return (
+  1225→  1225→        <button
+  1226→  1226→          disabled
+  1227→  1227→          className="action-btn min-h-[44px] pointer-events-none opacity-60"
+  1228→  1228→        >
+  1229→  1229→          <Loader2 className="h-4 w-4 animate-spin" />
+  1230→  1230→        </button>
+  1231→  1231→      )
+  1232→  1232→    }
+  1233→  1233→    if (state === 'joined') {
+  1234→  1234→      return (
+  1235→  1235→        <button
+  1236→  1236→          onClick={() => group && onOpen(group)}
+  1237→  1237→          className="action-btn min-h-[44px]"
+  1238→  1238→        >
+  1239→  1239→          Open chat
+  1240→  1240→        </button>
+  1241→  1241→      )
+  1242→  1242→    }
+  1243→  1243→    if (state === 'requested') {
+  1244→  1244→      return (
+  1245→  1245→        <button
+  1246→  1246→          disabled
+  1247→  1247→          className="ghost-btn min-h-[44px] pointer-events-none opacity-60"
+  1248→  1248→        >
+  1249→  1249→          Requested
+  1250→  1250→        </button>
+  1251→  1251→      )
+  1252→  1252→    }
+  1253→  1253→    return (
+  1254→  1254→      <button
+  1255→  1255→        onClick={() => group && onJoin(group)}
+  1256→  1256→        className={`min-h-[44px] ${group?.isPublic === false ? 'ghost-btn' : 'action-btn'}`}
+  1257→  1257→      >
+  1258→  1258→        {group?.isPublic === false ? 'Request to Join' : 'Join group'}
+  1259→  1259→      </button>
+  1260→  1260→    )
+  1261→  1261→  }
+  1262→  1262→  return (
+  1263→  1263→    <Dialog open={!!group} onOpenChange={(o) => !o && onClose()}>
+  1264→  1264→      <DialogContent className="sm:max-w-md">
+  1265→  1265→        <DialogHeader>
+  1266→  1266→          <DialogTitle>Group preview</DialogTitle>
+  1267→  1267→          <DialogDescription className="sr-only">
+  1268→  1268→            Preview of a TalyChat community. Tap Join (public) or Request to Join (private) to participate.
+  1269→  1269→          </DialogDescription>
+  1270→  1270→        </DialogHeader>
+  1271→  1271→        {group && (
+  1272→  1272→          <div className="flex flex-col items-center text-center">
+  1273→  1273→            <Avatar
+  1274→  1274→              className={`h-16 w-16 ring-2 ${categoryRing(group.category)}`}
+  1275→  1275→            >
+  1276→  1276→              <AvatarImage src={group.logo || undefined} alt={group.name} />
+  1277→  1277→              <AvatarFallback className="bg-primary/10 text-primary text-lg">
+  1278→  1278→                {(group.name || '?')[0]?.toUpperCase()}
+  1279→  1279→              </AvatarFallback>
+  1280→  1280→            </Avatar>
+  1281→  1281→            <h3 className="mt-2 flex items-center gap-1 text-lg font-bold">
+  1282→  1282→              {group.isPublic === false && (
+  1283→  1283→                <Lock className="h-4 w-4 text-muted-foreground" />
+  1284→  1284→              )}
+  1285→  1285→              {group.name}
+  1286→  1286→            </h3>
+  1287→  1287→            {group.category && (
+  1288→  1288→              <span
+  1289→  1289→                className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${categoryBadge(group.category)}`}
+  1290→  1290→              >
+  1291→  1291→                {group.category}
+  1292→  1292→              </span>
+  1293→  1293→            )}
+  1294→  1294→            <div className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
+  1295→  1295→              <Users className="h-4 w-4" /> {group.membersCount} members
+  1296→  1296→            </div>
+  1297→  1297→            {group.description && (
+  1298→  1298→              <p className="mt-3 text-sm text-muted-foreground">{group.description}</p>
+  1299→  1299→            )}
+  1300→  1300→            {group.isPublic === false && (
+  1301→  1301→              <p className="mt-2 rounded-md bg-amber-500/10 px-2 py-1 text-xs text-amber-600">
+  1302→  1302→                Private group — your request will need admin approval.
+  1303→  1303→              </p>
+  1304→  1304→            )}
+  1305→  1305→          </div>
+  1306→  1306→        )}
+  1307→  1307→        <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center">
+  1308→  1308→          <Button variant="ghost" onClick={onClose} className="min-h-[44px]">
+  1309→  1309→            Close
+  1310→  1310→          </Button>
+  1311→  1311→          {group && (
+  1312→  1312→            <>
+  1313→  1313→              {renderPrimaryAction()}
+  1314→  1314→              {/* V12 — Leave link shown only when the user is a member */}
+  1315→  1315→              {state === 'joined' && (
+  1316→  1316→                <button
+  1317→  1317→                  type="button"
+  1318→  1318→                  onClick={() => onLeave(group)}
+  1319→  1319→                  disabled={leaving}
+  1320→  1320→                  className="inline-flex min-h-[44px] items-center justify-center gap-1 text-xs font-medium text-destructive/70 transition-colors hover:text-destructive hover:underline disabled:opacity-50"
+  1321→  1321→                >
+  1322→  1322→                  {leaving ? (
+  1323→  1323→                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+  1324→  1324→                  ) : (
+  1325→  1325→                    <LogOut className="h-3.5 w-3.5" />
+  1326→  1326→                  )}
+  1327→  1327→                  Leave group
+  1328→  1328→                </button>
+  1329→  1329→              )}
+  1330→  1330→            </>
+  1331→  1331→          )}
+  1332→  1332→        </DialogFooter>
+  1333→  1333→      </DialogContent>
+  1334→  1334→    </Dialog>
+  1335→  1335→  )
+  1336→  1336→}
+  1337→  1337→

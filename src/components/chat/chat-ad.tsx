@@ -13,23 +13,35 @@ interface ChatAdBoxProps {
 }
 
 /**
- * In-chat ad box (PRD section 10, F5-9 timing). Rectangular split-pane layout:
+ * In-chat ad box (PRD section 10, PRD-2 timing). Rectangular split-pane
+ * layout using the `.ad-box` CSS class:
  *   - Left pane (~35%): ad image, full-bleed cover
  *   - Right pane (~65%): brand + "Sponsored" badge, headline, description, CTA
  *
- * The close ✕ appears after 6 seconds (handled here via state). Hiding the
- * ad calls `onClose` which the parent uses to restart the 45s/35s timer
- * (private = 45s after opening, group = 35s after opening). The timer is
- * started when the chat opens and loops continuously while the chat is
- * open — it is NOT reset by new messages, so ads will appear even during
- * active conversation. The ad is rendered inside the scroll area below
- * the last message so it never covers messages or the composer.
+ * The ad is rendered NATIVELY in the message stream (inside the scroll
+ * area, below the last message) — never as a floating overlay. This
+ * means it never covers the composer, keyboard, or existing messages,
+ * and the user can keep typing / sending messages while the ad is
+ * visible (the composer is never disabled).
+ *
+ * Closing is OPTIONAL: the user can leave the ad open. The ✕ close
+ * button only appears after 6 seconds (handled here via state) so
+ * users don't accidentally dismiss it. When the user does close the
+ * ad, the parent (`chat-view.tsx`) writes `lastShown = Date.now()` to
+ * localStorage (`talychat-ad-state-{userId}-{chatId}`) and restarts
+ * the 35s timer — so one ad at a time per user per chat.
+ *
+ * Per PRD-2 the 35s interval applies to ALL chats (private, group,
+ * Taly Support), and each user's ad timer is tracked separately via
+ * localStorage.
  */
 export function ChatAdBox({ ad, onClose, onCtaClick, className }: ChatAdBoxProps) {
   const [closeVisible, setCloseVisible] = React.useState(false)
 
   React.useEffect(() => {
-    // Reset close visibility whenever the ad changes.
+    // Reset close visibility whenever the ad changes. PRD-2 — the ✕
+    // close button only appears after 6s so users don't dismiss the
+    // ad accidentally; closing is optional.
     setCloseVisible(false)
     if (!ad) return
     const t = setTimeout(() => setCloseVisible(true), 6000)
