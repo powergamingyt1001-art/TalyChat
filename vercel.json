@@ -1,5 +1,5 @@
 {
-  "buildCommand": "bash scripts/build.sh",
+  "buildCommand": "npx prisma generate && next build",
   "installCommand": "bun install",
   "framework": "nextjs",
   "regions": ["bom1"],

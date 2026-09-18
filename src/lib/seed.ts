@@ -1,23 +1,19 @@
 import { db } from '@/lib/db'
+import { ensureDbSchema } from '@/lib/db-init'
 
-// Seeding status flag
 let seeded = false
 let seeding = false
 
 export async function ensureSeed() {
   if (seeded) return
-  if (seeding) return // prevent concurrent seeding
+  if (seeding) return
   seeding = true
   try {
-    const userCount = await db.user.count().catch(() => -1)
-    if (userCount === -1) {
-      // DB doesn't exist yet on Vercel — tables not created
-      // The DB was created during build, but tables need to exist
-      // Try creating tables via raw SQL
-      console.log('[seed] DB empty, attempting to create tables...')
-      seeded = true
-      return
-    }
+    // Create schema tables first (especially on Vercel where DB is empty)
+    await ensureDbSchema(db)
+    
+    // Now check if we have users
+    const userCount = await db.user.count().catch(() => 0)
     if (userCount > 0) {
       seeded = true
       return
@@ -26,7 +22,7 @@ export async function ensureSeed() {
     seeded = true
   } catch (err) {
     console.error('[seed] Error:', err)
-    seeded = true // prevent retry loops
+    seeded = true
   } finally {
     seeding = false
   }
@@ -35,7 +31,6 @@ export async function ensureSeed() {
 async function seedAll() {
   const bcrypt = await import('bcryptjs')
 
-  // ---------- Admin ----------
   const adminPw = await bcrypt.hash('Admin123', 10)
   const admin = await db.user.create({
     data: {
@@ -46,6 +41,7 @@ async function seedAll() {
       role: 'admin',
       isPremium: true,
       premiumUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      premiumTier: 'gold',
       bio: 'Founder: Omkar Panday',
       avatar: '',
     },
@@ -78,18 +74,18 @@ async function seedAll() {
   }
   await db.userPreference.create({ data: { userId: admin.id } })
 
-  // ---------- 10 Groups across categories ----------
+  // Groups
   const groupsData = [
-    { name: 'Indian Gamers Hub', desc: 'All gamers welcome — BGMI, Free Fire, Valorant', cat: 'Gaming' },
-    { name: 'Tech Talk India', desc: 'Latest tech news, gadgets, reviews', cat: 'Technology' },
-    { name: 'AI Builders Club', desc: 'Build AI apps, discuss LLMs, prompts', cat: 'AI' },
-    { name: 'Learners Corner', desc: 'Free courses, study materials, doubts', cat: 'Education' },
-    { name: 'Cricket Live', desc: 'Match discussions, scores, memes', cat: 'Cricket' },
-    { name: 'Football Fans India', desc: 'ISL, EPL, La Liga — all football', cat: 'Sports' },
-    { name: 'Bollywood Buzz', desc: 'Movie reviews, trailers, gossip', cat: 'Entertainment' },
-    { name: 'Cinema Lovers', desc: 'Indian & world cinema discussions', cat: 'Movies' },
-    { name: 'Indie Music India', desc: 'Indie artists, new releases, reviews', cat: 'Music' },
-    { name: 'Daily Memes', desc: 'Fresh memes every day 🤣', cat: 'Memes' },
+    { name: 'Indian Gamers Hub', desc: 'All gamers welcome', cat: 'Gaming' },
+    { name: 'Tech Talk India', desc: 'Latest tech news', cat: 'Technology' },
+    { name: 'AI Builders Club', desc: 'Build AI apps', cat: 'AI' },
+    { name: 'Learners Corner', desc: 'Free courses', cat: 'Education' },
+    { name: 'Cricket Live', desc: 'Match discussions', cat: 'Cricket' },
+    { name: 'Football Fans India', desc: 'All football', cat: 'Sports' },
+    { name: 'Bollywood Buzz', desc: 'Movie reviews', cat: 'Entertainment' },
+    { name: 'Cinema Lovers', desc: 'Cinema discussions', cat: 'Movies' },
+    { name: 'Indie Music India', desc: 'Indie artists', cat: 'Music' },
+    { name: 'Daily Memes', desc: 'Fresh memes daily 🤣', cat: 'Memes' },
   ]
   for (let i = 0; i < groupsData.length; i++) {
     const g = groupsData[i]
@@ -111,12 +107,7 @@ async function seedAll() {
       data: { groupId: group.id, userId: ownerId, role: 'owner' },
     })
     const conv = await db.conversation.create({
-      data: {
-        type: 'group',
-        name: g.name,
-        groupId: group.id,
-        ownerId,
-      },
+      data: { type: 'group', name: g.name, groupId: group.id, ownerId },
     })
     await db.conversationMember.create({
       data: { conversationId: conv.id, userId: ownerId, role: 'owner' },
@@ -138,31 +129,23 @@ async function seedAll() {
       } catch {}
     }
     const msgs = [
-      `Welcome to ${g.name}! Share your thoughts here.`,
+      `Welcome to ${g.name}!`,
       `Anyone active today? 👋`,
       `New to this group, say hi!`,
     ]
     for (let k = 0; k < msgs.length; k++) {
       const senderId = created[(k + i + 1) % created.length]
       await db.message.create({
-        data: {
-          conversationId: conv.id,
-          senderId,
-          content: msgs[k],
-          type: 'text',
-        },
+        data: { conversationId: conv.id, senderId, content: msgs[k], type: 'text' },
       })
     }
   }
 
-  // ---------- Private conversations between admin & each demo user ----------
+  // Private conversations
   for (let i = 1; i < created.length; i++) {
     const uId = created[i]
     const conv = await db.conversation.create({
-      data: {
-        type: 'private',
-        ownerId: admin.id,
-      },
+      data: { type: 'private', ownerId: admin.id },
     })
     await db.conversationMember.create({ data: { conversationId: conv.id, userId: admin.id } })
     await db.conversationMember.create({ data: { conversationId: conv.id, userId: uId } })
@@ -176,12 +159,12 @@ async function seedAll() {
     })
   }
 
-  // ---------- Ads ----------
+  // Ads
   const ads = [
-    { brand: 'TechWorld', headline: 'New Gaming Laptops @ 30% off', desc: 'Limited stock. Free delivery in India.', img: 'https://placehold.co/300x200/10b981/fff?text=Gaming+Laptop', cta: 'Shop Now', placement: 'home' },
-    { brand: 'Skill India', headline: 'Free Coding Bootcamp', desc: 'Learn React & Next.js in 30 days.', img: 'https://placehold.co/300x200/f59e0b/fff?text=Code+Bootcamp', cta: 'Enroll', placement: 'discover' },
-    { brand: 'CricketLive', headline: 'Watch IPL Live Free', desc: 'Stream all matches in HD on app.', img: 'https://placehold.co/300x200/ef4444/fff?text=IPL+Live', cta: 'Watch', placement: 'in-chat' },
-    { brand: 'MusicApp', headline: 'Ad-free music for 3 months', desc: 'Try Premium Free today.', img: 'https://placehold.co/300x200/8b5cf6/fff?text=Music+App', cta: 'Try Now', placement: 'in-chat' },
+    { brand: 'TechWorld', headline: 'Gaming Laptops @ 30% off', desc: 'Limited stock', img: 'https://placehold.co/300x200/10b981/fff?text=Gaming', cta: 'Shop Now', placement: 'home' },
+    { brand: 'Skill India', headline: 'Free Coding Bootcamp', desc: 'Learn React in 30 days', img: 'https://placehold.co/300x200/f59e0b/fff?text=Code', cta: 'Enroll', placement: 'discover' },
+    { brand: 'CricketLive', headline: 'Watch IPL Live Free', desc: 'Stream in HD', img: 'https://placehold.co/300x200/ef4444/fff?text=IPL', cta: 'Watch', placement: 'in-chat' },
+    { brand: 'MusicApp', headline: 'Ad-free music 3 months', desc: 'Try Premium Free', img: 'https://placehold.co/300x200/8b5cf6/fff?text=Music', cta: 'Try Now', placement: 'in-chat' },
   ]
   for (const a of ads) {
     await db.advertisement.create({
@@ -199,11 +182,11 @@ async function seedAll() {
     })
   }
 
-  // ---------- Redeem Codes ----------
+  // Redeem codes
   const codes = [
-    { code: 'TALY-WELCOME', months: 1, note: 'Welcome bonus for new users' },
-    { code: 'FRIEND-30', months: 2, note: 'Refer a friend reward' },
-    { code: 'PRO-6M', months: 6, note: '6-month premium trial' },
+    { code: 'TALY-WELCOME', months: 1, note: 'Welcome bonus' },
+    { code: 'FRIEND-30', months: 2, note: 'Refer a friend' },
+    { code: 'PRO-6M', months: 6, note: '6-month trial' },
   ]
   for (const c of codes) {
     await db.redeemCode.create({
@@ -219,7 +202,7 @@ async function seedAll() {
     })
   }
 
-  // ---------- App Settings ----------
+  // App settings
   const settings = [
     { key: 'ads_enabled', value: 'true' },
     { key: 'ads_private_interval', value: '45' },
@@ -241,6 +224,19 @@ async function seedAll() {
   ]
   for (const s of settings) {
     await db.appSetting.create({ data: s })
+  }
+
+  // Notifications for admin
+  for (let i = 0; i < 3; i++) {
+    await db.notification.create({
+      data: {
+        userId: admin.id,
+        type: 'system',
+        title: `Welcome ${i + 1}`,
+        body: 'TalyChat is now live!',
+        isRead: i % 2 === 0,
+      },
+    })
   }
 
   console.log('[seed] TalyChat seed complete')
