@@ -1,5 +1,4 @@
 import { db } from '@/lib/db'
-import { ensureDbSchema } from '@/lib/db-init'
 
 let seeded = false
 let seeding = false
@@ -9,17 +8,11 @@ export async function ensureSeed() {
   if (seeding) return
   seeding = true
   try {
-    // Ensure schema tables exist (for fresh DBs)
-    await ensureDbSchema(db)
-    
-    // Check if users exist — if so, DB is already seeded
     const userCount = await db.user.count().catch(() => 0)
     if (userCount > 0) {
       seeded = true
       return
     }
-    
-    // Only seed if truly empty
     console.log('[seed] No users found, seeding...')
     await seedAll()
     seeded = true
@@ -172,5 +165,18 @@ async function seedAll() {
     await db.appSetting.create({ data: s })
   }
 
-  console.log('[seed] TalyChat seed complete')
+  // Notifications for admin
+  for (let i = 0; i < 3; i++) {
+    await db.notification.create({
+      data: {
+        userId: admin.id,
+        type: 'system',
+        title: `Welcome ${i + 1}`,
+        body: 'TalyChat is now live!',
+        isRead: i % 2 === 0,
+      },
+    })
+  }
+
+  console.log('[seed] TalyChat seed complete on MySQL')
 }

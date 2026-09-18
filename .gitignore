@@ -51,3 +51,4 @@ prompt
 
 server.log
 # Skills directory
+db/custom.db/

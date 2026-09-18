@@ -1,5 +1,5 @@
 // TalyChat - Prisma schema (per PRD)
-// Database: SQLite
+// Database: MySQL (InfinityFree) — permanent database
 // All times stored in UTC
 
 generator client {
@@ -7,7 +7,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
