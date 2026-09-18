@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS Conversation (
   muted BOOLEAN NOT NULL DEFAULT false,
   pinned BOOLEAN NOT NULL DEFAULT false,
   autoDeleteAfter INTEGER,
+  themeColor TEXT,
   createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updatedAt DATETIME NOT NULL
 );
