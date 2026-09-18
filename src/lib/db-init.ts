@@ -3,7 +3,7 @@
 
 import { PrismaClient } from '@prisma/client'
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs'
-import path from 'path'
+import * as path from 'path'
 
 let initialized = false
 

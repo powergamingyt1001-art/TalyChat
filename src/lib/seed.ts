@@ -9,15 +9,18 @@ export async function ensureSeed() {
   if (seeding) return
   seeding = true
   try {
-    // Create schema tables first (especially on Vercel where DB is empty)
+    // Ensure schema tables exist (for fresh DBs)
     await ensureDbSchema(db)
     
-    // Now check if we have users
+    // Check if users exist — if so, DB is already seeded
     const userCount = await db.user.count().catch(() => 0)
     if (userCount > 0) {
       seeded = true
       return
     }
+    
+    // Only seed if truly empty
+    console.log('[seed] No users found, seeding...')
     await seedAll()
     seeded = true
   } catch (err) {
@@ -92,71 +95,34 @@ async function seedAll() {
     const ownerId = created[(i % (created.length - 1)) + 1]
     const inviteCode = Math.random().toString(36).slice(2, 8).toUpperCase()
     const group = await db.group.create({
-      data: {
-        name: g.name,
-        description: g.desc,
-        category: g.cat,
-        isPublic: true,
-        inviteCode,
-        ownerId,
-        creatorId: ownerId,
-        membersCount: 1,
-      },
+      data: { name: g.name, description: g.desc, category: g.cat, isPublic: true, inviteCode, ownerId, creatorId: ownerId, membersCount: 1 },
     })
-    await db.groupMember.create({
-      data: { groupId: group.id, userId: ownerId, role: 'owner' },
-    })
-    const conv = await db.conversation.create({
-      data: { type: 'group', name: g.name, groupId: group.id, ownerId },
-    })
-    await db.conversationMember.create({
-      data: { conversationId: conv.id, userId: ownerId, role: 'owner' },
-    })
+    await db.groupMember.create({ data: { groupId: group.id, userId: ownerId, role: 'owner' } })
+    const conv = await db.conversation.create({ data: { type: 'group', name: g.name, groupId: group.id, ownerId } })
+    await db.conversationMember.create({ data: { conversationId: conv.id, userId: ownerId, role: 'owner' } })
     for (let m = 0; m < 3; m++) {
       const memberId = created[(m + i + 1) % created.length]
       if (memberId === ownerId) continue
       try {
-        await db.groupMember.create({
-          data: { groupId: group.id, userId: memberId, role: 'member' },
-        })
-        await db.conversationMember.create({
-          data: { conversationId: conv.id, userId: memberId, role: 'member' },
-        })
-        await db.group.update({
-          where: { id: group.id },
-          data: { membersCount: { increment: 1 } },
-        })
+        await db.groupMember.create({ data: { groupId: group.id, userId: memberId, role: 'member' } })
+        await db.conversationMember.create({ data: { conversationId: conv.id, userId: memberId, role: 'member' } })
+        await db.group.update({ where: { id: group.id }, data: { membersCount: { increment: 1 } } })
       } catch {}
     }
-    const msgs = [
-      `Welcome to ${g.name}!`,
-      `Anyone active today? 👋`,
-      `New to this group, say hi!`,
-    ]
+    const msgs = [`Welcome to ${g.name}!`, `Anyone active today? 👋`, `New to this group, say hi!`]
     for (let k = 0; k < msgs.length; k++) {
       const senderId = created[(k + i + 1) % created.length]
-      await db.message.create({
-        data: { conversationId: conv.id, senderId, content: msgs[k], type: 'text' },
-      })
+      await db.message.create({ data: { conversationId: conv.id, senderId, content: msgs[k], type: 'text' } })
     }
   }
 
   // Private conversations
   for (let i = 1; i < created.length; i++) {
     const uId = created[i]
-    const conv = await db.conversation.create({
-      data: { type: 'private', ownerId: admin.id },
-    })
+    const conv = await db.conversation.create({ data: { type: 'private', ownerId: admin.id } })
     await db.conversationMember.create({ data: { conversationId: conv.id, userId: admin.id } })
     await db.conversationMember.create({ data: { conversationId: conv.id, userId: uId } })
-    await db.message.create({
-      data: {
-        conversationId: conv.id,
-        senderId: uId,
-        content: `Hi Admin! Welcome to TalyChat 👋`,
-        type: 'text',
-      },
-    })
+    await db.message.create({ data: { conversationId: conv.id, senderId: uId, content: `Hi Admin! Welcome to TalyChat 👋`, type: 'text' } })
   }
 
   // Ads
@@ -168,17 +134,7 @@ async function seedAll() {
   ]
   for (const a of ads) {
     await db.advertisement.create({
-      data: {
-        brandName: a.brand,
-        headline: a.headline,
-        description: a.desc,
-        imageUrl: a.img,
-        ctaText: a.cta,
-        ctaUrl: '#',
-        placement: a.placement,
-        isActive: true,
-        creatorId: admin.id,
-      },
+      data: { brandName: a.brand, headline: a.headline, description: a.desc, imageUrl: a.img, ctaText: a.cta, ctaUrl: '#', placement: a.placement, isActive: true, creatorId: admin.id },
     })
   }
 
@@ -189,17 +145,7 @@ async function seedAll() {
     { code: 'PRO-6M', months: 6, note: '6-month trial' },
   ]
   for (const c of codes) {
-    await db.redeemCode.create({
-      data: {
-        code: c.code,
-        premiumMonths: c.months,
-        note: c.note,
-        count: 1,
-        expiry: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
-        isActive: true,
-        createdById: admin.id,
-      },
-    })
+    await db.redeemCode.create({ data: { code: c.code, premiumMonths: c.months, note: c.note, count: 1, expiry: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), isActive: true, createdById: admin.id } })
   }
 
   // App settings
@@ -224,19 +170,6 @@ async function seedAll() {
   ]
   for (const s of settings) {
     await db.appSetting.create({ data: s })
-  }
-
-  // Notifications for admin
-  for (let i = 0; i < 3; i++) {
-    await db.notification.create({
-      data: {
-        userId: admin.id,
-        type: 'system',
-        title: `Welcome ${i + 1}`,
-        body: 'TalyChat is now live!',
-        isRead: i % 2 === 0,
-      },
-    })
   }
 
   console.log('[seed] TalyChat seed complete')
