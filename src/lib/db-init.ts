@@ -64,6 +64,8 @@ CREATE TABLE IF NOT EXISTS Conversation (
   pinned BOOLEAN NOT NULL DEFAULT false,
   autoDeleteAfter INTEGER,
   themeColor TEXT,
+  sentBubbleColor TEXT,
+  receivedBubbleColor TEXT,
   createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updatedAt DATETIME NOT NULL
 );
