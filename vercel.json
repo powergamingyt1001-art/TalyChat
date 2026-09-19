@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npx prisma generate && npx prisma db push --accept-data-loss && next build",
+  "buildCommand": "bash scripts/vercel-build.sh",
   "installCommand": "bun install",
   "framework": "nextjs",
   "regions": ["bom1"],

@@ -1,0 +1,712 @@
+// TalyChat - Prisma schema (per PRD)
+// Database: MySQL (InfinityFree) — permanent database
+// All times stored in UTC
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// USER & AUTH
+// ============================================================
+
+model User {
+  id              String   @id @default(cuid())
+  email           String   @unique           // admin.in is stored as email field too
+  username        String   @unique
+  name            String
+  passwordHash    String?
+  phone           String?
+  avatar          String?
+  bio             String   @default("")
+  gender          String   @default("other") // male/female/other
+  dob             String?                    // ISO date (yyyy-mm-dd)
+  role            String   @default("user")   // user | admin
+  isPremium       Boolean  @default(false)
+  premiumUntil    DateTime?
+  premiumTier     String   @default("free")    // free | bronze | silver | gold (for premium ring)
+  isOnline        Boolean  @default(false)
+  lastSeen        DateTime @default(now())
+  isRestricted    Boolean  @default(false)
+  restrictedUntil DateTime?
+  isBlocked       Boolean  @default(false)
+  blockedUntil    DateTime?                    // temporary ban with duration
+  banReason       String?
+  authProvider    String   @default("email")  // email | google | phone
+  referralCode    String?                    // who referred this user
+  // Behavior system
+  behaviorScore   Int      @default(100)       // 0-100, <50 = can't message
+  behaviorLogs    String   @default("")        // JSON: [{date, adsWatched}]
+  adsWatchedToday Int      @default(0)          // max 10/day
+  lastAdWatchedAt DateTime?
+  // V9 — Two-factor authentication (TOTP)
+  twoFactorSecret   String?
+  twoFactorEnabled  Boolean  @default(false)
+  // R1-3 — Daily Login Reward redesign.
+  // Tracks which reward loop the user is in: 'welcome' (default for new
+  // users, 180-day one-time bonus) or 'deactivation' (15-day mini loop
+  // triggered when the user comes back after 15+ days offline).
+  rewardLoop        String   @default("welcome")
+  // True once the user has completed their one-time welcome bonus (all
+  // 7 days of the welcome loop claimed). Future daily rewards only
+  // unlock via the deactivation loop after going offline 15+ days.
+  welcomeBonusClaimed Boolean @default(false)
+  // Set when we detect (at login) that the user was offline for 15+
+  // days. Drives the deactivation-loop trigger.
+  lastDeactivatedAt DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  sentMessages       Message[]
+  receivedConvs     ConversationMember[]  @relation("convMembers")
+  ownedGroups       Group[]              @relation("groupOwner")
+  groupMemberships  GroupMember[]
+  notifications      Notification[]
+  reportsMade       Report[]             @relation("reporter")
+  reportsReceived   Report[]             @relation("reported")
+  blocksMade        Block[]              @relation("blocker")
+  blocksReceived    Block[]              @relation("blocked")
+  preferences       UserPreference?
+  subscriptions     Subscription[]
+  referralsGiven    Referral[]           @relation("referrer")
+  referralsReceived Referral[]           @relation("referred")
+  redeemUses        RedeemUse[]
+  dailyRewards      DailyReward[]
+  adClicks          AdClick[]
+  paymentProofs      PaymentProof[]
+  talyRequests      TalyRequest[]
+  createdAds        Advertisement[]      @relation("adCreator")
+  createdCodes      RedeemCode[]
+  createdGroups     Group[]              @relation("groupCreator")
+  ownedConvs        Conversation[]       @relation("convOwner")
+  // Chat request system
+  sentChatRequests     ChatRequest[]    @relation("chatReqSender")
+  receivedChatRequests ChatRequest[]    @relation("chatReqReceiver")
+  // Group join requests (for private groups)
+  sentGroupRequests    GroupRequest[]   @relation("groupReqSender")
+  // Referral tasks
+  referralTasks        ReferralTask[]
+  // Stories
+  stories              Story[]
+  // Story highlights (V7 — saved expired stories)
+  highlights           StoryHighlight[]
+  // Scheduled messages (V6)
+  scheduledMessages    ScheduledMessage[]
+  // V8 — Browser push subscriptions (Notification API + Push API)
+  pushSubscriptions    PushSubscription[]
+  // V8 — Live location shares
+  locationShares       LocationShare[]
+  // V9 — Group announcements authored by this user
+  groupAnnouncements   GroupAnnouncement[]
+
+  @@index([email])
+  @@index([username])
+  @@index([role])
+}
+
+// ============================================================
+// CONVERSATIONS (P2P private + Group)
+// ============================================================
+
+model Conversation {
+  id        String   @id @default(cuid())
+  type      String   @default("private") // private | group
+  name      String?
+  avatar    String?
+  ownerId   String?                       // for groups
+  groupId   String?  @unique                 // link to Group if type=group
+  wallpaper String?
+  themeColor String?                       // V7 — per-conversation accent color (premium)
+  sentBubbleColor String?                  // V13 — per-conversation sent bubble color override
+  receivedBubbleColor String?               // V13 — per-conversation received bubble color override
+  muted     Boolean  @default(false)
+  pinned    Boolean  @default(false)
+  autoDeleteAfter Int?                    // seconds; null = no auto-delete
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner       User?                @relation("convOwner", fields: [ownerId], references: [id])
+  group       Group?               @relation("GroupConversations", fields: [groupId], references: [id])
+  members     ConversationMember[]
+  messages    Message[]
+  // V8 — live location shares for this conversation
+  locationShares LocationShare[]
+
+  @@index([type])
+  @@index([groupId])
+}
+
+model ConversationMember {
+  id              String   @id @default(cuid())
+  conversationId  String
+  userId          String
+  role            String   @default("member") // owner | admin | moderator | member
+  lastReadAt      DateTime @default(now())
+  joinedAt        DateTime @default(now())
+
+  conversation  Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user          User         @relation("convMembers", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+// ============================================================
+// MESSAGES
+// ============================================================
+
+model Message {
+  id              String   @id @default(cuid())
+  conversationId  String
+  senderId        String
+  content         String   @default("")
+  type            String   @default("text") // text | image | voice | sticker | system | location
+  mediaUrl        String?
+  voiceDuration   Int?                       // seconds
+  stickerId       String?
+  // V8 — Location message support (when type='location')
+  lat             Float?
+  lng             Float?
+  replyToId       String?                    // message id being replied to
+  forwardedFromId String?                    // original message id (if this message was forwarded)
+  editedAt        DateTime?
+  deletedAt       DateTime?
+  pinnedAt        DateTime?
+  seenBy          String   @default("")      // comma-separated user IDs
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  conversation  Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender        User         @relation(fields: [senderId], references: [id])
+  replyTo       Message?     @relation("MessageReply", fields: [replyToId], references: [id])
+  replies       Message[]    @relation("MessageReply")
+  forwardedFrom Message?     @relation("ForwardedMessages", fields: [forwardedFromId], references: [id])
+  forwardedTo   Message[]    @relation("ForwardedMessages")
+  reactions     Reaction[]
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+  @@index([forwardedFromId])
+}
+
+model Reaction {
+  id          String   @id @default(cuid())
+  messageId   String
+  userId      String
+  emoji       String
+  createdAt   DateTime @default(now())
+
+  message     Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId]) // one reaction per user per message
+  @@index([messageId])
+}
+
+// ============================================================
+// GROUPS
+// ============================================================
+
+model Group {
+  id          String   @id @default(cuid())
+  name        String
+  description String   @default("")
+  logo        String?
+  category    String   @default("Other")
+  isPublic    Boolean  @default(true)
+  inviteCode  String   @unique
+  ownerId     String
+  creatorId   String?
+  membersCount Int    @default(1)
+  pinnedMessageIds String @default("") // comma-separated
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner       User           @relation("groupOwner", fields: [ownerId], references: [id])
+  creator     User?          @relation("groupCreator", fields: [creatorId], references: [id])
+  members     GroupMember[]
+  conversation Conversation? @relation("GroupConversations")
+  joinRequests GroupRequest[]
+  reports     Report[]
+  // V9 — Group announcements (pinned messages from admins)
+  announcements GroupAnnouncement[]
+
+  @@index([category])
+  @@index([isPublic])
+}
+
+model GroupMember {
+  id        String   @id @default(cuid())
+  groupId   String
+  userId    String
+  role      String   @default("member") // owner | admin | moderator | member
+  joinedAt  DateTime @default(now())
+
+  group      Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user       User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([groupId])
+  @@index([userId])
+}
+
+// ============================================================
+// NOTIFICATIONS, REPORTS, BLOCKS
+// ============================================================
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // message | group | system | reward | referral | premium | ad
+  title     String
+  body      String
+  data      String   @default("{}") // JSON string
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user       User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+}
+
+model Report {
+  id           String   @id @default(cuid())
+  reporterId    String
+  reportedUserId String?
+  reportedGroupId String?
+  reason       String   // Spam | Harassment | Scam | Illegal | Fake | Other
+  description  String   @default("")
+  status       String   @default("pending") // pending | reviewed | resolved | dismissed
+  adminNote    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  reporter        User   @relation("reporter", fields: [reporterId], references: [id])
+  reportedUser    User?  @relation("reported", fields: [reportedUserId], references: [id])
+  reportedGroup   Group? @relation(fields: [reportedGroupId], references: [id])
+
+  @@index([status])
+  @@index([reportedUserId])
+}
+
+model Block {
+  id        String   @id @default(cuid())
+  blockerId String
+  blockedId String
+  createdAt DateTime @default(now())
+
+  blocker User @relation("blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+}
+
+// ============================================================
+// ADS
+// ============================================================
+
+model Advertisement {
+  id          String   @id @default(cuid())
+  brandName   String
+  headline    String
+  description String
+  imageUrl    String?
+  ctaText     String   @default("Learn More")
+  ctaUrl      String   @default("#")
+  placement   String   @default("in-chat") // in-chat | home | discover
+  category    String?                        // target category, null = all
+  startDate   DateTime @default(now())
+  endDate     DateTime?
+  isActive    Boolean  @default(true)
+  impressions Int      @default(0)
+  clicks      Int      @default(0)
+  creatorId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  creator     User?      @relation("adCreator", fields: [creatorId], references: [id])
+  clicksRel   AdClick[]
+
+  @@index([placement, isActive])
+  @@index([creatorId])
+}
+
+model AdClick {
+  id        String   @id @default(cuid())
+  adId      String
+  userId    String
+  createdAt DateTime @default(now())
+
+  ad        Advertisement @relation(fields: [adId], references: [id], onDelete: Cascade)
+  user      User         @relation(fields: [userId], references: [id])
+
+  @@index([adId])
+}
+
+// ============================================================
+// PREFERENCES & SUBSCRIPTIONS
+// ============================================================
+
+model UserPreference {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  theme           String   @default("system") // light | dark | system
+  wallpaper       String   @default("default")
+  messageStyle    String   @default("bubble")  // bubble | sharp | tail | none
+  fontFamily      String   @default("sans")
+  fontSize        Int      @default(14)
+  customFontUrl   String?
+  language        String   @default("en")
+  layoutMode      String   @default("auto") // auto | mobile | desktop
+  lastSeenPublic  Boolean  @default(false)
+  onlinePublic    Boolean  @default(true)
+  readReceipts    Boolean  @default(true)
+  notifMessages   Boolean  @default(true)
+  notifGroups     Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user       User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Subscription {
+  id          String   @id @default(cuid())
+  userId      String
+  plan        String   // 2mo | 6mo | 1yr
+  amount      Int      // in rupees
+  startAt     DateTime @default(now())
+  expireAt    DateTime
+  isActive    Boolean  @default(true)
+  source      String   @default("payment") // payment | redeem | referral | daily
+  createdAt   DateTime @default(now())
+
+  user       User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+}
+
+// ============================================================
+// REFERRALS & REDEEM CODES
+// ============================================================
+
+model Referral {
+  id           String   @id @default(cuid())
+  referrerId    String
+  referredId    String
+  status        String   @default("pending") // pending | active
+  tierReached   String?                       // 4 | 7 | 15
+  rewardGranted Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  activatedAt   DateTime?
+
+  referrer      User  @relation("referrer", fields: [referrerId], references: [id])
+  referred      User  @relation("referred", fields: [referredId], references: [id])
+
+  @@unique([referredId]) // one referrer per user
+  @@index([referrerId, status])
+}
+
+model RedeemCode {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  premiumMonths Int
+  note        String   @default("")
+  count       Int      @default(1)        // batch size
+  expiry      DateTime?
+  isActive    Boolean  @default(true)
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  creator       User?       @relation(fields: [createdById], references: [id])
+  redemptions   RedeemUse[]
+
+  @@index([isActive])
+}
+
+model RedeemUse {
+  id        String   @id @default(cuid())
+  codeId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  code      RedeemCode @relation(fields: [codeId], references: [id])
+  user      User       @relation(fields: [userId], references: [id])
+
+  @@unique([codeId, userId])
+}
+
+// ============================================================
+// DAILY LOGIN REWARD
+// ============================================================
+
+model DailyReward {
+  id          String   @id @default(cuid())
+  userId      String
+  dayNumber   Int      // 1-7
+  daysAwarded Int      // premium days given
+  cycleStart  DateTime
+  claimedAt   DateTime @default(now())
+
+  user       User  @relation(fields: [userId], references: [id])
+
+  @@index([userId, cycleStart])
+}
+
+// ============================================================
+// PAYMENT PROOFS (admin verification)
+// ============================================================
+
+model PaymentProof {
+  id            String   @id @default(cuid())
+  userId        String
+  plan          String   // 2mo | 6mo | 1yr
+  amount        Int
+  transactionId String
+  utrNumber     String?
+  screenshotUrl String?
+  notes         String?
+  status        String   @default("pending") // pending | approved | rejected
+  adminNote     String?
+  createdAt     DateTime @default(now())
+  reviewedAt    DateTime?
+
+  user          User  @relation(fields: [userId], references: [id])
+
+  @@index([status])
+}
+
+// ============================================================
+// TALY SUPPORT AI REQUESTS (admin approval workflow)
+// ============================================================
+
+model TalyRequest {
+  id          String   @id @default(cuid())
+  userId      String
+  chatId      String?
+  request     String
+  reason      String   @default("")
+  status      String   @default("pending") // pending | approved | rejected
+  adminNote   String?
+  createdAt   DateTime @default(now())
+  reviewedAt  DateTime?
+
+  user        User  @relation(fields: [userId], references: [id])
+
+  @@index([status])
+}
+
+// ============================================================
+// APP SETTINGS (key/value, editable by admin)
+// ============================================================
+
+model AppSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================================
+// CHAT REQUESTS (P2P private chat opt-in)
+// ============================================================
+
+model ChatRequest {
+  id          String   @id @default(cuid())
+  senderId    String
+  receiverId  String
+  message     String   @default("")     // optional intro message
+  status      String   @default("pending") // pending | accepted | rejected
+  createdAt   DateTime @default(now())
+  decidedAt   DateTime?
+
+  sender      User  @relation("chatReqSender", fields: [senderId], references: [id])
+  receiver    User  @relation("chatReqReceiver", fields: [receiverId], references: [id])
+
+  @@unique([senderId, receiverId])
+  @@index([receiverId, status])
+}
+
+// ============================================================
+// GROUP JOIN REQUESTS (for private groups)
+// ============================================================
+
+model GroupRequest {
+  id          String   @id @default(cuid())
+  groupId     String
+  senderId    String
+  message     String   @default("")
+  status      String   @default("pending") // pending | accepted | rejected
+  createdAt   DateTime @default(now())
+  decidedAt   DateTime?
+
+  group       Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  sender      User  @relation("groupReqSender", fields: [senderId], references: [id])
+
+  @@unique([groupId, senderId])
+  @@index([groupId, status])
+}
+
+// ============================================================
+// REFERRAL TASKS (user selects a tier task to complete)
+// ============================================================
+
+model ReferralTask {
+  id           String   @id @default(cuid())
+  userId       String
+  tier         String   // 8members7d | 18members15d | 25members30d
+  requiredCount Int
+  windowDays   Int
+  rewardMonths Int
+  selectedAt   DateTime @default(now())
+  completedAt  DateTime?
+  expiresAt    DateTime
+  isActive     Boolean  @default(true)
+
+  user         User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+}
+
+
+// ============================================================
+// STORIES (WhatsApp-style disappearing status updates)
+// ============================================================
+
+model Story {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String   @default("text") // text | image
+  content     String   @default("")     // text content or image URL
+  bgColor     String   @default("#10b981") // for text stories
+  textColor   String   @default("#ffffff")
+  caption     String?
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime                  // createdAt + 24h
+  viewedBy    String   @default("")     // comma-separated user IDs
+  isDeleted   Boolean  @default(false)
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  views       StoryView[]
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+}
+
+model StoryView {
+  id        String   @id @default(cuid())
+  storyId   String
+  userId    String
+  viewedAt  DateTime @default(now())
+
+  story      Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@unique([storyId, userId])
+  @@index([storyId])
+}
+
+// ============================================================
+// SCHEDULED MESSAGES (V6) — sent at a future time
+// ============================================================
+
+model ScheduledMessage {
+  id              String   @id @default(cuid())
+  senderId        String
+  conversationId  String
+  content         String
+  type            String   @default("text") // text | image
+  mediaUrl        String?
+  replyToId       String?
+  scheduledFor    DateTime                  // when to send
+  isSent          Boolean  @default(false)
+  isCancelled     Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  sentAt          DateTime?
+
+  sender          User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([isSent, scheduledFor])
+  @@index([senderId])
+}
+
+// ============================================================
+// STORY HIGHLIGHTS (V7) — saved expired stories on a profile
+// ============================================================
+
+model StoryHighlight {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String   @default("Highlights")
+  coverColor  String   @default("#10b981")
+  storyIds    String   @default("")  // comma-separated story IDs
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ============================================================
+// V8 — BROWSER PUSH SUBSCRIPTIONS (Web Push API)
+// ============================================================
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   // the FCM/Mozilla push endpoint URL
+  p256dh    String   // client public key (base64url)
+  auth      String   // auth secret (base64url)
+  createdAt DateTime @default(now())
+
+  user      User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([endpoint])
+}
+
+// ============================================================
+// V8 — LIVE LOCATION SHARING
+// ============================================================
+
+model LocationShare {
+  id             String   @id @default(cuid())
+  conversationId String
+  userId         String
+  lat            Float
+  lng            Float
+  expiresAt      DateTime
+  isLive         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, isLive])
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ============================================================
+// V9 — GROUP ANNOUNCEMENTS (pinned admin/owner messages)
+// ============================================================
+
+model GroupAnnouncement {
+  id         String   @id @default(cuid())
+  groupId    String
+  authorId   String
+  content    String
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  group      Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  author     User  @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([groupId, isActive, createdAt])
+  @@index([authorId])
+}
